@@ -666,6 +666,21 @@ def get_indicator_params():
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
 
 
+def _czsc_prompt_section() -> str:
+    """Build the CZSC (缠论) section for the AI indicator generation system prompt.
+
+    Returns an empty string if czsc is not installed, so the prompt is unchanged.
+    """
+    try:
+        from app.services.czsc_bridge import get_czsc_column_docs, is_czsc_enabled
+
+        if not is_czsc_enabled():
+            return ''
+        return '\n' + get_czsc_column_docs() + '\n'
+    except Exception:
+        return ''
+
+
 @indicator_blp.route("/aiGenerate", methods=["POST"])
 @login_required
 def ai_generate():
@@ -865,6 +880,8 @@ Pick defaults that match the strategy style (trend vs mean-reversion).
   5. `output` exists and is a dict
   6. **type audit**: scan every `.rolling` / `.fillna` / `.shift` / `.ewm` / `.iloc` / `.tolist` call site; confirm its left-hand side is a Series. If it came from `np.where` / `np.maximum` / `np.minimum` / a custom helper returning ndarray, you MUST wrap with `pd.Series(arr, index=df.index)` first
   7. **index audit**: any `pd.Series(arr)` where `arr` is ndarray sized `len(df)` MUST pass `index=df.index`, otherwise it will silently misalign with DatetimeIndex-based `df`
+
+""" + _czsc_prompt_section() + """
 
 # Output format for this chat turn
 

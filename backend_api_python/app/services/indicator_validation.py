@@ -54,6 +54,12 @@ def validate_indicator_code(code: str, user_params: Dict[str, Any] | None = None
 
     hints = analyze_indicator_code_quality(raw)
     df = generate_mock_df()
+
+    # If indicator code references czsc_ columns, inject mock czsc columns for dry-run validation.
+    from app.services.czsc_bridge import add_mock_czsc_columns, code_uses_czsc
+    if code_uses_czsc(raw):
+        df = add_mock_czsc_columns(df)
+
     merged_params = merge_indicator_params(raw, user_params)
     exec_env = {
         "df": df.copy(),

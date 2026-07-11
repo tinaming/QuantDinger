@@ -763,6 +763,8 @@ class BacktestService:
             'indicator_params': indicator_params or {},
             'user_id': user_id,
             'indicator_id': indicator_id,
+            'timeframe': timeframe,
+            'symbol': symbol,
         }
         signals_full = self._execute_indicator(indicator_code, df_signal_full, backtest_params)
         df_signal = self._slice_to_backtest_window(df_signal_full, start_date, end_date)
@@ -2234,6 +2236,8 @@ class BacktestService:
             'indicator_params': indicator_params or {},
             'user_id': user_id,
             'indicator_id': indicator_id,
+            'timeframe': timeframe,
+            'symbol': symbol,
         }
         signals_full = self._execute_indicator(indicator_code, df_full, backtest_params)
         df = self._slice_to_backtest_window(df_full, start_date, end_date)
@@ -2596,6 +2600,14 @@ class BacktestService:
         signals = {}
         
         try:
+            # Inject CZSC (缠论) pre-computed features if indicator code references czsc_ columns.
+            from app.services.czsc_bridge import compute_czsc_features, is_czsc_enabled, code_uses_czsc
+            _tf = (backtest_params or {}).get('timeframe', '1H')
+            _sym = str((backtest_params or {}).get('symbol', 'SYMBOL'))
+            if is_czsc_enabled() and code_uses_czsc(code):
+                df = compute_czsc_features(df, freq=_tf, symbol=_sym)
+                logger.info(f"CZSC features injected for timeframe={_tf} symbol={_sym}")
+
             # Reset DatetimeIndex to integer so user code can use df.at[0, ...] or df.iloc[0, ...]
             df_for_exec = df.copy()
             if isinstance(df_for_exec.index, pd.DatetimeIndex):

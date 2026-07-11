@@ -193,6 +193,7 @@ def run_startup_hooks(app: Flask) -> None:
     if skip_hooks:
         return
     with app.app_context():
+        _check_coinos_dependencies()
         start_pending_order_worker()
         start_grid_fill_poller()
         start_portfolio_monitor()
@@ -208,3 +209,22 @@ def run_startup_hooks(app: Flask) -> None:
         except Exception:
             pass
         restore_running_strategies()
+
+
+def _check_coinos_dependencies() -> None:
+    """Non-blocking CoinOS dependency check at startup."""
+    try:
+        from app.services.coinos.runner import list_skills, _node_binary
+        try:
+            _node_binary()
+        except Exception as exc:
+            logger.warning("CoinOS: Node.js not available — /api/coinos/* endpoints will fail: %s", exc)
+            return
+        skills = list_skills()
+        unavailable = [s["name"] for s in skills if not s["available"]]
+        if unavailable:
+            logger.warning("CoinOS: skills not available (coinos-skills/ may not be cloned): %s", unavailable)
+        else:
+            logger.info("CoinOS: all %d skills available", len(skills))
+    except Exception as exc:
+        logger.warning("CoinOS: dependency check failed: %s", exc)

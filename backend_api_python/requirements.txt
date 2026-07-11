@@ -42,3 +42,7 @@ ib_insync>=0.9.86
 # SerpAPI - Google/Bing search scraper (free 100 requests/month)
 # google-search-results>=2.4.0
 alpaca-py>=0.30.0
+# CZSC (缠论/Chan Theory) pre-computation for indicator scripts (optional, Rust extension)
+# Requires Python >= 3.10 and Rust toolchain for source build; pre-compiled wheels available on PyPI.
+# 1.0.0 stable not yet released; pin to latest RC for production use.
+czsc>=1.0.0rc5

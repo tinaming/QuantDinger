@@ -3271,9 +3271,9 @@ class TradingExecutor:
         try:
             from app.config.data_sources import CCXTConfig
 
-            default_ex = (CCXTConfig.DEFAULT_EXCHANGE or "binance").strip().lower()
+            default_ex = (CCXTConfig.DEFAULT_EXCHANGE or "gate").strip().lower()
         except Exception:
-            default_ex = "binance"
+            default_ex = "gate"
         if mode == "signal":
             logger.info(
                 f"Strategy {strategy_id} signal mode: no exchange selected; "
@@ -4128,6 +4128,15 @@ class TradingExecutor:
         """Execute indicator code against a DataFrame and return the execution environment."""
         try:
             df = df.copy()
+
+            # Inject CZSC (缠论) pre-computed features if indicator code references czsc_ columns.
+            from app.services.czsc_bridge import compute_czsc_features, is_czsc_enabled, code_uses_czsc
+            if is_czsc_enabled() and code_uses_czsc(indicator_code):
+                _czsc_tf = str(trading_config.get('timeframe', '1H'))
+                _czsc_sym = str(trading_config.get('symbol', 'SYMBOL'))
+                df = compute_czsc_features(df, freq=_czsc_tf, symbol=_czsc_sym)
+                logger.info(f"CZSC features injected in live executor for timeframe={_czsc_tf} symbol={_czsc_sym}")
+
             for col in ['open', 'high', 'low', 'close', 'volume']:
                 if col in df.columns:
                     if not pd.api.types.is_numeric_dtype(df[col]):
@@ -4135,10 +4144,16 @@ class TradingExecutor:
                     else:
                         df[col] = df[col].astype('float64')
             
-            df = df.dropna()
+            # Only drop rows where OHLCV columns are NaN; CZSC / indicator columns
+            # legitimately contain NaN for bars without fractals/strokes.
+            ohlcv_cols = [c for c in ['open', 'high', 'low', 'close', 'volume'] if c in df.columns]
+            if ohlcv_cols:
+                df = df.dropna(subset=ohlcv_cols)
+            else:
+                df = df.dropna()
             
             if len(df) == 0:
-                logger.warning("DataFrame is empty; cannot execute indicator script")
+                logger.warning("DataFrame is empty after dropna; cannot execute indicator script")
                 return None, {}
             
             signals = pd.Series(0, index=df.index, dtype='float64')
