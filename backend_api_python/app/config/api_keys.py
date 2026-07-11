@@ -171,6 +171,16 @@ class MetaAPIKeys(type):
         return val if val else ''
 
     @property
+    def CUSTOM_API_FORMAT(cls):
+        """Custom LLM API format: 'openai' (default) or 'anthropic'"""
+        env_val = os.getenv('CUSTOM_API_FORMAT', '').strip().lower()
+        if env_val:
+            return env_val
+        from app.utils.config_loader import load_addon_config
+        val = load_addon_config().get('custom', {}).get('format', '')
+        return val.lower() if val else 'openai'
+
+    @property
     def CUSTOM_MODEL(cls):
         """Custom LLM model name"""
         env_val = os.getenv('CUSTOM_MODEL', '').strip()
@@ -188,6 +198,16 @@ class MetaAPIKeys(type):
             return env_val
         from app.utils.config_loader import load_addon_config
         val = load_addon_config().get('minimax', {}).get('api_key')
+        return val if val else ''
+
+    @property
+    def BAILIAN_API_KEY(cls):
+        """Alibaba Cloud Bailian (DashScope) API key"""
+        env_val = os.getenv('BAILIAN_API_KEY', '').strip()
+        if env_val:
+            return env_val
+        from app.utils.config_loader import load_addon_config
+        val = load_addon_config().get('bailian', {}).get('api_key')
         return val if val else ''
 
     @property

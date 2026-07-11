@@ -42,6 +42,8 @@ RUN set -eux; \
       python3-dev \
       libffi-dev \
       libssl-dev \
+      nodejs \
+      npm \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -61,6 +63,16 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 COPY . .
+
+# Install CoinOS skill npm dependencies (Node.js scripts used by /api/coinos/* endpoints)
+RUN set -eux; \
+    for skill_dir in coinos-skills/skills/*/; do \
+      if [ -f "$skill_dir/package.json" ]; then \
+        echo "Installing npm deps for $skill_dir"; \
+        cd "$skill_dir" && npm install --production --ignore-scripts 2>/dev/null || true; \
+        cd /app; \
+      fi; \
+    done
 
 RUN printf '%s\n' "$APP_VERSION" > /app/BUILD_VERSION \
     && printf '%s\n' "$GIT_TAG" > /app/BUILD_GIT_TAG

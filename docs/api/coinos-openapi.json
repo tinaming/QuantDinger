@@ -1,0 +1,631 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "QuantDinger CoinOS Skills API",
+    "version": "1.0.0",
+    "description": "CoinOS Skills integration — crypto market data (AiCoin 200+ exchanges), CEX trading (Binance/OKX/Bybit/etc.), Hyperliquid whale analytics, Freqtrade strategy management, on-chain DEX (OKX Web3), and exchange account management.\n\nPowered by [coinos-skills](https://github.com/aicoincom/coinos-skills).",
+    "contact": {
+      "name": "QuantDinger",
+      "url": "https://github.com/brokermr810/quantdinger"
+    },
+    "license": {
+      "name": "See repository LICENSE"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000",
+      "description": "Backend direct"
+    },
+    {
+      "url": "http://localhost:8888",
+      "description": "Docker Compose"
+    }
+  ],
+  "tags": [
+    {
+      "name": "CoinOS",
+      "description": "CoinOS Skills integration — crypto market data, trading, analytics (Internal)"
+    },
+    {
+      "name": "CoinOS-Market",
+      "description": "AiCoin market data — 200+ exchanges, 183 endpoints (Public)"
+    },
+    {
+      "name": "CoinOS-Hyperliquid",
+      "description": "Hyperliquid whale analytics and on-chain perp data (Public)"
+    },
+    {
+      "name": "CoinOS-Trading",
+      "description": "CEX trading via CCXT — Binance, OKX, Bybit, etc. (Internal)"
+    },
+    {
+      "name": "CoinOS-Freqtrade",
+      "description": "Freqtrade strategy create/backtest/deploy/control (Internal)"
+    },
+    {
+      "name": "CoinOS-Account",
+      "description": "Exchange account management and API key info (Internal)"
+    },
+    {
+      "name": "CoinOS-Onchain",
+      "description": "On-chain DEX via OKX Web3 — swap, wallet, gas (Internal)"
+    }
+  ],
+  "paths": {
+    "/api/coinos/skills": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List available CoinOS skills",
+        "tags": [
+          "CoinOS"
+        ],
+        "description": "Returns metadata about all registered CoinOS skills and their availability.",
+        "operationId": "getApiCoinosSkills",
+        "x-visibility": "internal"
+      }
+    },
+    "/api/coinos/market/{action}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "AiCoin market data proxy",
+        "tags": [
+          "CoinOS-Market"
+        ],
+        "description": "Proxy to all 183 AiCoin Open API v3 endpoints. GET passes query params; POST sends JSON body. Common endpoints: `market/ticker`, `coins/tickers`, `market/klines`, `derivatives/funding-rates`, `content/newsflashes`, `signals/alerts`, etc.",
+        "operationId": "getApiCoinosMarketAction",
+        "x-visibility": "public"
+      },
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "AiCoin market data proxy",
+        "tags": [
+          "CoinOS-Market"
+        ],
+        "description": "Proxy to all 183 AiCoin Open API v3 endpoints. GET passes query params; POST sends JSON body. Common endpoints: `market/ticker`, `coins/tickers`, `market/klines`, `derivatives/funding-rates`, `content/newsflashes`, `signals/alerts`, etc.",
+        "operationId": "postApiCoinosMarketAction",
+        "x-visibility": "public"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "action",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/coinos/market-catalog": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "AiCoin API catalog",
+        "tags": [
+          "CoinOS-Market"
+        ],
+        "description": "List all available AiCoin v3 API endpoints with parameters.",
+        "operationId": "getApiCoinosMarketCatalog",
+        "x-visibility": "public"
+      }
+    },
+    "/api/coinos/market-key-info": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "AiCoin API key info",
+        "tags": [
+          "CoinOS-Market"
+        ],
+        "description": "Check current AiCoin API key tier and permissions.",
+        "operationId": "getApiCoinosMarketKeyInfo",
+        "x-visibility": "public"
+      }
+    },
+    "/api/coinos/hyperliquid/{action}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Hyperliquid whale analytics",
+        "tags": [
+          "CoinOS-Hyperliquid"
+        ],
+        "description": "Hyperliquid on-chain perpetuals analytics: whale positions, liquidations, open interest, trader statistics, smart money tracking. Endpoints: `hyperliquid/tickers`, `hyperliquid/whales/open-positions`, `hyperliquid/liquidations/history`, `hyperliquid/smart-money/find`, etc.",
+        "operationId": "getApiCoinosHyperliquidAction",
+        "x-visibility": "public"
+      },
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Hyperliquid whale analytics",
+        "tags": [
+          "CoinOS-Hyperliquid"
+        ],
+        "description": "Hyperliquid on-chain perpetuals analytics: whale positions, liquidations, open interest, trader statistics, smart money tracking. Endpoints: `hyperliquid/tickers`, `hyperliquid/whales/open-positions`, `hyperliquid/liquidations/history`, `hyperliquid/smart-money/find`, etc.",
+        "operationId": "postApiCoinosHyperliquidAction",
+        "x-visibility": "public"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "action",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/coinos/trading/{action}": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "CEX trading operations",
+        "tags": [
+          "CoinOS-Trading"
+        ],
+        "description": "Execute trades on Binance, OKX, Bybit, Bitget, Gate, HTX, Pionex, Hyperliquid. Actions: `create_order`, `close_position`, `set_stop`, `cancel_order`, `positions`, `open_orders`, `balance`, `markets`, `set_leverage`, `set_trading_params`, `save_key`. Two-step confirmation required for orders.",
+        "operationId": "postApiCoinosTradingAction",
+        "x-visibility": "internal"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "action",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "/api/coinos/trading/auto/{action}": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Auto trading strategies",
+        "tags": [
+          "CoinOS-Trading"
+        ],
+        "description": "Automated trading strategy execution. Actions vary by script.",
+        "operationId": "postApiCoinosTradingAutoAction",
+        "x-visibility": "internal"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "action",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "/api/coinos/trading/register/{exchange}": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Exchange registration (referral)",
+        "tags": [
+          "CoinOS-Trading"
+        ],
+        "description": "Get AiCoin referral link for exchange registration.",
+        "operationId": "postApiCoinosTradingRegisterExchange",
+        "x-visibility": "internal"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "exchange",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "/api/coinos/freqtrade/deploy/{action}": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Freqtrade strategy deployment",
+        "tags": [
+          "CoinOS-Freqtrade"
+        ],
+        "description": "Create, backtest, hyperopt, and deploy Freqtrade strategies. Actions: `check`, `deploy`, `create_strategy`, `backtest`, `hyperopt`, `download_data`, `strategy_list`, `start`, `stop`, `status`, `logs`.",
+        "operationId": "postApiCoinosFreqtradeDeployAction",
+        "x-visibility": "internal"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "action",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "/api/coinos/freqtrade/control/{action}": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Freqtrade live bot control",
+        "tags": [
+          "CoinOS-Freqtrade"
+        ],
+        "description": "Control a running Freqtrade bot: query profit, trades, balance, switch strategy/pairs, force enter/exit, reload config. Actions: `daemon_info`, `profit`, `trades_open`, `trades_history`, `balance`, `profit_per_pair`, `daily`, `weekly`, `monthly`, `force_enter`, `force_exit`, `set_strategy`, `set_pairs`, `set_dry_run`, `restart`, `reload`, `start`, `stop`, `logs`.",
+        "operationId": "postApiCoinosFreqtradeControlAction",
+        "x-visibility": "internal"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "action",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "/api/coinos/freqtrade/dev/{action}": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Freqtrade development tools",
+        "tags": [
+          "CoinOS-Freqtrade"
+        ],
+        "description": "Strategy debugging: candles, whitelist, blacklist, strategy details.",
+        "operationId": "postApiCoinosFreqtradeDevAction",
+        "x-visibility": "internal"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "action",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "/api/coinos/account/{action}": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Exchange account management",
+        "tags": [
+          "CoinOS-Account"
+        ],
+        "description": "Query balances, positions, order history, manage API keys. Actions: `balance`, `positions`, `open_orders`, `closed_orders`, `my_trades`, `transfer`, `exchanges`.",
+        "operationId": "postApiCoinosAccountAction",
+        "x-visibility": "internal"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "action",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "/api/coinos/account/key-info": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "API key info",
+        "tags": [
+          "CoinOS-Account"
+        ],
+        "description": "Check configured exchange API key status.",
+        "operationId": "getApiCoinosAccountKeyInfo",
+        "x-visibility": "internal"
+      }
+    },
+    "/api/coinos/account/tier": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "AiCoin data tier check",
+        "tags": [
+          "CoinOS-Account"
+        ],
+        "description": "Check current AiCoin API tier and available features.",
+        "operationId": "getApiCoinosAccountTier",
+        "x-visibility": "internal"
+      }
+    },
+    "/api/coinos/account/register/{exchange}": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Exchange registration referral",
+        "tags": [
+          "CoinOS-Account"
+        ],
+        "description": "Get AiCoin referral link for exchange registration with kickback.",
+        "operationId": "postApiCoinosAccountRegisterExchange",
+        "x-visibility": "internal"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "exchange",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "/api/coinos/onchain/{script}/{action}": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HumanSuccessEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "summary": "On-chain DEX operations",
+        "tags": [
+          "CoinOS-Onchain"
+        ],
+        "description": "OKX Web3 DEX API: token swap, wallet portfolio, gas estimation, transaction broadcasting. Scripts: `swap`, `portfolio`, `market`, `token`, `trade`, `gateway`.",
+        "operationId": "postApiCoinosOnchainScriptAction",
+        "x-visibility": "internal"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "script",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        {
+          "in": "path",
+          "name": "action",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    }
+  },
+  "components": {
+    "schemas": {
+      "HumanSuccessEnvelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "1 on success",
+            "example": 1
+          },
+          "msg": {
+            "type": "string",
+            "example": "success"
+          },
+          "data": {
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "HumanJWT": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "User session JWT from `POST /api/auth/login`. Send as `Authorization: Bearer <token>`."
+      },
+      "AgentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "qd_agent_xxx",
+        "description": "Agent Gateway token for `/api/agent/v1/*` only. See docs/agent/AGENT_QUICKSTART.md."
+      }
+    }
+  }
+}

@@ -105,7 +105,7 @@ class FuturesDataSource(BaseDataSource):
                 'https': CCXTConfig.PROXY
             }
         
-        self.exchange = ccxt.binance(config)
+        self.exchange = ccxt.gate(config)
 
     def get_ticker(self, symbol: str) -> Dict[str, Any]:
         """

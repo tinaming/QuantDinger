@@ -1,7 +1,8 @@
 """
 LLM service.
 Supports multiple providers: OpenRouter, OpenAI, Google Gemini, DeepSeek, Grok,
-AtlasCloud, Custom (OpenAI-compatible), MiniMax.
+AtlasCloud, Custom (OpenAI-compatible or Anthropic-compatible), MiniMax, LiteLLM,
+Bailian (Alibaba Cloud DashScope).
 Kept separate from AnalysisService to avoid circular imports.
 """
 import json
@@ -28,6 +29,7 @@ class LLMProvider(Enum):
     CUSTOM = "custom"
     MINIMAX = "minimax"
     LITELLM = "litellm"
+    BAILIAN = "bailian"
 
 
 # Provider configurations
@@ -77,6 +79,11 @@ PROVIDER_CONFIGS = {
         "default_model": "openai/gpt-5.4",
         "fallback_model": "gpt-4o-mini",
     },
+    LLMProvider.BAILIAN: {
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "default_model": "qwen-max",
+        "fallback_model": "qwen-plus",
+    },
 }
 
 
@@ -88,7 +95,7 @@ class LLMService:
         Initialize LLM service.
 
         Args:
-            provider: Override the default provider (openrouter, openai, google, deepseek, grok, atlascloud, custom, minimax)
+            provider: Override the default provider (openrouter, openai, google, deepseek, grok, atlascloud, custom, minimax, bailian)
         """
         self._provider_override = provider
 
@@ -115,10 +122,11 @@ class LLMService:
                 pass
         
         # Auto-detect: find any provider with a configured API key
-        # Priority: DeepSeek > AtlasCloud > Grok > MiniMax > OpenAI > Google > OpenRouter
+        # Priority: DeepSeek > Bailian > AtlasCloud > Grok > MiniMax > OpenAI > Google > OpenRouter
         # (LiteLLM excluded from auto-detect; must be set explicitly via LLM_PROVIDER=litellm)
         priority_order = [
             LLMProvider.DEEPSEEK,
+            LLMProvider.BAILIAN,
             LLMProvider.ATLASCLOUD,
             LLMProvider.GROK,
             LLMProvider.MINIMAX,
@@ -149,6 +157,7 @@ class LLMService:
             LLMProvider.CUSTOM: APIKeys.CUSTOM_API_KEY,
             LLMProvider.MINIMAX: APIKeys.MINIMAX_API_KEY,
             LLMProvider.LITELLM: APIKeys.LITELLM_API_KEY,
+            LLMProvider.BAILIAN: APIKeys.BAILIAN_API_KEY,
         }
         return key_map.get(p, "") or ""
 
@@ -201,6 +210,11 @@ class LLMService:
     @staticmethod
     def _truthy(value: Any) -> bool:
         return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    def _get_custom_format(self) -> str:
+        """Return 'anthropic' or 'openai' (default) for the CUSTOM provider wire format."""
+        fmt = (APIKeys.CUSTOM_API_FORMAT or "").strip().lower()
+        return "anthropic" if fmt == "anthropic" else "openai"
 
     def _llm_proxy_url(self) -> str:
         config = load_addon_config()
@@ -431,6 +445,143 @@ class LLMService:
         else:
             raise ValueError("LiteLLM response is missing 'choices'")
 
+    def _call_anthropic_compatible(self, messages: list, model: str, temperature: float,
+                                    api_key: str, base_url: str, timeout: int,
+                                    use_json_mode: bool = True) -> str:
+        """Call Anthropic-compatible Messages API (e.g. Claude via proxy like coder.holmesai.xyz)."""
+        url = f"{base_url}/messages"
+
+        headers = {
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01",
+        }
+        if (api_key or "").strip():
+            headers["x-api-key"] = api_key.strip()
+
+        # Separate system message (Anthropic uses a top-level system field, not a message role)
+        system_msg = ""
+        api_messages = []
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role == "system":
+                system_msg = content if isinstance(content, str) else str(content or "")
+            else:
+                api_messages.append({"role": role, "content": content})
+
+        max_tokens = int(os.getenv("ANTHROPIC_MAX_TOKENS", "4096") or 4096)
+        data = {
+            "model": model,
+            "messages": api_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if system_msg:
+            data["system"] = system_msg
+
+        response = self._llm_post(url, headers=headers, json_payload=data, timeout=timeout)
+
+        if response.status_code >= 400:
+            error_msg = f"Anthropic API {response.status_code}"
+            err_text = ""
+            try:
+                error_data = response.json() or {}
+                err = error_data.get("error")
+                if isinstance(err, dict):
+                    err_text = str(err.get("message") or "").strip()
+                elif isinstance(err, str):
+                    err_text = err.strip()
+            except Exception:
+                err_text = (response.text or "").strip()[:300]
+            if err_text:
+                error_msg = f"{error_msg}: {err_text}"
+            raise ValueError(error_msg)
+
+        result = response.json()
+        # Anthropic response: {"content": [{"type": "text", "text": "..."}]}
+        content_blocks = result.get("content") or []
+        for block in content_blocks:
+            if block.get("type") == "text":
+                text = block.get("text", "")
+                if text:
+                    return text
+
+        raise ValueError("Anthropic API response is missing content")
+
+    def _stream_anthropic_compatible(self, messages: list, model: str, temperature: float,
+                                     api_key: str, base_url: str, timeout: int):
+        """Stream text deltas from an Anthropic-compatible Messages API."""
+        url = f"{base_url}/messages"
+        headers = {
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01",
+        }
+        if (api_key or "").strip():
+            headers["x-api-key"] = api_key.strip()
+
+        system_msg = ""
+        api_messages = []
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role == "system":
+                system_msg = content if isinstance(content, str) else str(content or "")
+            else:
+                api_messages.append({"role": role, "content": content})
+
+        max_tokens = int(os.getenv("ANTHROPIC_MAX_TOKENS", "4096") or 4096)
+        data = {
+            "model": model,
+            "messages": api_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if system_msg:
+            data["system"] = system_msg
+
+        response = self._llm_post(url, headers=headers, json_payload=data, timeout=timeout, stream=True)
+        if response.status_code >= 400:
+            err_text = ""
+            try:
+                err = response.json().get("error")
+                err_text = err.get("message") if isinstance(err, dict) else str(err or "")
+            except Exception:
+                err_text = (response.text or "").strip()[:300]
+            session = getattr(response, "_quantdinger_llm_session", None)
+            response.close()
+            if session is not None:
+                session.close()
+            raise ValueError(f"Anthropic API {response.status_code}: {err_text}".strip())
+
+        try:
+            for raw_line in response.iter_lines(decode_unicode=False):
+                if not raw_line:
+                    continue
+                if isinstance(raw_line, bytes):
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                else:
+                    line = str(raw_line).strip()
+                # Anthropic SSE: "event: content_block_delta" then "data: {...}"
+                if line.startswith("data:"):
+                    line = line[5:].strip()
+                if not line or line.startswith("event:"):
+                    continue
+                try:
+                    payload = json.loads(line)
+                except Exception:
+                    continue
+                if payload.get("type") == "content_block_delta":
+                    delta = payload.get("delta") or {}
+                    text = delta.get("text")
+                    if text:
+                        yield text
+        finally:
+            session = getattr(response, "_quantdinger_llm_session", None)
+            response.close()
+            if session is not None:
+                session.close()
+
     def _stream_openai_compatible(self, messages: list, model: str, temperature: float,
                                   api_key: str, base_url: str, timeout: int):
         """Stream text deltas from an OpenAI-compatible chat endpoint."""
@@ -504,7 +655,8 @@ class LLMService:
         model = model.strip()
         
         # LiteLLM and OpenRouter use provider/model format natively.
-        if provider in (LLMProvider.OPENROUTER, LLMProvider.LITELLM):
+        # CUSTOM endpoints also accept any model name as-is (user knows their endpoint).
+        if provider in (LLMProvider.OPENROUTER, LLMProvider.LITELLM, LLMProvider.CUSTOM):
             return model
 
         # AtlasCloud is OpenAI-compatible and may expose routed model ids such
@@ -514,6 +666,16 @@ class LLMService:
             if '/' in model:
                 prefix, actual_model = model.split('/', 1)
                 if prefix.lower() in ('atlascloud', 'atlas'):
+                    return actual_model
+                return model
+            return model
+
+        # Bailian (DashScope) is OpenAI-compatible. Accept bailian/model alias
+        # or pass model names like qwen-max, qwen-plus as-is.
+        if provider == LLMProvider.BAILIAN:
+            if '/' in model:
+                prefix, actual_model = model.split('/', 1)
+                if prefix.lower() in ('bailian', 'dashscope', 'qwen'):
                     return actual_model
                 return model
             return model
@@ -538,6 +700,9 @@ class LLMService:
                 'atlascloud': LLMProvider.ATLASCLOUD,
                 'atlas': LLMProvider.ATLASCLOUD,
                 'minimax': LLMProvider.MINIMAX,
+                'bailian': LLMProvider.BAILIAN,
+                'dashscope': LLMProvider.BAILIAN,
+                'qwen': LLMProvider.BAILIAN,
             }
             
             # If the model prefix matches the current provider, use the extracted model name
@@ -572,6 +737,8 @@ class LLMService:
             'atlascloud': LLMProvider.ATLASCLOUD,
             'atlas': LLMProvider.ATLASCLOUD,
             'minimax': LLMProvider.MINIMAX,
+            'bailian': LLMProvider.BAILIAN,
+            'dashscope': LLMProvider.BAILIAN,
             'anthropic': LLMProvider.OPENROUTER,  # Anthropic only via OpenRouter
             'meta': LLMProvider.OPENROUTER,  # Meta/Llama only via OpenRouter
             'mistral': LLMProvider.OPENROUTER,  # Mistral only via OpenRouter
@@ -641,7 +808,7 @@ class LLMService:
                 )
             # If no API key for current provider, try to find any available provider
             if try_alternative_providers:
-                for alt_provider in [LLMProvider.DEEPSEEK, LLMProvider.ATLASCLOUD, LLMProvider.GROK, LLMProvider.MINIMAX, LLMProvider.OPENAI, LLMProvider.GOOGLE, LLMProvider.OPENROUTER]:
+                for alt_provider in [LLMProvider.DEEPSEEK, LLMProvider.BAILIAN, LLMProvider.ATLASCLOUD, LLMProvider.GROK, LLMProvider.MINIMAX, LLMProvider.OPENAI, LLMProvider.GOOGLE, LLMProvider.OPENROUTER]:
                     if alt_provider != p and self.get_api_key(alt_provider):
                         logger.warning(f"No API key for {p.value}, switching to {alt_provider.value}")
                         p = alt_provider
@@ -656,7 +823,7 @@ class LLMService:
         if p == LLMProvider.CUSTOM and not base_url:
             raise ValueError(
                 "Custom LLM base URL 未配置：请在后台设置或 .env 中填写 CUSTOM_API_URL "
-                "（须为 OpenAI 兼容网关的根地址，例如 https://api.example.com/v1）。"
+                "（须为 OpenAI 或 Anthropic 兼容网关的根地址，例如 https://api.example.com/v1）。"
             )
 
         # Normalize model name for the provider
@@ -689,6 +856,12 @@ class LLMService:
                     return self._call_google_gemini(
                         messages, current_model, temperature,
                         api_key, base_url, timeout
+                    )
+                elif p == LLMProvider.CUSTOM and self._get_custom_format() == "anthropic":
+                    return self._call_anthropic_compatible(
+                        messages, current_model, temperature,
+                        api_key, base_url, timeout,
+                        use_json_mode=use_json_mode
                     )
                 else:
                     # OpenAI-compatible providers
@@ -762,17 +935,22 @@ class LLMService:
         model = self._normalize_model_for_provider(model, p)
         config = load_addon_config()
         timeout = int(config.get(p.value, {}).get('timeout', 120))
-        yield from self._stream_openai_compatible(messages, model, temperature, api_key, base_url, timeout)
+
+        if p == LLMProvider.CUSTOM and self._get_custom_format() == "anthropic":
+            yield from self._stream_anthropic_compatible(messages, model, temperature, api_key, base_url, timeout)
+        else:
+            yield from self._stream_openai_compatible(messages, model, temperature, api_key, base_url, timeout)
     
     def _try_alternative_providers(self, messages: list, model: str, temperature: float,
                                   use_json_mode: bool, excluded_provider: LLMProvider = None) -> str:
         """
         Try alternative providers when current provider fails.
 
-        Priority: DeepSeek > AtlasCloud > Grok > MiniMax > OpenAI > Google > OpenRouter
+        Priority: DeepSeek > Bailian > AtlasCloud > Grok > MiniMax > OpenAI > Google > OpenRouter
         """
         priority_order = [
             LLMProvider.DEEPSEEK,
+            LLMProvider.BAILIAN,
             LLMProvider.ATLASCLOUD,
             LLMProvider.GROK,
             LLMProvider.MINIMAX,

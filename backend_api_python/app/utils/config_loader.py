@@ -116,10 +116,11 @@ def load_addon_config() -> Dict[str, Any]:
         ('ATLASCLOUD_BASE_URL', 'atlascloud.base_url', 'string'),
         ('ATLASCLOUD_MODEL', 'atlascloud.model', 'string'),
 
-        # Custom OpenAI-compatible endpoint (see LLMProvider.CUSTOM)
+        # Custom OpenAI/Anthropic-compatible endpoint (see LLMProvider.CUSTOM)
         ('CUSTOM_API_KEY', 'custom.api_key', 'string'),
         ('CUSTOM_API_URL', 'custom.base_url', 'string'),
         ('CUSTOM_MODEL', 'custom.model', 'string'),
+        ('CUSTOM_API_FORMAT', 'custom.format', 'string'),
 
         # MiniMax
         ('MINIMAX_API_KEY', 'minimax.api_key', 'string'),

@@ -312,7 +312,7 @@ class MetaCCXTConfig(type):
     @property
     def DEFAULT_EXCHANGE(cls):
         value = _addon('ccxt', 'default_exchange')
-        return value if value else os.getenv('CCXT_DEFAULT_EXCHANGE', 'binance')
+        return value if value else os.getenv('CCXT_DEFAULT_EXCHANGE', 'gate')
 
     @property
     def TIMEOUT(cls):

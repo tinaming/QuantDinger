@@ -45,13 +45,13 @@ def resolve_ccxt_for_live_trading(exchange_id: str, market_type: str) -> Tuple[s
     """
     e = (exchange_id or "").strip().lower()
     if not e:
-        e = (CCXTConfig.DEFAULT_EXCHANGE or "binance").strip().lower()
+        e = (CCXTConfig.DEFAULT_EXCHANGE or "gate").strip().lower()
     mt = (market_type or "spot").strip().lower()
     if mt in ("futures", "future", "perp", "perpetual"):
         mt = "swap"
 
     opts: Dict[str, Any] = {}
-    ccxt_id = e or "binance"
+    ccxt_id = e or "gate"
 
     if e == "binance":
         ccxt_id = "binanceusdm" if mt == "swap" else "binance"
@@ -95,7 +95,7 @@ def resolve_crypto_venue(
     )
     ex = str(ex).strip().lower()
     if not ex:
-        ex = (CCXTConfig.DEFAULT_EXCHANGE or "binance").strip().lower()
+        ex = (CCXTConfig.DEFAULT_EXCHANGE or "gate").strip().lower()
 
     mt = str(market_type or tc.get("market_type") or "spot").strip().lower()
     if mt in ("futures", "future", "perp", "perpetual"):
@@ -125,7 +125,7 @@ class CryptoDataSource(BaseDataSource):
     def __init__(self):
         self._scoped_exchange_id = ""
         self._scoped_market_type = "spot"
-        default_ex = (CCXTConfig.DEFAULT_EXCHANGE or "binance").strip().lower()
+        default_ex = (CCXTConfig.DEFAULT_EXCHANGE or "gate").strip().lower()
         self._init_ccxt_exchange(default_ex, {})
 
     @classmethod
@@ -165,8 +165,8 @@ class CryptoDataSource(BaseDataSource):
 
         exchange_id = (ccxt_exchange_id or "").strip().lower()
         if not hasattr(ccxt, exchange_id):
-            logger.warning("CCXT exchange '%s' not found, falling back to 'binance'", exchange_id)
-            exchange_id = "binance"
+            logger.warning("CCXT exchange '%s' not found, falling back to 'gate'", exchange_id)
+            exchange_id = "gate"
 
         exchange_class = getattr(ccxt, exchange_id)
         self.exchange = exchange_class(config)

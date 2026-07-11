@@ -313,7 +313,7 @@ CONFIG_SCHEMA = {
                     {'value': 'deepseek', 'label': 'DeepSeek'},
                     {'value': 'grok', 'label': 'xAI Grok'},
                     {'value': 'atlascloud', 'label': 'AtlasCloud'},
-                    {'value': 'custom', 'label': 'Custom API (OpenAI-compatible)'},
+                    {'value': 'custom', 'label': 'Custom API (OpenAI/Anthropic-compatible)'},
                     {'value': 'minimax', 'label': 'MiniMax'},
                     {'value': 'litellm', 'label': 'LiteLLM (100+ providers)'},
                 ],
@@ -485,13 +485,13 @@ CONFIG_SCHEMA = {
                 'description': 'AtlasCloud OpenAI-compatible API endpoint. Must include /v1.',
                 'group': 'atlascloud'
             },
-            # Custom API (OpenAI-compatible)
+            # Custom API (OpenAI-compatible or Anthropic-compatible)
             {
                 'key': 'CUSTOM_API_URL',
                 'label': 'Custom API URL',
                 'type': 'text',
                 'default': '',
-                'description': 'Your custom API endpoint (OpenAI-compatible, e.g. https://api.example.com/v1)',
+                'description': 'Your custom API endpoint (e.g. https://api.example.com/v1)',
                 'group': 'custom'
             },
             {
@@ -499,7 +499,7 @@ CONFIG_SCHEMA = {
                 'label': 'Custom API Key',
                 'type': 'password',
                 'required': False,
-                'description': 'API key for your custom endpoint. Leave empty for local OpenAI-compatible servers without auth (e.g. Ollama on localhost)',
+                'description': 'API key for your custom endpoint. Leave empty for local servers without auth (e.g. Ollama on localhost)',
                 'group': 'custom'
             },
             {
@@ -507,7 +507,19 @@ CONFIG_SCHEMA = {
                 'label': 'Custom Model',
                 'type': 'text',
                 'default': '',
-                'description': 'Model name to use (e.g. gpt-4o, claude-3-opus)',
+                'description': 'Model name to use (e.g. gpt-4o, claude-sonnet-4-6)',
+                'group': 'custom'
+            },
+            {
+                'key': 'CUSTOM_API_FORMAT',
+                'label': 'Custom API Format',
+                'type': 'select',
+                'default': 'openai',
+                'options': [
+                    {'value': 'openai', 'label': 'OpenAI-compatible (/chat/completions)'},
+                    {'value': 'anthropic', 'label': 'Anthropic-compatible (/messages)'},
+                ],
+                'description': 'Wire format for your custom endpoint. Use OpenAI-compatible for most proxies (Ollama, vLLM, etc.) or Anthropic-compatible for Claude-style /messages APIs',
                 'group': 'custom'
             },
             # MiniMax
@@ -1702,7 +1714,7 @@ def get_public_config():
     return jsonify({
         'code': 1,
         'data': {
-            'ccxt_default_exchange': (CCXTConfig.DEFAULT_EXCHANGE or 'binance').lower(),
+            'ccxt_default_exchange': (CCXTConfig.DEFAULT_EXCHANGE or 'gate').lower(),
         }
     })
 

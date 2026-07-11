@@ -36,6 +36,7 @@ _PREFIX_TAGS: list[tuple[str, str]] = [
     ("/api/billing", "Billing"),
     ("/api/quick-trade", "QuickTrade"),
     ("/api/experiment", "Experiment"),
+    ("/api/coinos", "CoinOS"),
 ]
 
 
@@ -75,6 +76,7 @@ def register_human_blueprints(api: Api) -> None:
     from app.routes.billing import billing_blp
     from app.routes.quick_trade import quick_trade_blp
     from app.routes.experiment import experiment_blp
+    from app.routes.coinos import coinos_blp
 
     registrations: list[tuple] = [
         (health_blp, ""),
@@ -100,6 +102,7 @@ def register_human_blueprints(api: Api) -> None:
         (billing_blp, "/api/billing"),
         (quick_trade_blp, "/api/quick-trade"),
         (experiment_blp, "/api/experiment"),
+        (coinos_blp, "/api/coinos"),
     ]
 
     for blp, prefix in registrations:
@@ -209,7 +212,12 @@ def enrich_spec(spec_dict: dict) -> dict:
                 op["summary"] = _title(op["operationId"])
             _normalize_operation_docs(op)
             if tag:
-                op["tags"] = [tag]
+                # Preserve CoinOS sub-tags set by route decorators
+                existing_tags = op.get("tags", [])
+                if existing_tags and any(t.startswith("CoinOS") for t in existing_tags):
+                    pass  # keep route-level CoinOS-* tags
+                else:
+                    op["tags"] = [tag]
             responses = op.setdefault("responses", {})
             has_success = any(str(code).startswith(("2", "3")) for code in responses)
             if not has_success:
@@ -232,9 +240,12 @@ def enrich_spec(spec_dict: dict) -> dict:
                         },
                     }
             if "x-visibility" not in op:
-                if tag in ("Community", "Market", "Indicator", "Backtest", "Policy", "Auth", "GlobalMarket", "FastAnalysis", "Health"):
+                # Use route-level tags (e.g. CoinOS-Market) if available, else prefix tag
+                vis_tags = op.get("tags", [tag]) if op.get("tags") else [tag]
+                vis_tag = vis_tags[0] if vis_tags else tag
+                if vis_tag in ("Community", "Market", "Indicator", "Backtest", "Policy", "Auth", "GlobalMarket", "FastAnalysis", "Health", "CoinOS-Market", "CoinOS-Hyperliquid"):
                     op["x-visibility"] = "public"
-                elif tag in ("Credentials", "QuickTrade", "Billing"):
+                elif vis_tag in ("Credentials", "QuickTrade", "Billing"):
                     op["x-visibility"] = "private"
                 else:
                     op["x-visibility"] = "internal"
