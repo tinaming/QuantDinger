@@ -28,14 +28,27 @@ _PUBLIC_FIELDS = (
     "id", "strategy_name", "strategy_type", "market_category",
     "symbol", "timeframe", "status", "initial_capital", "leverage",
     "market_type", "strategy_mode", "execution_mode",
-    "created_at", "updated_at",
+    "created_at", "updated_at", "indicator_name",
 )
+
+
+def _extract_indicator_name(row: dict) -> str | None:
+    """Extract indicator_name from indicator_config JSON (not a DB column)."""
+    ic = row.get("indicator_config")
+    if isinstance(ic, dict):
+        return ic.get("indicator_name") or ic.get("name")
+    return None
 
 
 def _project(row: dict | None) -> dict | None:
     if not row:
         return None
-    return {k: row.get(k) for k in _PUBLIC_FIELDS if k in row}
+    out = {k: row.get(k) for k in _PUBLIC_FIELDS if k in row}
+    if "indicator_name" not in out:
+        name = _extract_indicator_name(row)
+        if name:
+            out["indicator_name"] = name
+    return out
 
 
 @agent_v1_bp.route("/strategies", methods=["GET"])
@@ -63,7 +76,13 @@ def get_strategy(strategy_id: int):
         return error(500, "get_strategy failed", details=str(exc), http=500)
     if not row:
         return error(404, "Strategy not found", http=404)
-    return envelope(redact_strategy_row(row))
+    redacted = redact_strategy_row(row)
+    # Promote indicator_name to top-level for convenient agent consumption
+    if "indicator_name" not in redacted:
+        name = _extract_indicator_name(redacted)
+        if name:
+            redacted["indicator_name"] = name
+    return envelope(redacted)
 
 
 @agent_v1_bp.route("/strategies", methods=["POST"])

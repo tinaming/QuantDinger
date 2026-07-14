@@ -108,6 +108,16 @@ MCP_TOOL_NAMES = (
 
     "submit_ai_optimize",
 
+    "backtest_strategy",
+
+    "start_strategy",
+
+    "get_strategy_source",
+
+    "analyze_czsc",
+    "czsc_status",
+    "cn_stock_data_status",
+
     "list_portfolio_positions",
 
     "list_paper_orders",
@@ -295,7 +305,17 @@ mcp = FastMCP(
         "coinos_trade, coinos_onchain, coinos_freqtrade (deploy/control) require scope T "
         "and explicit user confirmation (confirm_trading/confirm_onchain/confirm_deploy=true). "
         "CoinOS endpoints proxy to Node.js scripts via coinos-skills — responses follow "
-        "{ok, data, error, meta} envelope."
+        "{ok, data, error, meta} envelope. "
+        "STRATEGY LIFECYCLE (end-to-end): "
+        "1) save_indicator → 2) create_strategy → 3) backtest_strategy (by id) → "
+        "4) get_strategy_source (inspect code) → 5) start_strategy (T scope, confirm) → "
+        "6) runtime_overview → 7) stop_strategy. "
+        "backtest_strategy resolves source from the saved snapshot — no need to "
+        "re-supply code.  get_strategy_source returns full indicator_config "
+        "including source code (secrets redacted). "
+        "CZSC (缠论): call czsc_status first to check library availability, "
+        "then analyze_czsc for Chan-theory structural analysis (bi/duan/zhongshu/signals). "
+        "CN-STOCK DATA: cn_stock_data_status reports A-share data-source tier health."
 
     ),
 
@@ -473,6 +493,23 @@ def get_strategy(strategy_id: int) -> Any:
 
 
 @mcp.tool()
+def get_strategy_source(strategy_id: int) -> Any:
+    """Fetch a strategy's indicator source code and configuration.
+
+    This is a semantic alias for ``get_strategy`` — both call the same
+    endpoint and return the same data.  Use this tool name when your
+    intent is specifically to inspect or debug a strategy's indicator
+    implementation (``indicator_config.indicator_code``).
+
+    Returns the full strategy record including ``indicator_config``
+    (with ``indicator_code``, ``indicator_name``, ``indicator_id``),
+    ``trading_config``, and any ``strategy_code`` for ScriptStrategy
+    types.  Secrets (API keys, passwords) are redacted.
+    """
+    return _get(f"/api/agent/v1/strategies/{int(strategy_id)}")
+
+
+@mcp.tool()
 def runtime_overview() -> Any:
     """Compact runtime overview for this tenant.
 
@@ -501,6 +538,32 @@ def stop_strategy(strategy_id: int, confirm_stop: bool = False) -> Any:
             },
         }
     return _post(f"/api/agent/v1/strategies/{int(strategy_id)}/stop")
+
+
+@mcp.tool()
+def start_strategy(strategy_id: int, confirm_start: bool = False) -> Any:
+    """Start a tenant-owned strategy (requires T scope).
+
+    This activates the strategy in the live runtime. Pass
+    ``confirm_start=true`` only after the user explicitly asks to start it.
+    The backend enforces T (trading) scope on the agent token.
+    """
+    if not confirm_start:
+        return {
+            "error": True,
+            "status": 400,
+            "body": {
+                "message": (
+                    "Starting a strategy changes runtime state and may trigger "
+                    "live trades. Re-call with confirm_start=true after explicit "
+                    "user approval."
+                ),
+            },
+        }
+    return _patch(
+        f"/api/agent/v1/strategies/{int(strategy_id)}",
+        json={"status": "running"},
+    )
 
 
 @mcp.tool()
@@ -933,7 +996,33 @@ def update_strategy(strategy_id: int, patch: dict) -> Any:
     return _patch(f"/api/agent/v1/strategies/{int(strategy_id)}", json=body)
 
 
+@mcp.tool()
+def backtest_strategy(
+    strategy_id: int,
+    start_date: str,
+    end_date: str,
+    override_config: dict | None = None,
+) -> Any:
+    """Backtest a saved strategy by its id (scope B).
 
+    Unlike ``submit_backtest`` (which requires raw code), this resolves
+    the indicator / script source from the saved strategy snapshot
+    automatically — supporting both IndicatorStrategy and ScriptStrategy.
+
+    Args:
+        strategy_id:     The id returned by ``create_strategy``.
+        start_date:      YYYY-MM-DD.
+        end_date:        YYYY-MM-DD.
+        override_config: Optional dict merged into the strategy's
+                         trading_config for this run only.
+    """
+    payload: dict[str, Any] = {
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    if override_config:
+        payload["override_config"] = assert_json_dict("override_config", override_config)
+    return _post(f"/api/agent/v1/strategies/{int(strategy_id)}/backtest", json=payload)
 
 
 # ───────────────────────────── Backtest / experiments ─────────────────────────────
@@ -1160,6 +1249,64 @@ def submit_ai_optimize(payload: dict, confirm_llm_usage: bool = False) -> Any:
 
 
 
+
+
+# ───────────────────────────── CZSC (缠论) ─────────────────────────────
+
+
+@mcp.tool()
+def czsc_status() -> Any:
+    """Check whether the CZSC (缠论/Chan Theory) library is available.
+
+    Returns ``czsc_available`` (bool), ``czsc_version``, and any
+    ``import_error``.  When unavailable, the ``analyze_czsc`` tool
+    will return an error.
+    """
+    return _get("/api/agent/v1/czsc/status")
+
+
+@mcp.tool()
+def analyze_czsc(
+    market: str,
+    symbol: str,
+    timeframe: str = "1D",
+    limit: int = 300,
+) -> Any:
+    """Run CZSC (缠论) structural analysis on a symbol.
+
+    Returns Chan-theory features: *bi* (笔), *duan* (段),
+    *zhongshu* (中枢), and buy/sell signals derived from the
+    underlying K-line data.  Requires the ``czsc`` Python library
+    to be installed on the server — call ``czsc_status`` first to
+    check availability.
+
+    Args:
+        market:    e.g. "CNStock", "Crypto".
+        symbol:    e.g. "sh600519", "BTC/USDT".
+        timeframe: "1m"/"5m"/"15m"/"30m"/"1H"/"4H"/"1D"/"1W".
+        limit:     Number of bars, 50..2000.
+    """
+    limit = max(50, min(2000, int(limit)))
+    return _post(
+        "/api/agent/v1/czsc/analyze",
+        json={
+            "market": market,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "limit": limit,
+        },
+    )
+
+
+@mcp.tool()
+def cn_stock_data_status() -> Any:
+    """Check CN-stock (A股) data-source availability.
+
+    Returns the status of each data-source tier: TwelveData,
+    Tencent, yfinance, and AkShare.  Useful for diagnosing why
+    A-share K-line data may be missing or stale.
+    """
+    return _get("/api/agent/v1/markets/CNStock/data-source-status")
 
 
 # ───────────────────────────── Portfolio (read-only) ─────────────────────────────

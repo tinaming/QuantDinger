@@ -25,7 +25,7 @@ def fresh_module(monkeypatch):
 
 
 def test_mcp_tool_registry_complete(fresh_module):
-    assert len(fresh_module.MCP_TOOL_NAMES) == 29
+    assert len(fresh_module.MCP_TOOL_NAMES) == 42
     # Every exported name should correspond to a registered @mcp.tool function.
     for name in fresh_module.MCP_TOOL_NAMES:
         assert hasattr(fresh_module, name), f"missing tool function: {name}"
@@ -61,6 +61,28 @@ def test_indicator_code_size_rejected_in_mcp(monkeypatch, fresh_module):
     huge = "x" * (sec.MAX_INDICATOR_CODE_BYTES + 1)
     with pytest.raises(ValueError, match="KiB"):
         fresh_module.validate_indicator_code(huge)
+
+
+def test_start_strategy_requires_confirmation(fresh_module):
+    out = fresh_module.start_strategy(1)
+    assert out.get("error") is True
+    assert out.get("status") == 400
+    assert "confirm_start" in out["body"]["message"]
+
+
+def test_mcp_tool_names_contains_new_tools(fresh_module):
+    """All recently-added tools must be present in MCP_TOOL_NAMES."""
+    expected_new = {
+        "backtest_strategy",
+        "start_strategy",
+        "get_strategy_source",
+        "analyze_czsc",
+        "czsc_status",
+        "cn_stock_data_status",
+    }
+    actual = set(fresh_module.MCP_TOOL_NAMES)
+    missing = expected_new - actual
+    assert not missing, f"Missing new tools in MCP_TOOL_NAMES: {missing}"
 
 
 def test_parse_sse_chunk():

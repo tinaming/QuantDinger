@@ -49,6 +49,33 @@ def list_markets():
     return envelope(visible)
 
 
+@agent_v1_bp.route("/markets/CNStock/data-source-status", methods=["GET"])
+@agent_required(SCOPE_R)
+def cn_stock_data_source_status():
+    """Return CN stock data source availability status.
+
+    Response shape (inside envelope)::
+
+        {
+          "market": "CNStock",
+          "sources": [
+            {"provider": "twelvedata", "enabled": true,
+             "tier": 1, "last_success_iso": "...", "recent_error_count": 0},
+            ...
+          ],
+          "recent_error_count": <total across sources>,
+        }
+    """
+    from app.data_sources.cn_stock import CNStockDataSource
+    try:
+        status = CNStockDataSource.get_data_source_status()
+    except Exception as exc:
+        logger.error(f"cn_stock_data_source_status failed: {exc}", exc_info=True)
+        return error(500, "Failed to query CN stock data source status",
+                     details=str(exc), retriable=True, http=502)
+    return envelope(status)
+
+
 @agent_v1_bp.route("/markets/<market>/symbols", methods=["GET"])
 @agent_required(SCOPE_R)
 def market_symbols(market: str):

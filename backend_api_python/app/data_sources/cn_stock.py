@@ -27,6 +27,15 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _check_akshare_available() -> bool:
+    """Lightweight check: can akshare be imported?"""
+    try:
+        import akshare  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 class CNStockDataSource(BaseDataSource):
     """A股数据源（TwelveData + Tencent + yfinance + AkShare）"""
 
@@ -122,3 +131,57 @@ class CNStockDataSource(BaseDataSource):
             after_time=after_time,
             truncate=(after_time is None),
         )
+
+    @classmethod
+    def get_data_source_status(cls) -> dict:
+        """Return CN stock data-source availability summary.
+
+        Response shape::
+
+            {
+              "market": "CNStock",
+              "sources": [
+                {"provider": "twelvedata", "enabled": True,
+                 "tier": 1, "last_success_iso": "...", "recent_error_count": 0},
+                ...
+              ],
+            }
+        """
+        import os
+
+        # -- Try to pull AvailabilityRecord from registry (graceful fallback) --
+        _registry = None
+        try:
+            from app.data_sources.registry import get_registry  # type: ignore
+            _registry = get_registry()
+        except Exception:
+            pass
+
+        def _rec(provider: str, enabled: bool, tier: int) -> dict:
+            item = _registry.get(provider) if _registry else None
+            return {
+                "provider": provider,
+                "enabled": enabled,
+                "tier": tier,
+                "last_success_iso": (
+                    item.last_success.isoformat()
+                    if item and item.last_success
+                    else None
+                ),
+                "recent_error_count": (
+                    item.recent_error_count if item else 0
+                ),
+            }
+
+        sources = [
+            _rec("twelvedata", bool(os.environ.get("TWELVE_DATA_API_KEY")), 1),
+            _rec("tencent", True, 2),
+            _rec("yfinance", True, 3),
+            _rec("akshare", _check_akshare_available(), 4),
+        ]
+        total_errors = sum(s["recent_error_count"] for s in sources)
+        return {
+            "market": "CNStock",
+            "sources": sources,
+            "recent_error_count": total_errors,
+        }
