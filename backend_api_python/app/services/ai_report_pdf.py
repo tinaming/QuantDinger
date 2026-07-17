@@ -47,8 +47,8 @@ def _register_report_pdf_font(prefer_cjk: bool = False) -> str:
             continue
         try:
             if Path(path).exists():
-                pdfmetrics.registerFont(TTFont("QuantDingerSans", path))
-                return "QuantDingerSans"
+                pdfmetrics.registerFont(TTFont("ChanQuantSans", path))
+                return "ChanQuantSans"
         except Exception as e:
             logger.debug(f"Failed to register PDF font {path}: {e}")
     if prefer_cjk:
@@ -84,7 +84,7 @@ def build_ai_report_pdf(report: dict, target: dict | None = None, language: str 
     buf = BytesIO()
 
     labels = {
-        "title": "QuantDinger AI Research Report" if not zh else "QuantDinger AI 投研报告",
+        "title": "ChanQuant AI Research Report" if not zh else "ChanQuant AI 投研报告",
         "subtitle": "AI-assisted market analysis for research use only" if not zh else "AI 辅助市场分析，仅供研究参考",
         "target": "Target" if not zh else "分析标的",
         "generated": "Generated" if not zh else "生成时间",
@@ -246,7 +246,7 @@ def build_ai_report_pdf(report: dict, target: dict | None = None, language: str 
         canvas_obj.setFillColor(colors.HexColor("#8a94a6"))
         canvas_obj.setFont(font_name, 7.5)
         canvas_obj.drawString(doc.leftMargin, 9 * mm, labels["disclaimer"])
-        canvas_obj.drawRightString(width - doc.rightMargin, 9 * mm, f"QuantDinger Research · {document.page}")
+        canvas_obj.drawRightString(width - doc.rightMargin, 9 * mm, f"ChanQuant Research · {document.page}")
         canvas_obj.restoreState()
 
     symbol = report.get("symbol") or target.get("symbol") or ""

@@ -1,4 +1,4 @@
-# QuantDinger 信号与执行标准（SSOT）
+﻿# ChanQuant 信号与执行标准（SSOT）
 
 **版本**：1.0  
 **状态**：现行  
@@ -184,7 +184,7 @@ df['close_short'] = edge(raw_close_short)
 ### 7.2 推荐策略头注释块（复制模板）
 
 ```python
-# --- QuantDinger execution contract (v1) ---
+# --- ChanQuant execution contract (v1) ---
 # signal_form: four_way          # two_way | four_way
 # exit_owner: indicator          # indicator | engine
 # flip_mode: R1                  # R1=close bar then open next bar | R2=same bar flip

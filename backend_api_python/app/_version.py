@@ -115,7 +115,7 @@ def resolve_app_version(
     """
     source_env = os.environ if env is None else env
 
-    for key in ("APP_VERSION", "QUANTDINGER_VERSION"):
+    for key in ("CHANQUANT_VERSION", "APP_VERSION", "QUANTDINGER_VERSION"):
         version = normalize_version(source_env.get(key))
         if version:
             return version

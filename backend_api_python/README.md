@@ -1,6 +1,6 @@
-# QuantDinger Python API (backend)
+﻿# ChanQuant Python API (backend)
 
-Flask-based backend for QuantDinger: market data, indicators, AI analysis, backtesting, and a strategy runtime with multi-user support.
+Flask-based backend for ChanQuant: market data, indicators, AI analysis, backtesting, and a strategy runtime with multi-user support.
 
 ## What you get
 
@@ -58,9 +58,9 @@ Create `.env` file in project root:
 
 ```bash
 # Database
-POSTGRES_USER=quantdinger
+POSTGRES_USER=ChanQuant
 POSTGRES_PASSWORD=your_secure_password
-POSTGRES_DB=quantdinger
+POSTGRES_DB=ChanQuant
 
 # Admin account (created on first startup)
 ADMIN_USER=admin
@@ -116,13 +116,13 @@ This will:
 ```bash
 # Create database and user
 sudo -u postgres psql
-CREATE DATABASE quantdinger;
-CREATE USER quantdinger WITH ENCRYPTED PASSWORD 'your_password';
-GRANT ALL PRIVILEGES ON DATABASE quantdinger TO quantdinger;
+CREATE DATABASE ChanQuant;
+CREATE USER ChanQuant WITH ENCRYPTED PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE ChanQuant TO ChanQuant;
 \q
 
 # Initialize schema
-psql -U quantdinger -d quantdinger -f migrations/init.sql
+psql -U ChanQuant -d ChanQuant -f migrations/init.sql
 ```
 
 ### 2) Install dependencies
@@ -148,7 +148,7 @@ Then edit `.env` and set:
 
 ```bash
 # Required
-DATABASE_URL=postgresql://quantdinger:your_password@localhost:5432/quantdinger
+DATABASE_URL=postgresql://ChanQuant:your_password@localhost:5432/ChanQuant
 SECRET_KEY=your-secret-key-change-me
 ADMIN_USER=admin
 ADMIN_PASSWORD=your_admin_password
@@ -230,7 +230,7 @@ POST /api/fast-analysis/feedback   - User feedback on analysis
 
 Set `ADANOS_API_KEY` to enable optional US stock sentiment enrichment from the
 Adanos Market Sentiment API. If the key is not configured, the endpoint returns
-`enabled=false` and the rest of QuantDinger continues to work normally.
+`enabled=false` and the rest of ChanQuant continues to work normally.
 
 ```bash
 ADANOS_API_KEY=your_adanos_key
@@ -253,7 +253,7 @@ The response normalizes common compare fields across sources, including
 
 The global-market economic calendar is free-first. By default it uses the
 no-key AkShare/WallstreetCN calendar fallback. If you configure
-`TRADING_ECONOMICS_CLIENT` and `TRADING_ECONOMICS_KEY`, QuantDinger will try
+`TRADING_ECONOMICS_CLIENT` and `TRADING_ECONOMICS_KEY`, ChanQuant will try
 Trading Economics as the official international calendar provider before
 falling back. Finnhub paid-only calendar and social-sentiment endpoints are
 skipped by default through `FINNHUB_FREE_ONLY=true`.

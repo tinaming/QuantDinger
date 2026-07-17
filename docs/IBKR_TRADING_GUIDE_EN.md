@@ -1,6 +1,6 @@
-# Interactive Brokers (IBKR) Trading Guide
+﻿# Interactive Brokers (IBKR) Trading Guide
 
-QuantDinger supports US stocks live trading via Interactive Brokers TWS or IB Gateway.
+ChanQuant supports US stocks live trading via Interactive Brokers TWS or IB Gateway.
 
 ## Overview
 
@@ -150,7 +150,7 @@ curl -X POST http://localhost:5000/api/ibkr/order \
 
 ## Docker Deployment
 
-When running QuantDinger in Docker, TWS/IB Gateway must be accessible from the container:
+When running ChanQuant in Docker, TWS/IB Gateway must be accessible from the container:
 
 1. Run TWS/Gateway on host machine
 2. Use `host.docker.internal` as the host address (Docker Desktop)

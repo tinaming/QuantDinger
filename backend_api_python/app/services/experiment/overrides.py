@@ -4,7 +4,7 @@ Normalize experiment override maps for the Indicator IDE client.
 Structured tuning stores indicator sweeps as flat keys such as
 ``indicator_params.sma_short``. The SPA apply-params flow expects a nested
 ``indicatorParams`` object on each candidate's ``overrides`` (see
-``applyExperimentOverridesToCode`` in QuantDinger-Vue).
+``applyExperimentOverridesToCode`` in ChanQuant-Vue).
 """
 
 from __future__ import annotations

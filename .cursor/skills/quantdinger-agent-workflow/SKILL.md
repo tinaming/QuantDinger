@@ -1,12 +1,12 @@
----
-name: quantdinger-agent-workflow
+﻿---
+name: ChanQuant-agent-workflow
 description: >-
-  QuantDinger repo workflow for coding agents: layered contracts, safety
+  ChanQuant repo workflow for coding agents: layered contracts, safety
   boundaries, and where backend, strategies, and Docker live. Use when editing
   Python API, strategies, deployment, or docs/agent.
 ---
 
-# QuantDinger agent workflow
+# ChanQuant agent workflow
 
 ## When this applies
 
@@ -20,7 +20,7 @@ Use this skill whenever you change code or docs under this repository as a **cod
 ## Read first
 
 1. **`docs/agent/AGENT_ENVIRONMENT_DESIGN.md`** - SSOT for three layers: documentation contract -> command contract -> optional HTTP/MCP.
-2. **`docs/agent/AI_INTEGRATION_DESIGN.md`** - How external AI agents consume QuantDinger as a product (Agent Gateway, scopes, MCP, trading safety). Read this **before** adding any new endpoint or tool that an AI agent might call.
+2. **`docs/agent/AI_INTEGRATION_DESIGN.md`** - How external AI agents consume ChanQuant as a product (Agent Gateway, scopes, MCP, trading safety). Read this **before** adding any new endpoint or tool that an AI agent might call.
 3. **`docs/agent/AGENT_QUICKSTART.md`** - Operator/integrator walkthrough; mirrors the implemented `/api/agent/v1` surface.
 4. **`docs/agent/agent-openapi.json`** - Machine-readable contract; update it whenever you add or change an `/api/agent/v1/...` route.
 5. **`docs/agent/README.md`** - Index of agent-facing docs.
@@ -42,11 +42,11 @@ The Agent Gateway is mounted at **`/api/agent/v1`** by `app/routes/agent_v1/`.
   requires both `paper_only=false` on the token AND env
   `AGENT_LIVE_TRADING_ENABLED=true`. Do not weaken this without explicit ask.
 - MCP: `mcp_server/` is a thin Python wrapper over R + W + B endpoints (no
-  trading), with three transports selected by `QUANTDINGER_MCP_TRANSPORT`: `stdio` (default,
+  trading), with three transports selected by `ChanQuant_MCP_TRANSPORT`: `stdio` (default,
   desktop IDEs), `sse`, and `streamable-http` (cloud agents / remote IDEs;
-  also bind `QUANTDINGER_MCP_HOST` / `QUANTDINGER_MCP_PORT`). Add new tools
+  also bind `ChanQuant_MCP_HOST` / `ChanQuant_MCP_PORT`). Add new tools
   there only after exposing the underlying capability via REST.
-- Admin UI: the Vue project at `QuantDinger-Vue-src/` ships **Profile -> My Agent Token**
+- Admin UI: the Vue project at `ChanQuant-Vue-src/` ships **Profile -> My Agent Token**
   for every logged-in user (`src/views/profile/components/ProfileAgentTokens.vue`,
   API `/api/agent/v1/me/tokens`). Admins retain `/agent-tokens` for audit.
   API client lives in `src/api/agent.js`.

@@ -1,4 +1,4 @@
-# QuantDinger Extension Guide
+﻿# ChanQuant Extension Guide
 
 This guide explains how to add features without making the backend harder to
 maintain. Prefer small, boring, easy-to-review changes.

@@ -1,4 +1,4 @@
-# QuantDinger Signal & Execution Standard (SSOT)
+﻿# ChanQuant Signal & Execution Standard (SSOT)
 
 **Version**: 1.0  
 **Status**: Current  
@@ -133,7 +133,7 @@ Use `# @strategy` for defaults; leverage and credentials stay in product UI.
 Optional header block:
 
 ```python
-# --- QuantDinger execution contract (v1) ---
+# --- ChanQuant execution contract (v1) ---
 # signal_form: four_way
 # exit_owner: indicator
 # flip_mode: R1

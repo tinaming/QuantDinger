@@ -1,4 +1,4 @@
-"""QuantDinger Python API Flask application factory."""
+"""ChanQuant Python API Flask application factory."""
 from __future__ import annotations
 
 import json

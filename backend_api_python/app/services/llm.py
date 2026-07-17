@@ -268,7 +268,7 @@ class LLMService:
             raise requests.exceptions.ConnectionError(f"{msg}{hint}") from exc
 
         if stream:
-            response._quantdinger_llm_session = session
+            response._chanquant_llm_session = session
         else:
             session.close()
         return response
@@ -285,8 +285,8 @@ class LLMService:
         
         # OpenRouter specific headers
         if "openrouter" in base_url:
-            headers["HTTP-Referer"] = "https://quantdinger.com"
-            headers["X-Title"] = "QuantDinger Analysis"
+            headers["HTTP-Referer"] = "https://chanquant.com"
+            headers["X-Title"] = "ChanQuant Analysis"
 
         data = {
             "model": model,
@@ -548,7 +548,7 @@ class LLMService:
                 err_text = err.get("message") if isinstance(err, dict) else str(err or "")
             except Exception:
                 err_text = (response.text or "").strip()[:300]
-            session = getattr(response, "_quantdinger_llm_session", None)
+            session = getattr(response, "_chanquant_llm_session", None)
             response.close()
             if session is not None:
                 session.close()
@@ -577,7 +577,7 @@ class LLMService:
                     if text:
                         yield text
         finally:
-            session = getattr(response, "_quantdinger_llm_session", None)
+            session = getattr(response, "_chanquant_llm_session", None)
             response.close()
             if session is not None:
                 session.close()
@@ -590,8 +590,8 @@ class LLMService:
         if (api_key or "").strip():
             headers["Authorization"] = f"Bearer {api_key.strip()}"
         if "openrouter" in base_url:
-            headers["HTTP-Referer"] = "https://quantdinger.com"
-            headers["X-Title"] = "QuantDinger Analysis"
+            headers["HTTP-Referer"] = "https://chanquant.com"
+            headers["X-Title"] = "ChanQuant Analysis"
 
         data = {
             "model": model,
@@ -607,7 +607,7 @@ class LLMService:
                 err_text = err.get("message") if isinstance(err, dict) else str(err or "")
             except Exception:
                 err_text = (response.text or "").strip()[:300]
-            session = getattr(response, "_quantdinger_llm_session", None)
+            session = getattr(response, "_chanquant_llm_session", None)
             response.close()
             if session is not None:
                 session.close()
@@ -637,7 +637,7 @@ class LLMService:
                 if content:
                     yield content
         finally:
-            session = getattr(response, "_quantdinger_llm_session", None)
+            session = getattr(response, "_chanquant_llm_session", None)
             response.close()
             if session is not None:
                 session.close()

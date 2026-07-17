@@ -1,6 +1,6 @@
-# 📲 手机短信通知配置指南
+﻿# 📲 手机短信通知配置指南
 
-> QuantDinger 支持通过 Twilio 发送 SMS 短信通知，确保您在任何情况下都能收到重要的交易信号。
+> ChanQuant 支持通过 Twilio 发送 SMS 短信通知，确保您在任何情况下都能收到重要的交易信号。
 
 ---
 
@@ -23,7 +23,7 @@
 
 - 有效的手机号码用于接收短信
 - 可用的信用卡/借记卡用于 Twilio 充值（试用账户有免费额度）
-- QuantDinger 后端服务已部署并运行
+- ChanQuant 后端服务已部署并运行
 
 ---
 
@@ -184,7 +184,7 @@ Twilio 采用按量计费模式，不同国家/地区的短信费用不同：
 
 ### Q: 有替代 Twilio 的方案吗？
 
-QuantDinger 目前仅支持 Twilio 作为 SMS 提供商。如需其他服务商支持，可通过 Webhook 通道自行集成：
+ChanQuant 目前仅支持 Twilio 作为 SMS 提供商。如需其他服务商支持，可通过 Webhook 通道自行集成：
 - 阿里云短信
 - 腾讯云短信
 - Nexmo (Vonage)

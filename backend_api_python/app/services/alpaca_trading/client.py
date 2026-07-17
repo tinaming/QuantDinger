@@ -165,7 +165,7 @@ class AlpacaClient:
     """
     Alpaca Trading Client
 
-    Wraps alpaca-py SDK to provide an interface compatible with QuantDinger's
+    Wraps alpaca-py SDK to provide an interface compatible with ChanQuant's
     broker abstraction (mirrors IBKRClient surface).
     """
 

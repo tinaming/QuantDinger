@@ -46,7 +46,7 @@ def _repo_root() -> Path:
 
 def _read_indicator_code() -> str:
     # Use the user's current indicator script under repo root.
-    root = _repo_root().parent  # project root (quantdinger/)
+    root = _repo_root().parent  # project root (chanquant/)
     p = root / "indicator_python_code" / "code_test.py"
     return p.read_text(encoding="utf-8")
 

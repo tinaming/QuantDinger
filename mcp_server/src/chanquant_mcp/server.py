@@ -1,0 +1,1882 @@
+"""
+
+ChanQuant MCP server — exposes the Agent Gateway as MCP tools.
+
+
+
+This is intentionally a thin wrapper:
+
+  * REST stays the source of truth (`/api/agent/v1`).
+
+  * Exposes Read (R), Workspace write (W), and Backtest (B) tools.
+
+  * Live order placement is NOT exposed here; runtime stop is exposed with T.
+  * The user-supplied agent token's scopes still gate every call server-side.
+
+
+
+If you want to expose more (e.g. trading), prefer issuing a token with the
+
+right scopes and keep this server unchanged — that way the security boundary
+
+stays in the Gateway, not in the MCP layer.
+
+"""
+
+from __future__ import annotations
+
+
+
+import os
+
+import sys
+
+from typing import Any
+
+
+
+import httpx
+
+from mcp.server.fastmcp import FastMCP
+
+
+
+from .security import (
+
+    assert_indicator_code_size,
+
+    assert_json_dict,
+
+    consume_job_stream,
+
+    poll_job_until_terminal,
+
+    redact_secrets,
+
+)
+
+
+
+# Registered tool names (for tests / docs drift checks).
+
+MCP_TOOL_NAMES = (
+
+    "whoami",
+
+    "check_health",
+
+    "list_markets",
+
+    "search_symbols",
+
+    "get_klines",
+
+    "get_price",
+    "list_strategies",
+    "get_strategy",
+    "runtime_overview",
+    "stop_strategy",
+    "place_quick_order",
+    "list_jobs",
+    "get_job",
+
+    "wait_for_job",
+
+    "stream_job_until_done",
+
+    "get_indicator_authoring_contract",
+
+    "validate_indicator_code",
+
+    "save_indicator",
+
+    "list_indicators",
+
+    "get_indicator",
+
+    "create_strategy",
+
+    "update_strategy",
+
+    "submit_backtest",
+
+    "regime_detect",
+
+    "submit_experiment_pipeline",
+
+    "submit_structured_tune",
+
+    "submit_ai_optimize",
+
+    "backtest_strategy",
+
+    "start_strategy",
+
+    "get_strategy_source",
+
+    "analyze_czsc",
+    "czsc_status",
+    "list_czsc_signals",
+    "compute_czsc_signals",
+    "czsc_multilevel",
+    "czsc_resample",
+    "cn_stock_data_status",
+
+    "list_portfolio_positions",
+
+    "list_paper_orders",
+
+    # CoinOS Skills
+    "coinos_skills",
+    "coinos_market",
+    "coinos_hyperliquid",
+    "coinos_trade",
+    "coinos_account",
+    "coinos_freqtrade",
+    "coinos_onchain",
+
+)
+
+
+
+
+
+def _env(name: str, required: bool = True) -> str:
+
+    value = (os.environ.get(name) or "").strip()
+
+    if not value and required:
+
+        print(
+
+            f"[chanquant-mcp] missing required env var: {name}",
+
+            file=sys.stderr,
+
+        )
+
+        sys.exit(2)
+
+    return value
+
+
+
+
+
+_base_url = (os.environ.get("CHANQUANT_BASE_URL") or os.environ.get("QUANTDINGER_BASE_URL") or "").strip()
+
+BASE_URL = (_base_url or _env("QUANTDINGER_BASE_URL")).rstrip("/")
+
+_agent_token = (os.environ.get("CHANQUANT_AGENT_TOKEN") or os.environ.get("QUANTDINGER_AGENT_TOKEN") or "").strip()
+
+AGENT_TOKEN = _agent_token or _env("QUANTDINGER_AGENT_TOKEN")
+
+TIMEOUT_S = float(os.environ.get("CHANQUANT_TIMEOUT_S") or os.environ.get("QUANTDINGER_TIMEOUT_S", "60"))
+
+JOB_STREAM_MAX_EVENTS = int(os.environ.get("CHANQUANT_MCP_JOB_STREAM_MAX_EVENTS") or os.environ.get("QUANTDINGER_MCP_JOB_STREAM_MAX_EVENTS", "200"))
+
+JOB_STREAM_MAX_SECONDS = float(os.environ.get("CHANQUANT_MCP_JOB_STREAM_MAX_SECONDS") or os.environ.get("QUANTDINGER_MCP_JOB_STREAM_MAX_SECONDS", "300"))
+
+JOB_POLL_MAX_SECONDS = float(os.environ.get("CHANQUANT_MCP_JOB_POLL_MAX_SECONDS") or os.environ.get("QUANTDINGER_MCP_JOB_POLL_MAX_SECONDS", "300"))
+
+
+
+
+
+_client = httpx.Client(
+
+    base_url=BASE_URL,
+
+    timeout=TIMEOUT_S,
+
+    headers={"Authorization": f"Bearer {AGENT_TOKEN}"},
+
+)
+
+
+
+_public_client = httpx.Client(base_url=BASE_URL, timeout=min(TIMEOUT_S, 15.0))
+
+
+
+
+
+def _get(path: str, params: dict | None = None) -> Any:
+
+    r = _client.get(path, params=params or {})
+
+    return _unwrap(r)
+
+
+
+
+
+def _post(path: str, json: dict | None = None, headers: dict | None = None) -> Any:
+
+    r = _client.post(path, json=json or {}, headers=headers or {})
+
+    return _unwrap(r)
+
+
+
+
+
+def _patch(path: str, json: dict | None = None) -> Any:
+
+    r = _client.patch(path, json=json or {})
+
+    return _unwrap(r)
+
+
+
+
+
+def _unwrap(r: httpx.Response) -> Any:
+
+    try:
+
+        body = r.json()
+
+    except Exception:
+
+        return {
+
+            "error": True,
+
+            "status": r.status_code,
+
+            "text": r.text[:2000],
+
+        }
+
+    if r.status_code >= 400:
+
+        return {
+
+            "error": True,
+
+            "status": r.status_code,
+
+            "body": body,
+
+        }
+
+    if isinstance(body, dict) and "data" in body:
+
+        data = body["data"]
+
+        return redact_secrets(data) if isinstance(data, (dict, list)) else data
+
+    return redact_secrets(body) if isinstance(body, (dict, list)) else body
+
+
+
+
+
+mcp = FastMCP(
+
+    "chanquant",
+
+    instructions=(
+
+        "Tools for the ChanQuant self-hosted quant platform. "
+
+        "All tools are tenant-scoped via the configured agent token. "
+
+        "Live order placement is available only through place_quick_order with "
+        "T scope, confirm_order=true, and confirm_live_trading=true when the "
+        "token is not paper-only. Server-side live trading flags still apply. "
+        "Runtime overview is available, and stop_strategy can stop a tenant-owned "
+        "strategy when the token has T scope. "
+        "SECURITY: never log or paste the agent token; responses may include "
+
+        "redacted (***) credential placeholders — do not attempt to recover them. "
+
+        "INDICATOR WORKFLOW (required): "
+
+        "1) get_indicator_authoring_contract — read template + I/O rules BEFORE writing code; "
+
+        "2) validate_indicator_code — sandbox check; "
+
+        "3) save_indicator — persist to indicator library (scope W); "
+
+        "4) create_strategy — pass indicator_id or indicator_code (auto-saved to library); "
+
+        "5) submit_backtest — test performance (strict_mode=true aligns with live). "
+
+        "Long jobs: use wait_for_job or stream_job_until_done (bounded). "
+
+        "submit_ai_optimize consumes server LLM quota — call only when explicitly requested. "
+
+        "Never pass natural language to backtest `code`; it must be full Python. "
+        "COINOS SKILLS: coinos_market and coinos_hyperliquid are read-only (scope R); "
+        "coinos_trade, coinos_onchain, coinos_freqtrade (deploy/control) require scope T "
+        "and explicit user confirmation (confirm_trading/confirm_onchain/confirm_deploy=true). "
+        "CoinOS endpoints proxy to Node.js scripts via coinos-skills — responses follow "
+        "{ok, data, error, meta} envelope. "
+        "STRATEGY LIFECYCLE (end-to-end): "
+        "1) save_indicator → 2) create_strategy → 3) backtest_strategy (by id) → "
+        "4) get_strategy_source (inspect code) → 5) start_strategy (T scope, confirm) → "
+        "6) runtime_overview → 7) stop_strategy. "
+        "backtest_strategy resolves source from the saved snapshot — no need to "
+        "re-supply code.  get_strategy_source returns full indicator_config "
+        "including source code (secrets redacted). "
+        "CZSC (缠论): call czsc_status first to check library availability, "
+        "then analyze_czsc for Chan-theory structural analysis (bi/duan/zhongshu/signals). "
+        "Use list_czsc_signals to enumerate 250+ signal functions, compute_czsc_signals "
+        "to calculate specific signals, czsc_multilevel for multi-timeframe analysis, "
+        "and czsc_resample to aggregate bars to a target frequency. "
+        "CN-STOCK DATA: cn_stock_data_status reports A-share data-source tier health."
+
+    ),
+
+)
+
+
+
+
+
+# ───────────────────────────── Read-class tools ─────────────────────────────
+
+
+
+@mcp.tool()
+
+def whoami() -> Any:
+
+    """Return the calling token's identity, scopes, and allowlists."""
+
+    return _get("/api/agent/v1/whoami")
+
+
+
+
+
+@mcp.tool()
+
+def check_health() -> Any:
+
+    """Public liveness probe (no token required). Does not expose tenant data."""
+
+    r = _public_client.get("/api/agent/v1/health")
+
+    try:
+
+        body = r.json()
+
+    except Exception:
+
+        return {"ok": r.status_code == 200, "status": r.status_code}
+
+    if isinstance(body, dict) and "data" in body:
+
+        return body["data"]
+
+    return body
+
+
+
+
+
+@mcp.tool()
+
+def list_markets() -> Any:
+
+    """List markets the configured token is allowed to query."""
+
+    return _get("/api/agent/v1/markets")
+
+
+
+
+
+@mcp.tool()
+
+def search_symbols(market: str, keyword: str = "", limit: int = 20) -> Any:
+
+    """Find symbols in a market.
+
+
+
+    Args:
+
+        market: Market id, e.g. "Crypto", "USStock", "Forex".
+
+        keyword: Substring/code; empty returns hot symbols.
+
+        limit:   1..100, default 20.
+
+    """
+
+    limit = max(1, min(100, int(limit)))
+
+    return _get(
+
+        f"/api/agent/v1/markets/{market}/symbols",
+
+        params={"keyword": keyword, "limit": limit},
+
+    )
+
+
+
+
+
+@mcp.tool()
+
+def get_klines(
+
+    market: str,
+
+    symbol: str,
+
+    timeframe: str = "1D",
+
+    limit: int = 300,
+
+    before_time: int | None = None,
+
+) -> Any:
+
+    """OHLCV bars.
+
+
+
+    Args:
+
+        market:      e.g. "Crypto"
+
+        symbol:      e.g. "BTC/USDT"
+
+        timeframe:   "1m"/"5m"/"15m"/"30m"/"1H"/"4H"/"1D"/"1W"
+
+        limit:       1..2000
+
+        before_time: unix seconds; for paging older bars.
+
+    """
+
+    limit = max(1, min(2000, int(limit)))
+
+    params = {"market": market, "symbol": symbol, "timeframe": timeframe, "limit": limit}
+
+    if before_time is not None:
+
+        params["before_time"] = int(before_time)
+
+    return _get("/api/agent/v1/klines", params=params)
+
+
+
+
+
+@mcp.tool()
+
+def get_price(market: str, symbol: str) -> Any:
+
+    """Latest price for a symbol."""
+
+    return _get("/api/agent/v1/price", params={"market": market, "symbol": symbol})
+
+
+
+
+
+@mcp.tool()
+
+def list_strategies(limit: int = 50) -> Any:
+
+    """List the tenant's strategies (compact projection)."""
+
+    limit = max(1, min(200, int(limit)))
+
+    return _get("/api/agent/v1/strategies", params={"limit": limit})
+
+
+
+
+
+@mcp.tool()
+
+def get_strategy(strategy_id: int) -> Any:
+    """Get a strategy by id (tenant-scoped; secrets redacted)."""
+    return _get(f"/api/agent/v1/strategies/{int(strategy_id)}")
+
+
+@mcp.tool()
+def get_strategy_source(strategy_id: int) -> Any:
+    """Fetch a strategy's indicator source code and configuration.
+
+    This is a semantic alias for ``get_strategy`` — both call the same
+    endpoint and return the same data.  Use this tool name when your
+    intent is specifically to inspect or debug a strategy's indicator
+    implementation (``indicator_config.indicator_code``).
+
+    Returns the full strategy record including ``indicator_config``
+    (with ``indicator_code``, ``indicator_name``, ``indicator_id``),
+    ``trading_config``, and any ``strategy_code`` for ScriptStrategy
+    types.  Secrets (API keys, passwords) are redacted.
+    """
+    return _get(f"/api/agent/v1/strategies/{int(strategy_id)}")
+
+
+@mcp.tool()
+def runtime_overview() -> Any:
+    """Compact runtime overview for this tenant.
+
+    Returns running strategy counts, running strategy summaries, position
+    count, pending-order count, paper-order count, and unrealized PnL.
+    """
+    return _get("/api/agent/v1/runtime/overview")
+
+
+@mcp.tool()
+def stop_strategy(strategy_id: int, confirm_stop: bool = False) -> Any:
+    """Stop one tenant-owned strategy (requires T scope).
+
+    This does not place orders and does not delete the strategy. Pass
+    `confirm_stop=true` only after the user explicitly asks to stop it.
+    """
+    if not confirm_stop:
+        return {
+            "error": True,
+            "status": 400,
+            "body": {
+                "message": (
+                    "Stopping a strategy changes runtime state. Re-call with "
+                    "confirm_stop=true after explicit user approval."
+                ),
+            },
+        }
+    return _post(f"/api/agent/v1/strategies/{int(strategy_id)}/stop")
+
+
+@mcp.tool()
+def start_strategy(strategy_id: int, confirm_start: bool = False) -> Any:
+    """Start a tenant-owned strategy (requires T scope).
+
+    This activates the strategy in the live runtime. Pass
+    ``confirm_start=true`` only after the user explicitly asks to start it.
+    The backend enforces T (trading) scope on the agent token.
+    """
+    if not confirm_start:
+        return {
+            "error": True,
+            "status": 400,
+            "body": {
+                "message": (
+                    "Starting a strategy changes runtime state and may trigger "
+                    "live trades. Re-call with confirm_start=true after explicit "
+                    "user approval."
+                ),
+            },
+        }
+    return _patch(
+        f"/api/agent/v1/strategies/{int(strategy_id)}",
+        json={"status": "running"},
+    )
+
+
+@mcp.tool()
+def place_quick_order(
+    market: str,
+    symbol: str,
+    side: str,
+    qty: float,
+    order_type: str = "market",
+    limit_price: float | None = None,
+    credential_id: int | None = None,
+    market_type: str = "spot",
+    leverage: int = 1,
+    margin_mode: str | None = None,
+    idempotency_key: str | None = None,
+    confirm_order: bool = False,
+    confirm_live_trading: bool = False,
+) -> Any:
+    """Place a quick order through Agent Gateway (requires T scope).
+
+    Paper-only tokens create paper fills. Live-capable tokens require
+    `confirm_live_trading=true` and the server-side live-trading flag.
+    """
+    if not confirm_order:
+        return {
+            "error": True,
+            "status": 400,
+            "body": {
+                "message": (
+                    "Order placement changes account state. Re-call with "
+                    "confirm_order=true after explicit user approval."
+                ),
+            },
+        }
+
+    identity = _get("/api/agent/v1/whoami")
+    if isinstance(identity, dict) and identity.get("paper_only") is False and not confirm_live_trading:
+        return {
+            "error": True,
+            "status": 400,
+            "body": {
+                "message": (
+                    "This Agent Token is live-capable. Re-call with "
+                    "confirm_live_trading=true after explicit user approval."
+                ),
+            },
+        }
+
+    payload: dict[str, Any] = {
+        "market": market,
+        "symbol": symbol,
+        "side": side,
+        "qty": float(qty),
+        "order_type": order_type,
+        "market_type": market_type,
+        "leverage": int(leverage or 1),
+    }
+    if limit_price is not None:
+        payload["limit_price"] = float(limit_price)
+    if credential_id is not None:
+        payload["credential_id"] = int(credential_id)
+    if margin_mode:
+        payload["margin_mode"] = margin_mode
+    headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
+    return _post("/api/agent/v1/quick-trade/orders", json=payload, headers=headers)
+
+
+@mcp.tool()
+def get_job(job_id: str) -> Any:
+    """Poll a previously-submitted backtest / experiment job."""
+
+    return _get(f"/api/agent/v1/jobs/{job_id}")
+
+
+
+
+
+@mcp.tool()
+
+def list_jobs(kind: str | None = None, limit: int = 50) -> Any:
+
+    """List recent jobs for this tenant. Optional `kind` filter."""
+
+    limit = max(1, min(200, int(limit)))
+
+    params: dict[str, Any] = {"limit": limit}
+
+    if kind:
+
+        params["kind"] = kind
+
+    return _get("/api/agent/v1/jobs", params=params)
+
+
+
+
+
+@mcp.tool()
+
+def wait_for_job(
+
+    job_id: str,
+
+    timeout_s: float | None = None,
+
+    interval_s: float = 2.0,
+
+) -> Any:
+
+    """Poll a job until it succeeds/fails or timeout (safer than infinite SSE)."""
+
+    cap = float(timeout_s if timeout_s is not None else JOB_POLL_MAX_SECONDS)
+
+    cap = max(5.0, min(600.0, cap))
+
+    interval = max(0.5, min(30.0, float(interval_s)))
+
+    return poll_job_until_terminal(
+
+        lambda jid: _get(f"/api/agent/v1/jobs/{jid}"),
+
+        job_id,
+
+        timeout_s=cap,
+
+        interval_s=interval,
+
+    )
+
+
+
+
+
+@mcp.tool()
+
+def stream_job_until_done(
+
+    job_id: str,
+
+    since_seq: int = 0,
+
+    max_events: int | None = None,
+
+    max_seconds: float | None = None,
+
+) -> Any:
+
+    """Consume job SSE with hard caps (max events / max seconds).
+
+
+
+    Prefer this over raw REST SSE when running inside MCP clients.
+
+    Returns `{events, result, truncated, event_count}`.
+
+    """
+
+    events_cap = int(max_events if max_events is not None else JOB_STREAM_MAX_EVENTS)
+
+    events_cap = max(1, min(500, events_cap))
+
+    seconds_cap = float(max_seconds if max_seconds is not None else JOB_STREAM_MAX_SECONDS)
+
+    seconds_cap = max(5.0, min(600.0, seconds_cap))
+
+    path = f"/api/agent/v1/jobs/{job_id}/stream"
+
+    out = consume_job_stream(
+
+        _client,
+
+        path,
+
+        since_seq=int(since_seq or 0),
+
+        max_events=events_cap,
+
+        max_seconds=seconds_cap,
+
+    )
+
+    if isinstance(out.get("events"), list):
+
+        out["events"] = redact_secrets(out["events"])
+
+    if isinstance(out.get("result"), dict):
+
+        out["result"] = redact_secrets(out["result"])
+
+    return out
+
+
+
+
+
+# ───────────────────────────── Indicator workspace ─────────────────────────────
+
+
+
+@mcp.tool()
+
+def get_indicator_authoring_contract() -> Any:
+
+    """Fetch ChanQuant indicator I/O contract + starter Python template.
+
+
+
+    Call this BEFORE writing indicator code. The `code` field in backtests
+
+    and strategies must be valid Python matching this contract — not natural
+
+    language prompts.
+
+    """
+
+    return _get("/api/agent/v1/indicators/authoring-contract")
+
+
+
+
+
+@mcp.tool()
+
+def validate_indicator_code(code: str, indicator_params: dict | None = None) -> Any:
+
+    """Sandbox-validate indicator Python without saving."""
+
+    assert_indicator_code_size(code)
+
+    params = assert_json_dict("indicator_params", indicator_params)
+
+    return _post(
+
+        "/api/agent/v1/indicators/validate",
+
+        json={"code": code, "indicator_params": params},
+
+    )
+
+
+
+
+
+@mcp.tool()
+
+def save_indicator(
+
+    code: str,
+
+    name: str | None = None,
+
+    description: str | None = None,
+
+    indicator_id: int | None = None,
+
+    validate: bool = True,
+
+) -> Any:
+
+    """Save indicator into the user's indicator library (appears in IDE list).
+
+
+
+    Requires agent token scope W. Validates by default before insert.
+
+    """
+
+    assert_indicator_code_size(code)
+
+    payload: dict[str, Any] = {"code": code, "validate": validate}
+
+    if name:
+
+        payload["name"] = name
+
+    if description:
+
+        payload["description"] = description
+
+    if indicator_id:
+
+        payload["indicator_id"] = int(indicator_id)
+
+    return _post("/api/agent/v1/indicators", json=payload)
+
+
+
+
+
+@mcp.tool()
+
+def list_indicators(limit: int = 50) -> Any:
+
+    """List saved indicators for this tenant (no code bodies)."""
+
+    limit = max(1, min(200, int(limit)))
+
+    return _get("/api/agent/v1/indicators", params={"limit": limit})
+
+
+
+
+
+@mcp.tool()
+
+def get_indicator(indicator_id: int) -> Any:
+
+    """Fetch one indicator including its Python source."""
+
+    return _get(f"/api/agent/v1/indicators/{int(indicator_id)}")
+
+
+
+
+
+# ───────────────────────────── Strategy workspace ─────────────────────────────
+
+
+
+@mcp.tool()
+
+def create_strategy(
+
+    strategy_name: str,
+
+    market_category: str,
+
+    trading_config: dict,
+
+    indicator_code: str | None = None,
+
+    indicator_id: int | None = None,
+
+    indicator_name: str | None = None,
+
+    strategy_type: str = "IndicatorStrategy",
+
+    execution_mode: str = "signal",
+
+) -> Any:
+
+    """Create a stopped strategy; embed or link an indicator.
+
+
+
+    If `indicator_code` is provided without `indicator_id`, the server auto-saves
+
+    it to the indicator library so it appears in the IDE list.
+
+    Requires scope W. Status is always forced to stopped.
+
+    """
+
+    if indicator_code:
+
+        assert_indicator_code_size(indicator_code)
+
+    tc = assert_json_dict("trading_config", trading_config)
+
+    payload: dict[str, Any] = {
+
+        "strategy_name": strategy_name,
+
+        "strategy_type": strategy_type,
+
+        "market_category": market_category,
+
+        "execution_mode": execution_mode,
+
+        "trading_config": tc,
+
+        "status": "stopped",
+
+    }
+
+    ic: dict[str, Any] = {}
+
+    if indicator_id:
+
+        ic["indicator_id"] = int(indicator_id)
+
+    if indicator_code:
+
+        ic["indicator_code"] = indicator_code
+
+    if indicator_name:
+
+        ic["indicator_name"] = indicator_name
+
+    if ic:
+
+        payload["indicator_config"] = ic
+
+    return _post("/api/agent/v1/strategies", json=payload)
+
+
+
+
+
+@mcp.tool()
+
+def update_strategy(strategy_id: int, patch: dict) -> Any:
+
+    """Patch a strategy (scope W). Cannot set status=running without scope T."""
+
+    body = assert_json_dict("patch", patch)
+
+    if str(body.get("status") or "").strip().lower() == "running":
+
+        return {
+
+            "error": True,
+
+            "status": 403,
+
+            "body": {
+
+                "message": (
+
+                    "Activating a strategy (status=running) requires T scope. "
+
+                    "Use the REST quick-trade path with an explicitly scoped token."
+
+                ),
+
+            },
+
+        }
+
+    return _patch(f"/api/agent/v1/strategies/{int(strategy_id)}", json=body)
+
+
+@mcp.tool()
+def backtest_strategy(
+    strategy_id: int,
+    start_date: str,
+    end_date: str,
+    override_config: dict | None = None,
+) -> Any:
+    """Backtest a saved strategy by its id (scope B).
+
+    Unlike ``submit_backtest`` (which requires raw code), this resolves
+    the indicator / script source from the saved strategy snapshot
+    automatically — supporting both IndicatorStrategy and ScriptStrategy.
+
+    Args:
+        strategy_id:     The id returned by ``create_strategy``.
+        start_date:      YYYY-MM-DD.
+        end_date:        YYYY-MM-DD.
+        override_config: Optional dict merged into the strategy's
+                         trading_config for this run only.
+    """
+    payload: dict[str, Any] = {
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    if override_config:
+        payload["override_config"] = assert_json_dict("override_config", override_config)
+    return _post(f"/api/agent/v1/strategies/{int(strategy_id)}/backtest", json=payload)
+
+
+# ───────────────────────────── Backtest / experiments ─────────────────────────────
+
+
+
+@mcp.tool()
+
+def submit_backtest(
+
+    code: str,
+
+    market: str,
+
+    symbol: str,
+
+    timeframe: str,
+
+    start_date: str,
+
+    end_date: str,
+
+    initial_capital: float = 10000,
+
+    commission: float = 0.001,
+
+    slippage: float | None = None,
+
+    leverage: int = 1,
+
+    trade_direction: str = "long",
+
+    strict_mode: bool = True,
+
+    strategy_config: dict | None = None,
+
+    indicator_params: dict | None = None,
+
+    idempotency_key: str | None = None,
+
+) -> Any:
+
+    """Submit a backtest. Returns `{job_id, status, ...}` — poll with `get_job`.
+
+
+
+    Args:
+
+        code:           Indicator code (Python).
+
+        market/symbol/timeframe: Series identification.
+
+        start_date/end_date:     YYYY-MM-DD.
+
+        initial_capital, commission, slippage, leverage, trade_direction:
+
+                       standard backtest knobs.
+
+        strict_mode:    True = next-bar open (live-aligned); False = aggressive MTF/bar path.
+
+        strategy_config: optional TP/SL/trailing overrides (merged with strictMode).
+
+        indicator_params: `# @param` overrides for the indicator script.
+
+        idempotency_key: optional; repeat calls with the same key return the
+
+                         original job instead of submitting a duplicate.
+
+    """
+
+    assert_indicator_code_size(code)
+
+    payload: dict[str, Any] = {
+
+        "code": code,
+
+        "market": market,
+
+        "symbol": symbol,
+
+        "timeframe": timeframe,
+
+        "start_date": start_date,
+
+        "end_date": end_date,
+
+        "initial_capital": initial_capital,
+
+        "commission": commission,
+
+        "leverage": leverage,
+
+        "trade_direction": trade_direction,
+
+        "strictMode": strict_mode,
+
+        "strategy_config": assert_json_dict("strategy_config", strategy_config),
+
+        "indicator_params": assert_json_dict("indicator_params", indicator_params),
+
+    }
+
+    if slippage is not None:
+
+        payload["slippage"] = slippage
+
+    headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
+
+    return _post("/api/agent/v1/backtests", json=payload, headers=headers)
+
+
+
+
+
+@mcp.tool()
+
+def regime_detect(
+
+    market: str,
+
+    symbol: str,
+
+    timeframe: str,
+
+    start_date: str,
+
+    end_date: str,
+
+) -> Any:
+
+    """Detect the current market regime (synchronous)."""
+
+    return _post(
+
+        "/api/agent/v1/experiments/regime/detect",
+
+        json={
+
+            "market": market, "symbol": symbol, "timeframe": timeframe,
+
+            "startDate": start_date, "endDate": end_date,
+
+        },
+
+    )
+
+
+
+
+
+@mcp.tool()
+
+def submit_experiment_pipeline(payload: dict, idempotency_key: str | None = None) -> Any:
+
+    """Submit a legacy grid pipeline job (scope B). Poll with get_job / wait_for_job."""
+
+    body = assert_json_dict("payload", payload)
+
+    headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
+
+    return _post("/api/agent/v1/experiments/pipeline", json=body, headers=headers)
+
+
+
+
+
+@mcp.tool()
+
+def submit_structured_tune(payload: dict) -> Any:
+
+    """Submit a grid/random tuning job. Returns a job for polling.
+
+
+
+    `payload` should include `base` (a backtest spec) and either `parameterSpace`
+
+    (grid) or `randomTrials` (random). See `docs/AI_TRADING_SYSTEM_PLAN_CN.md`.
+
+    """
+
+    return _post("/api/agent/v1/experiments/structured-tune", json=assert_json_dict("payload", payload))
+
+
+
+
+
+@mcp.tool()
+
+def submit_ai_optimize(payload: dict, confirm_llm_usage: bool = False) -> Any:
+
+    """Submit an LLM-driven multi-round optimization job (scope B).
+
+
+
+    Consumes server-side LLM provider quota. You MUST pass confirm_llm_usage=true
+
+    to acknowledge cost/rate-limit implications.
+
+    """
+
+    if not confirm_llm_usage:
+
+        return {
+
+            "error": True,
+
+            "status": 400,
+
+            "body": {
+
+                "message": (
+
+                    "submit_ai_optimize consumes LLM quota. "
+
+                    "Re-call with confirm_llm_usage=true after explicit user approval."
+
+                ),
+
+            },
+
+        }
+
+    return _post("/api/agent/v1/experiments/ai-optimize", json=assert_json_dict("payload", payload))
+
+
+
+
+
+# ───────────────────────────── CZSC (缠论) ─────────────────────────────
+
+
+@mcp.tool()
+def czsc_status() -> Any:
+    """Check whether the CZSC (缠论/Chan Theory) library is available.
+
+    Returns ``czsc_available`` (bool), ``czsc_version``, and any
+    ``import_error``.  When unavailable, the ``analyze_czsc`` tool
+    will return an error.
+    """
+    return _get("/api/agent/v1/czsc/status")
+
+
+@mcp.tool()
+def analyze_czsc(
+    market: str,
+    symbol: str,
+    timeframe: str = "1D",
+    limit: int = 300,
+) -> Any:
+    """Run CZSC (缠论) structural analysis on a symbol.
+
+    Returns Chan-theory features: *bi* (笔), *duan* (段),
+    *zhongshu* (中枢), and buy/sell signals derived from the
+    underlying K-line data.  Requires the ``czsc`` Python library
+    to be installed on the server — call ``czsc_status`` first to
+    check availability.
+
+    Args:
+        market:    e.g. "CNStock", "Crypto".
+        symbol:    e.g. "sh600519", "BTC/USDT".
+        timeframe: "1m"/"5m"/"15m"/"30m"/"1H"/"4H"/"1D"/"1W".
+        limit:     Number of bars, 50..2000.
+    """
+    limit = max(50, min(2000, int(limit)))
+    return _post(
+        "/api/agent/v1/czsc/analyze",
+        json={
+            "market": market,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "limit": limit,
+        },
+    )
+
+
+@mcp.tool()
+def list_czsc_signals(
+    grouped: bool = True,
+    namespace: str = "",
+    category: str = "",
+) -> Any:
+    """List all available CZSC signal functions (250+).
+
+    Returns signal names, parameter templates, categories, and
+    namespaces.  Signals are grouped by module (cxt/tas/jcc/vol/
+    pressure/bar etc.) when grouped=True.
+
+    Args:
+        grouped:   Group results by namespace (default True).
+        namespace: Filter by namespace(s), comma-separated (e.g. "cxt,tas").
+        category:  Filter by "kline" or "trader" (empty = both).
+    """
+    params: dict[str, Any] = {"grouped": str(grouped).lower()}
+    if namespace:
+        params["namespace"] = namespace
+    if category:
+        params["category"] = category
+    return _get("/api/agent/v1/czsc/signals", params=params)
+
+
+@mcp.tool()
+def compute_czsc_signals(
+    market: str,
+    symbol: str,
+    signals_config: list,
+    timeframe: str = "1H",
+    limit: int = 500,
+) -> Any:
+    """Compute selected CZSC signal functions on K-line data.
+
+    Calculates the specified signal functions and returns their
+    values as ``czsc_signal_*`` columns.  Use ``list_czsc_signals``
+    first to discover available signals.
+
+    Args:
+        market:         e.g. "CNStock", "Crypto".
+        symbol:         e.g. "sh600519", "BTC/USDT".
+        signals_config: List of signal config dicts, each with 'name' key
+                        (e.g. [{"name": "cxt_bi_end_V240526", "freq": "30分钟"}]).
+        timeframe:      "1m"/"5m"/"15m"/"30m"/"1H"/"4H"/"1D".
+        limit:          Number of bars, 100..3000.
+    """
+    limit = max(100, min(3000, int(limit)))
+    return _post(
+        "/api/agent/v1/czsc/signals/compute",
+        json={
+            "market": market,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "limit": limit,
+            "signals_config": signals_config,
+        },
+    )
+
+
+@mcp.tool()
+def czsc_multilevel(
+    market: str,
+    symbol: str,
+    timeframe: str = "5m",
+    limit: int = 500,
+    target_timeframes: list | None = None,
+) -> Any:
+    """Multi-timeframe CZSC joint analysis (多级别联立).
+
+    Analyzes market structure across multiple timeframes and
+    returns per-frequency summaries with cross-validation
+    (trend alignment, bi/duan direction agreement).
+
+    Args:
+        market:             e.g. "CNStock", "Crypto".
+        symbol:             e.g. "sh600519", "BTC/USDT".
+        timeframe:          Base timeframe (e.g. "1m", "5m").
+        limit:              Number of bars, 100..3000.
+        target_timeframes:  List of target timeframes to analyze
+                           (e.g. ["15m", "1H", "1D"]). Auto-selects if empty.
+    """
+    limit = max(100, min(3000, int(limit)))
+    body: dict[str, Any] = {
+        "market": market,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "limit": limit,
+    }
+    if target_timeframes:
+        body["target_timeframes"] = target_timeframes
+    return _post("/api/agent/v1/czsc/multilevel", json=body)
+
+
+@mcp.tool()
+def czsc_resample(
+    market: str,
+    symbol: str,
+    target_freq: str,
+    timeframe: str = "1m",
+    limit: int = 500,
+) -> Any:
+    """Resample K-line bars to a target frequency.
+
+    Uses CZSC's Rust-backed resample_bars for precise aggregation
+    (e.g. 1-minute bars to 5-minute or daily bars).
+
+    Args:
+        market:      e.g. "CNStock", "Crypto".
+        symbol:      e.g. "sh600519", "BTC/USDT".
+        target_freq: Target frequency in Chinese (e.g. "5分钟", "60分钟", "日线").
+        timeframe:   Source timeframe (e.g. "1m").
+        limit:       Number of source bars, 100..5000.
+    """
+    limit = max(100, min(5000, int(limit)))
+    return _post(
+        "/api/agent/v1/czsc/resample",
+        json={
+            "market": market,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "target_freq": target_freq,
+            "limit": limit,
+        },
+    )
+
+
+@mcp.tool()
+def cn_stock_data_status() -> Any:
+    """Check CN-stock (A股) data-source availability.
+
+    Returns the status of each data-source tier: TwelveData,
+    Tencent, yfinance, and AkShare.  Useful for diagnosing why
+    A-share K-line data may be missing or stale.
+    """
+    return _get("/api/agent/v1/markets/CNStock/data-source-status")
+
+
+# ───────────────────────────── Portfolio (read-only) ─────────────────────────────
+
+
+
+@mcp.tool()
+
+def list_portfolio_positions() -> Any:
+
+    """Manual portfolio positions for this tenant (read-only, scope R)."""
+
+    return _get("/api/agent/v1/portfolio/positions")
+
+
+
+
+
+@mcp.tool()
+
+def list_paper_orders() -> Any:
+
+    """Recent paper orders submitted via agent trading APIs (scope R)."""
+
+    return _get("/api/agent/v1/portfolio/paper-orders")
+
+
+
+
+
+# ───────────────────────────── CoinOS Skills ─────────────────────────────
+
+
+
+@mcp.tool()
+
+def coinos_skills() -> Any:
+
+    """List available CoinOS skills (market, trading, hyperliquid, freqtrade, account, onchain)."""
+
+    return _get("/api/agent/v1/coinos/skills")
+
+
+
+
+
+@mcp.tool()
+
+def coinos_market(
+
+    action: str,
+
+    params: dict | None = None,
+
+) -> Any:
+
+    """Query AiCoin market data (183 endpoints, scope R).
+
+
+
+    Args:
+
+        action: API path, e.g. "market/ticker", "coins/tickers", "market/klines",
+
+                "derivatives/funding-rates", "content/newsflashes", "signals/alerts".
+
+        params: Query/body parameters for the AiCoin endpoint.
+
+    """
+
+    if params:
+
+        return _post(f"/api/agent/v1/coinos/market/{action}", json=params)
+
+    return _get(f"/api/agent/v1/coinos/market/{action}")
+
+
+
+
+
+@mcp.tool()
+
+def coinos_hyperliquid(
+
+    action: str,
+
+    params: dict | None = None,
+
+) -> Any:
+
+    """Hyperliquid on-chain whale analytics (scope R).
+
+
+
+    Args:
+
+        action: Analytics path, e.g. "tickers", "whales/open-positions",
+
+                "liquidations/history", "smart-money/find", "open-interest".
+
+        params: Query/body parameters.
+
+    """
+
+    if params:
+
+        return _post(f"/api/agent/v1/coinos/hyperliquid/{action}", json=params)
+
+    return _get(f"/api/agent/v1/coinos/hyperliquid/{action}")
+
+
+
+
+
+@mcp.tool()
+
+def coinos_trade(
+
+    action: str,
+
+    params: dict | None = None,
+
+    confirm_trading: bool = False,
+
+) -> Any:
+
+    """Execute CEX trading via CCXT (scope T — changes account state).
+
+
+
+    Supports Binance, OKX, Bybit, Bitget, Gate, HTX, Pionex, Hyperliquid.
+
+    Actions: create_order, close_position, set_stop, cancel_order, positions,
+
+    open_orders, balance, markets, set_leverage, set_trading_params, save_key.
+
+    """
+
+    if not confirm_trading:
+
+        return {
+
+            "error": True,
+
+            "status": 400,
+
+            "body": {
+
+                "message": (
+
+                    "Trading changes account state. Re-call with "
+
+                    "confirm_trading=true after explicit user approval."
+
+                ),
+
+            },
+
+        }
+
+    return _post(f"/api/agent/v1/coinos/trading/{action}", json=params or {})
+
+
+
+
+
+@mcp.tool()
+
+def coinos_account(
+
+    action: str,
+
+    params: dict | None = None,
+
+) -> Any:
+
+    """Exchange account operations (scope R).
+
+
+
+    Args:
+
+        action: Account operation, e.g. "balance", "positions", "open_orders",
+
+                "closed_orders", "my_trades", "exchanges".
+
+        params: Parameters for the operation.
+
+    """
+
+    return _post(f"/api/agent/v1/coinos/account/{action}", json=params or {})
+
+
+
+
+
+@mcp.tool()
+
+def coinos_freqtrade(
+
+    category: str,
+
+    action: str,
+
+    params: dict | None = None,
+
+    confirm_deploy: bool = False,
+
+) -> Any:
+
+    """Freqtrade strategy management (deploy=T scope, dev=R scope).
+
+
+
+    Args:
+
+        category: "deploy" (create/backtest/deploy), "control" (live bot), or "dev" (debug).
+
+        action:   Specific action within the category.
+
+        params:   Parameters for the action.
+
+        confirm_deploy: Required for deploy/control (changes runtime state).
+
+    """
+
+    if category in ("deploy", "control") and not confirm_deploy:
+
+        return {
+
+            "error": True,
+
+            "status": 400,
+
+            "body": {
+
+                "message": (
+
+                    f"Freqtrade {category} changes runtime state. Re-call with "
+
+                    "confirm_deploy=true after explicit user approval."
+
+                ),
+
+            },
+
+        }
+
+    return _post(
+
+        f"/api/agent/v1/coinos/freqtrade/{category}/{action}",
+
+        json=params or {},
+
+    )
+
+
+
+
+
+@mcp.tool()
+
+def coinos_onchain(
+
+    script: str,
+
+    action: str,
+
+    params: dict | None = None,
+
+    confirm_onchain: bool = False,
+
+) -> Any:
+
+    """On-chain DEX via OKX Web3 (scope T — moves capital on-chain).
+
+
+
+    Args:
+
+        script: Script name: "swap", "portfolio", "market", "token", "trade", "gateway".
+
+        action: Action within the script.
+
+        params: Parameters (token addresses, amounts, etc.).
+
+        confirm_onchain: Required — on-chain transactions are irreversible.
+
+    """
+
+    if not confirm_onchain:
+
+        return {
+
+            "error": True,
+
+            "status": 400,
+
+            "body": {
+
+                "message": (
+
+                    "On-chain transactions are irreversible. Re-call with "
+
+                    "confirm_onchain=true after explicit user approval."
+
+                ),
+
+            },
+
+        }
+
+    return _post(
+
+        f"/api/agent/v1/coinos/onchain/{script}/{action}",
+
+        json=params or {},
+
+    )
+
+
+
+
+_TRANSPORTS = {"stdio", "sse", "streamable-http"}
+
+
+
+
+
+def _resolve_transport() -> str:
+
+    raw = (os.environ.get("CHANQUANT_MCP_TRANSPORT") or os.environ.get("QUANTDINGER_MCP_TRANSPORT") or "stdio").strip().lower()
+
+    if raw in ("http", "streaming-http", "streamable_http"):
+
+        raw = "streamable-http"
+
+    if raw not in _TRANSPORTS:
+
+        print(
+
+            f"[chanquant-mcp] unknown transport '{raw}'. "
+
+            f"Expected one of: {sorted(_TRANSPORTS)} (or http/streaming-http alias).",
+
+            file=sys.stderr,
+
+        )
+
+        sys.exit(2)
+
+    return raw
+
+
+
+
+
+def _apply_http_settings_from_env() -> None:
+
+    host = (os.environ.get("CHANQUANT_MCP_HOST") or os.environ.get("QUANTDINGER_MCP_HOST") or "").strip()
+
+    port_raw = (os.environ.get("CHANQUANT_MCP_PORT") or os.environ.get("QUANTDINGER_MCP_PORT") or "").strip()
+
+    settings = getattr(mcp, "settings", None)
+
+    if settings is None:
+
+        return
+
+    if host:
+
+        try:
+
+            settings.host = host
+
+        except Exception:
+
+            pass
+
+    if port_raw:
+
+        try:
+
+            settings.port = int(port_raw)
+
+        except Exception:
+
+            print(
+
+                f"[chanquant-mcp] invalid MCP_PORT='{port_raw}', ignoring.",
+
+                file=sys.stderr,
+
+            )
+
+
+
+
+
+def main() -> None:
+
+    """Entrypoint.
+
+
+
+    Transport selection (env-only — works in both desktop and cloud):
+
+      CHANQUANT_MCP_TRANSPORT=stdio              (default; stdin/stdout)
+
+      CHANQUANT_MCP_TRANSPORT=sse                (SSE over HTTP)
+
+      CHANQUANT_MCP_TRANSPORT=streamable-http    (newer MCP HTTP transport)
+
+      CHANQUANT_MCP_HOST=0.0.0.0                 (bind for HTTP transports)
+
+      CHANQUANT_MCP_PORT=7800                    (port for HTTP transports)
+
+    """
+
+    transport = _resolve_transport()
+
+    if transport in ("sse", "streamable-http"):
+
+        _apply_http_settings_from_env()
+
+    mcp.run(transport=transport)
+
+
+
+
+
+if __name__ == "__main__":
+
+    main()
+

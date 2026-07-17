@@ -1,0 +1,27 @@
+{
+  "name": "coinos-skills",
+  "displayName": "CoinOS Skills (AiCoin)",
+  "version": "2.0.0",
+  "description": "Crypto market data, exchange trading, Freqtrade strategy automation, Hyperliquid whale analytics, and on-chain DEX operations powered by AiCoin Open API",
+  "descriptionZh": "基于 AiCoin Open API 的加密货币行情、交易所交易、Freqtrade 策略自动化、Hyperliquid 鲸鱼分析和链上 DEX 操作技能集",
+  "author": {
+    "name": "AiCoin",
+    "url": "https://www.aicoin.com"
+  },
+  "homepage": "https://www.aicoin.com/opendata",
+  "repository": "https://github.com/aicoincom/coinos-skills",
+  "keywords": [
+    "qoder-plugin",
+    "skill",
+    "crypto",
+    "aicoin",
+    "trading",
+    "freqtrade",
+    "hyperliquid",
+    "market-data",
+    "coinos"
+  ],
+  "category": "finance",
+  "tags": ["skill", "crypto", "trading"],
+  "skills": "./skills/"
+}

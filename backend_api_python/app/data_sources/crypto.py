@@ -37,7 +37,7 @@ def _is_symbol_not_found_error(exc: Any) -> bool:
 
 
 def resolve_ccxt_for_live_trading(exchange_id: str, market_type: str) -> Tuple[str, Dict[str, Any]]:
-    """Map QuantDinger exchange_id + market_type to a CCXT class id and options.
+    """Map ChanQuant exchange_id + market_type to a CCXT class id and options.
 
     Used for **public** OHLCV/ticker only (no API keys). Keeps chart/backtest on
     ``CCXTConfig.DEFAULT_EXCHANGE`` while running crypto strategies (signal/live)
@@ -532,7 +532,7 @@ class CryptoDataSource(BaseDataSource):
     @classmethod
     def _ccxt_to_qd_timeframe(cls, ccxt_tf: str, fallback: str) -> str:
         """Reverse the TIMEFRAME_MAP — e.g. '1d' → '1D'. Used so downstream helpers
-        that take the QuantDinger-style timeframe string get a consistent value when
+        that take the ChanQuant-style timeframe string get a consistent value when
         we fetch a different granularity than originally requested."""
         for qd, ccxt_value in cls.TIMEFRAME_MAP.items():
             if ccxt_value == ccxt_tf:

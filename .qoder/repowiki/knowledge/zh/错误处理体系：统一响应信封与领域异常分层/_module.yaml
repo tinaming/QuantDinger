@@ -1,0 +1,14 @@
+schema_version: 1
+module_path: error_handling
+title: 错误处理体系：统一响应信封与领域异常分层
+scope: []
+source_files:
+    - backend_api_python/app/openapi/schemas/common.py
+    - backend_api_python/app/openapi/blueprint.py
+    - backend_api_python/app/openapi/helpers.py
+    - backend_api_python/app/routes/agent_v1/_helpers.py
+    - backend_api_python/app/routes/agent_v1/_security.py
+    - backend_api_python/app/data_sources/errors.py
+    - mcp_server/src/quantdinger_mcp/security.py
+depends_on: []
+related_to: []

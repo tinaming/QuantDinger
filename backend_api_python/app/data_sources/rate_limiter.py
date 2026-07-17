@@ -177,9 +177,52 @@ def retry_with_backoff(
     return decorator
 
 
-_eastmoney_limiter = RateLimiter(min_interval=2.0, jitter_min=1.0, jitter_max=3.0)
-_tencent_limiter = RateLimiter(min_interval=1.0, jitter_min=0.5, jitter_max=1.5)
-_akshare_limiter = RateLimiter(min_interval=2.0, jitter_min=1.5, jitter_max=3.5)
+class DistributedRateLimiter:
+    """Redis-backed rate limiter for cross-process coordination.
+    Falls back to in-process RateLimiter when Redis is unavailable.
+    """
+
+    def __init__(self, name: str, min_interval: float, jitter_range: tuple = (0, 0)):
+        self._name = name
+        self._min_interval = min_interval
+        self._jitter_range = jitter_range
+        self._fallback = RateLimiter(
+            min_interval=min_interval,
+            jitter_min=jitter_range[0],
+            jitter_max=jitter_range[1],
+        )
+
+    def _get_redis(self):
+        try:
+            from app.config.database import get_redis_client
+            return get_redis_client()
+        except Exception:
+            return None
+
+    def acquire(self):
+        redis = self._get_redis()
+        if redis is None:
+            self._fallback.wait()
+            return
+        key = f"rl:{self._name}"
+        try:
+            # Use SET NX with expiry for distributed rate limiting
+            acquired = redis.set(key, "1", nx=True, ex=max(1, int(self._min_interval)))
+            if not acquired:
+                wait = self._min_interval + random.uniform(*self._jitter_range)
+                time.sleep(wait)
+        except Exception:
+            self._fallback.wait()
+
+    def wait(self) -> float:
+        """Compatibility alias for callers using RateLimiter.wait()."""
+        self.acquire()
+        return 0.0
+
+
+_eastmoney_limiter = DistributedRateLimiter("eastmoney", min_interval=2.0, jitter_range=(1.0, 3.0))
+_tencent_limiter = DistributedRateLimiter("tencent", min_interval=1.0, jitter_range=(0.5, 1.5))
+_akshare_limiter = DistributedRateLimiter("akshare", min_interval=2.0, jitter_range=(1.5, 3.5))
 
 
 def get_eastmoney_limiter() -> RateLimiter:

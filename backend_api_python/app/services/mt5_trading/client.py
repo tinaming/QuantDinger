@@ -181,7 +181,7 @@ class MT5Client:
         side: str,
         volume: float,
         deviation: int = 20,
-        comment: str = "QuantDinger",
+        comment: str = "ChanQuant",
     ) -> OrderResult:
         """
         Place a market order.
@@ -319,7 +319,7 @@ class MT5Client:
         side: str,
         volume: float,
         price: float,
-        comment: str = "QuantDinger",
+        comment: str = "ChanQuant",
     ) -> OrderResult:
         """
         Place a pending limit order.
@@ -447,7 +447,7 @@ class MT5Client:
         ticket: int,
         volume: Optional[float] = None,
         deviation: int = 20,
-        comment: str = "QuantDinger close",
+        comment: str = "ChanQuant close",
     ) -> OrderResult:
         """
         Close an open position.

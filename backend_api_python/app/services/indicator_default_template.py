@@ -1,5 +1,5 @@
 """
-Canonical default indicator templates for the QuantDinger execution contract.
+Canonical default indicator templates for the ChanQuant execution contract.
 
 Used by AI fallback code generation and as the reference for IDE / docs examples.
 See docs/SIGNAL_EXECUTION_STANDARD_CN.md.
@@ -20,7 +20,7 @@ def build_default_indicator_template(
     safe_name = (name or "EMA Four-Way Strategy Template").replace("\\", "\\\\").replace('"', '\\"')
     safe_desc = (description or "").replace("\\", "\\\\").replace('"', '\\"')
     return f'''# ============================================================
-# QuantDinger default indicator template - Pattern B contract v1
+# ChanQuant default indicator template - Pattern B contract v1
 # ------------------------------------------------------------
 # signal_form: four_way    exit_owner: engine    flip_mode: R2
 # Reference: docs/SIGNAL_EXECUTION_STANDARD_CN.md

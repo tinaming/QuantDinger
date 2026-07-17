@@ -28,7 +28,7 @@ def test_api_root(client):
     resp = client.get("/")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data["name"] == "QuantDinger Python API"
+    assert data["name"] == "ChanQuant Python API"
     assert data["status"] == "running"
 
 

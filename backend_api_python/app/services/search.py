@@ -96,9 +96,10 @@ class TavilySearchProvider(BaseSearchProvider):
                 'max_results': max_results,
                 'include_answer': False,
                 'include_raw_content': False,
+                'days': days,
             }
             
-            response = requests.post(url, headers=headers, json=payload, timeout=15)
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
             
             if response.status_code != 200:
                 return SearchResponse(
@@ -483,7 +484,7 @@ class SearXNGSearchProvider(BaseSearchProvider):
 
             headers = {
                 "Accept": "application/json",
-                "User-Agent": "QuantDinger/4.0 SearXNGSearchProvider",
+                "User-Agent": "ChanQuant/4.0 SearXNGSearchProvider",
             }
             response = requests.get(
                 self._search_endpoint(),

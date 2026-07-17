@@ -9,6 +9,18 @@ Pool tuning (all via env, safe defaults):
     DB_POOL_MAX               maxconn or "auto"             default auto
     DB_POOL_ACQUIRE_TIMEOUT   seconds to wait on exhaustion default 10
     DB_POOL_HEALTH_CHECK      "true" / "false"              default "true"
+
+Multi-worker sizing (GUNICORN_WORKERS > 1):
+    Each Gunicorn worker process holds its own connection pool.  Total DB
+    connections ≈ GUNICORN_WORKERS × effective DB_POOL_MAX.  When
+    DB_POOL_MAX=auto the backend probes PostgreSQL max_connections and
+    computes:
+        per_process_cap = (pg_max - reserved - DB_POOL_RESERVE_FOR_OTHER_CLIENTS)
+                          // GUNICORN_WORKERS
+    Example (default SaaS, 2 workers, PG max_connections=100):
+        usable_total = 100 - 0 - 20 = 80
+        per_process_cap = 80 // 2 = 40
+    Single-worker dev (GUNICORN_WORKERS=1) keeps the original behaviour.
 """
 import os
 import time
@@ -73,7 +85,7 @@ DB_POOL_ACQUIRE_TIMEOUT = _env_int("DB_POOL_ACQUIRE_TIMEOUT", 10)
 DB_POOL_HEALTH_CHECK = _env_bool("DB_POOL_HEALTH_CHECK", True)
 DB_POOL_AUTO_CAP = _env_bool("DB_POOL_AUTO_CAP", True)
 DB_POOL_RESERVE_FOR_OTHER_CLIENTS = _env_int("DB_POOL_RESERVE_FOR_OTHER_CLIENTS", 20)
-DB_APPLICATION_NAME = os.getenv("DB_APPLICATION_NAME", "quantdinger_api").strip() or "quantdinger_api"
+DB_APPLICATION_NAME = os.getenv("DB_APPLICATION_NAME", "chanquant_api").strip() or "chanquant_api"
 
 
 def _get_database_url() -> str:
@@ -154,9 +166,9 @@ def _get_connection_pool():
                 maxconn=effective_max,
                 host=params.get('host', 'localhost'),
                 port=params.get('port', 5432),
-                user=params.get('user', 'quantdinger'),
+                user=params.get('user', 'chanquant'),
                 password=params.get('password', ''),
-                dbname=params.get('dbname', 'quantdinger'),
+                dbname=params.get('dbname', 'chanquant'),
                 connect_timeout=10,
                 application_name=DB_APPLICATION_NAME,
                 # Apply timezone at connection establishment so we don't need
@@ -213,9 +225,9 @@ def _probe_pg_connection_limit(params: Dict[str, Any]) -> Optional[Dict[str, int
         probe = psycopg2.connect(
             host=params.get('host', 'localhost'),
             port=params.get('port', 5432),
-            user=params.get('user', 'quantdinger'),
+            user=params.get('user', 'chanquant'),
             password=params.get('password', ''),
-            dbname=params.get('dbname', 'quantdinger'),
+            dbname=params.get('dbname', 'chanquant'),
             connect_timeout=5,
             application_name=f"{DB_APPLICATION_NAME}_pool_probe",
             options="-c timezone=UTC",
@@ -266,7 +278,9 @@ def _resolve_effective_pool_limits(params: Dict[str, Any]) -> tuple[int, int]:
     pg_max = int(limits.get("max_connections") or 0)
     pg_reserved = int(limits.get("superuser_reserved_connections") or 0)
     pg_reserved += int(limits.get("reserved_connections") or 0)
-    workers = _env_int("GUNICORN_WORKERS", 1)
+    # Fallback must match the gunicorn_config.py default so the pool cap
+    # is consistent even when GUNICORN_WORKERS is not explicitly set in env.
+    workers = _env_int("GUNICORN_WORKERS", 2)
     usable_total = max(1, pg_max - pg_reserved - DB_POOL_RESERVE_FOR_OTHER_CLIENTS)
     per_process_cap = max(1, usable_total // max(1, workers))
 

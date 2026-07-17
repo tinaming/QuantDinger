@@ -1,13 +1,13 @@
-# MCP Setup — connect Cursor / Claude Code / Codex to QuantDinger
+﻿# MCP Setup — connect Cursor / Claude Code / Codex to ChanQuant
 
 This is the detailed setup guide for wiring an MCP-capable AI client (Cursor,
-Claude Code, Codex desktop, OpenClaw, NanoBot, …) to a QuantDinger backend.
+Claude Code, Codex desktop, OpenClaw, NanoBot, …) to a ChanQuant backend.
 The root [`README`](../../README.md) gives the 30-second pitch; everything
 below is the actual recipe.
 
-The QuantDinger backend exposes an **Agent Gateway** at `/api/agent/v1`, and a
+The ChanQuant backend exposes an **Agent Gateway** at `/api/agent/v1`, and a
 small MCP server (published on PyPI as
-[`quantdinger-mcp`](https://pypi.org/project/quantdinger-mcp/)) wraps that
+[`ChanQuant-mcp`](https://pypi.org/project/ChanQuant-mcp/)) wraps that
 gateway as Model Context Protocol tools. After one human-issued token, your AI
 client can read markets, manage strategies, run backtests, and (paper-only by
 default) place trades — without ever seeing your exchange keys or your admin
@@ -23,16 +23,16 @@ JWT.
 ## Step 1 — Pick a backend, then issue an agent token
 
 The MCP client config in Step 2 is **identical** for both backends — only the
-value of `QUANTDINGER_BASE_URL` changes.
+value of `ChanQuant_BASE_URL` changes.
 
-### Path A · Hosted ([ai.quantdinger.com](https://ai.quantdinger.com)) — 30 seconds
+### Path A · Hosted ([ai.ChanQuant.com](https://ai.ChanQuant.com)) — 30 seconds
 
-Best for: trying QuantDinger from Cursor / Claude Code without installing
+Best for: trying ChanQuant from Cursor / Claude Code without installing
 anything; demos; research notebooks against shared datasets.
 
-1. Sign up at [ai.quantdinger.com](https://ai.quantdinger.com).
+1. Sign up at [ai.ChanQuant.com](https://ai.ChanQuant.com).
 2. Open **Profile → My Agent Token** → **Issue Token**.
-3. `QUANTDINGER_BASE_URL=https://ai.quantdinger.com`.
+3. `ChanQuant_BASE_URL=https://ai.ChanQuant.com`.
 
 The hosted SaaS instance allows **T** (Trading) scope for each user’s own
 tenant. Tokens are **paper-only by default**; live execution still requires
@@ -56,7 +56,7 @@ execution.
 
 1. Bring up the stack per the [root README's "Try in 2 minutes"](../../README.md#try-in-2-minutes).
 2. Log in, open **Profile → My Agent Token** (admins may also use **Sidebar → Agent Tokens** at `/agent-tokens` for audit).
-3. `QUANTDINGER_BASE_URL=http://localhost:8888` (or your LAN URL).
+3. `ChanQuant_BASE_URL=http://localhost:8888` (or your LAN URL).
 
 You decide scopes (incl. **T**), market/instrument allowlists, rate limits,
 and whether `AGENT_LIVE_TRADING_ENABLED=true` is ever flipped.
@@ -82,19 +82,19 @@ everywhere:
 ### A. Local stdio (Cursor, Claude Code, Codex desktop, etc.)
 
 The server is published on PyPI as
-[`quantdinger-mcp`](https://pypi.org/project/quantdinger-mcp/). Drop this into
+[`ChanQuant-mcp`](https://pypi.org/project/ChanQuant-mcp/). Drop this into
 `.cursor/mcp.json`, `~/.config/claude/claude_desktop_config.json`, or your
 client's equivalent (template: [`cursor-mcp.example.json`](cursor-mcp.example.json)):
 
 ```json
 {
   "mcpServers": {
-    "quantdinger": {
+    "ChanQuant": {
       "command": "uvx",
-      "args": ["quantdinger-mcp"],
+      "args": ["ChanQuant-mcp"],
       "env": {
-        "QUANTDINGER_BASE_URL":    "http://localhost:8888",
-        "QUANTDINGER_AGENT_TOKEN": "qd_agent_xxxxxxxx"
+        "ChanQuant_BASE_URL":    "http://localhost:8888",
+        "ChanQuant_AGENT_TOKEN": "qd_agent_xxxxxxxx"
       }
     }
   }
@@ -106,17 +106,17 @@ downloads + caches the package on first run; no virtualenv setup. If you
 prefer pip:
 
 ```bash
-pip install quantdinger-mcp
-# then use {"command": "quantdinger-mcp", "args": []}
+pip install ChanQuant-mcp
+# then use {"command": "ChanQuant-mcp", "args": []}
 ```
 
 For Claude Code's CLI helper:
 
 ```bash
-claude mcp add quantdinger \
-  --env QUANTDINGER_BASE_URL=http://localhost:8888 \
-  --env QUANTDINGER_AGENT_TOKEN=qd_agent_xxxxxxxx \
-  -- uvx quantdinger-mcp
+claude mcp add ChanQuant \
+  --env ChanQuant_BASE_URL=http://localhost:8888 \
+  --env ChanQuant_AGENT_TOKEN=qd_agent_xxxxxxxx \
+  -- uvx ChanQuant-mcp
 ```
 
 ### B. Remote HTTP (cloud agents, browser IDEs, anything that can't spawn subprocesses)
@@ -124,16 +124,16 @@ claude mcp add quantdinger \
 Run the MCP server as a long-lived service, then point clients at the URL:
 
 ```bash
-QUANTDINGER_BASE_URL=https://your-host \
-QUANTDINGER_AGENT_TOKEN=qd_agent_xxxxxxxx \
-QUANTDINGER_MCP_TRANSPORT=streamable-http \
-QUANTDINGER_MCP_HOST=0.0.0.0 \
-QUANTDINGER_MCP_PORT=7800 \
-quantdinger-mcp
+ChanQuant_BASE_URL=https://your-host \
+ChanQuant_AGENT_TOKEN=qd_agent_xxxxxxxx \
+ChanQuant_MCP_TRANSPORT=streamable-http \
+ChanQuant_MCP_HOST=0.0.0.0 \
+ChanQuant_MCP_PORT=7800 \
+ChanQuant-mcp
 # clients connect to http://your-host:7800
 ```
 
-Use `QUANTDINGER_MCP_TRANSPORT=sse` instead for clients that only speak the
+Use `ChanQuant_MCP_TRANSPORT=sse` instead for clients that only speak the
 older SSE transport. Put a reverse proxy in front for TLS and IP allowlisting.
 
 ---
@@ -169,7 +169,7 @@ MCP still does **not** expose admin token APIs or credential vault access,
 even if your token has those scopes.
 
 Long-running jobs: prefer MCP `wait_for_job` or bounded `stream_job_until_done`
-(capped by `QUANTDINGER_MCP_JOB_STREAM_MAX_*` env vars). Raw Gateway SSE is
+(capped by `ChanQuant_MCP_JOB_STREAM_MAX_*` env vars). Raw Gateway SSE is
 still available at `GET /api/agent/v1/jobs/{id}/stream` for custom clients.
 
 `submit_ai_optimize` requires `confirm_llm_usage=true` in MCP to acknowledge
@@ -180,11 +180,11 @@ scope class, status code, and duration.
 
 ---
 
-## Using QuantDinger as a *coding* agent context
+## Using ChanQuant as a *coding* agent context
 
 If you're editing this repo with Cursor / Claude Code / Codex, the repo also
 ships a Cursor Skill at
-[`.cursor/skills/quantdinger-agent-workflow/SKILL.md`](../../.cursor/skills/quantdinger-agent-workflow/SKILL.md)
+[`.cursor/skills/ChanQuant-agent-workflow/SKILL.md`](../../.cursor/skills/ChanQuant-agent-workflow/SKILL.md)
 that explains the Agent Gateway internals, red lines (no real keys, paper-only
 by default), and where to verify changes. Read
 [`AGENT_ENVIRONMENT_DESIGN.md`](AGENT_ENVIRONMENT_DESIGN.md) for the full
@@ -201,4 +201,4 @@ layered-contracts model.
 - [OpenAPI 3.0 spec](agent-openapi.json) — machine-readable contract for
   `/api/agent/v1`.
 - [MCP server README](../../mcp_server/README.md) — installation, env vars,
-  tool list, and common tool-call examples for the `quantdinger-mcp` package.
+  tool list, and common tool-call examples for the `ChanQuant-mcp` package.

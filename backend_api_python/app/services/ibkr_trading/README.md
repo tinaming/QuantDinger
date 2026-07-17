@@ -1,4 +1,4 @@
-# Interactive Brokers Trading Module
+﻿# Interactive Brokers Trading Module
 
 Supports US stocks trading via TWS or IB Gateway.
 
@@ -34,7 +34,7 @@ Interactive Brokers allows **one API connection per `clientId`**. If two program
 - `POST /api/ibkr/connect` (admin UI test) defaults to **clientId=1**.
 - Strategy / live-order clients use **`ibkr_client_id` from credentials** (default **7** when omitted) or env **`IBKR_ORDER_CLIENT_ID`** (default `7`).
 
-Keep manual testing on **1** and automation on **7** (or any other unused id). If you still see drops on Windows, ensure `ib_insync` runs with asyncio patched (QuantDinger calls `util.patchAsyncio()` at app startup).
+Keep manual testing on **1** and automation on **7** (or any other unused id). If you still see drops on Windows, ensure `ib_insync` runs with asyncio patched (ChanQuant calls `util.patchAsyncio()` at app startup).
 
 ## API Endpoints
 

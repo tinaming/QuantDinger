@@ -1,4 +1,4 @@
-# QuantDinger Backend Module Boundaries
+﻿# ChanQuant Backend Module Boundaries
 
 This document defines target ownership for the backend. It does not require an
 immediate rewrite. It is the contract to follow as existing code is decomposed.

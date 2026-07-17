@@ -1,8 +1,8 @@
-# Contributing to QuantDinger
+﻿# Contributing to ChanQuant
 
-Thanks for your interest in contributing to **QuantDinger**.
+Thanks for your interest in contributing to **ChanQuant**.
 
-QuantDinger is a **local-first, private AI-driven quantitative trading workspace**.
+ChanQuant is a **local-first, private AI-driven quantitative trading workspace**.
 It is built for people who care about:
 - data sovereignty
 - local execution
@@ -15,7 +15,7 @@ This document explains **how to contribute** and **what contribution means here*
 
 ## ⚠️ Please Read First
 
-QuantDinger is **not a DAO**.
+ChanQuant is **not a DAO**.
 There is **no token**, **no airdrop**, and **no financial incentive** at this stage.
 
 If you are looking for short-term rewards, promotions, or token speculation,
@@ -32,7 +32,7 @@ you are very welcome here.
 
 ## 🧭 What Contribution Means
 
-Contributing to QuantDinger means creating **public, verifiable work**.
+Contributing to ChanQuant means creating **public, verifiable work**.
 
 Your contributions:
 - are attributed publicly on GitHub
@@ -102,7 +102,7 @@ This repository contains:
 - `backend_api_python/`: Flask backend + strategy runtime
 - `docker-compose.yml` / `docker-compose.ghcr.yml`: deployment stacks
 
-The web UI source lives in the separate private **QuantDinger-Vue** repo, which publishes `ghcr.io/brokermr810/quantdinger-frontend` to GHCR on every `v*` tag — both Compose files pull that image directly.
+The web UI source lives in the separate private **ChanQuant-Vue** repo, which publishes `ghcr.io/brokermr810/ChanQuant-frontend` to GHCR on every `v*` tag — both Compose files pull that image directly.
 
 ### Backend (Python)
 
@@ -115,9 +115,9 @@ python run.py
 
 ### Frontend
 
-The SPA lives in the private **QuantDinger-Vue** repo. Tagging a release there (`git tag vX.Y.Z && git push --tags`) triggers `.github/workflows/release-frontend.yml`, which builds a multi-arch image and pushes it to `ghcr.io/brokermr810/quantdinger-frontend`. No frontend artefacts are committed here — pin the consumed tag via `IMAGE_TAG` (or `FRONTEND_TAG` for a per-side override) in a root-level `.env`.
+The SPA lives in the private **ChanQuant-Vue** repo. Tagging a release there (`git tag vX.Y.Z && git push --tags`) triggers `.github/workflows/release-frontend.yml`, which builds a multi-arch image and pushes it to `ghcr.io/brokermr810/ChanQuant-frontend`. No frontend artefacts are committed here — pin the consumed tag via `IMAGE_TAG` (or `FRONTEND_TAG` for a per-side override) in a root-level `.env`.
 
-For local iteration without publishing, clone the Vue repo into `./QuantDinger-Vue/` (gitignored) and run `docker compose -f docker-compose.yml -f docker-compose.build.yml up --build` — see **DEVELOPMENT.md → Building frontend from local source**.
+For local iteration without publishing, clone the Vue repo into `./ChanQuant-Vue/` (gitignored) and run `docker compose -f docker-compose.yml -f docker-compose.build.yml up --build` — see **DEVELOPMENT.md → Building frontend from local source**.
 
 ---
 
@@ -169,7 +169,7 @@ Bug fixes should include a minimal regression test when practical.
 
 ## API documentation
 
-QuantDinger uses **OpenAPI 3** as the HTTP contract SSOT.
+ChanQuant uses **OpenAPI 3** as the HTTP contract SSOT.
 
 | Surface | Spec | When to update |
 |---------|------|----------------|
@@ -209,7 +209,7 @@ under the project's license (see LICENSE).
 
 ## 🧠 A Note on the Future
 
-QuantDinger may explore incentive or alignment mechanisms in the future.
+ChanQuant may explore incentive or alignment mechanisms in the future.
 Nothing is promised, scheduled, or guaranteed.
 
 What is guaranteed:

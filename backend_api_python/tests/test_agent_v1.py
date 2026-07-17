@@ -52,7 +52,7 @@ def test_health_is_public(client):
     resp = client.get("/api/agent/v1/health")
     assert resp.status_code == 200
     body = resp.get_json()
-    assert body["service"] == "quantdinger-agent-gateway"
+    assert body["service"] == "chanquant-agent-gateway"
     assert body["version"] == "v1"
     assert body["status"] == "ok"
 

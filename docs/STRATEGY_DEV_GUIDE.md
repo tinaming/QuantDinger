@@ -1,4 +1,4 @@
-# QuantDinger v3 Python Strategy Development Guide
+﻿# ChanQuant v3 Python Strategy Development Guide
 
 > **Platform contract (required reading)**: [Signal & Execution Standard v1](./SIGNAL_EXECUTION_STANDARD.md) — backtest/live alignment, two-way vs four-way signals, exit ownership, and release checklist. This guide focuses on tutorials and examples.
 
@@ -6,7 +6,7 @@ This guide is written from a **developer** point of view. Its goal is not only t
 
 **How do I build an indicator strategy that is clear, backtestable, and ready to become a saved trading strategy?**
 
-QuantDinger currently supports two Python authoring models:
+ChanQuant currently supports two Python authoring models:
 
 - **IndicatorStrategy**: dataframe-based code for indicator research, chart rendering, and signal-style backtests.
 - **ScriptStrategy**: event-driven code for runtime execution, strategy backtests, and live trading.
@@ -535,7 +535,7 @@ What this example teaches:
 
 ### 5.1 A platform-UI-aligned example
 
-This version is closer to how developers actually use QuantDinger today:
+This version is closer to how developers actually use ChanQuant today:
 
 - tune common values through `# @param`
 - expose default stop / take-profit / entry sizing through `# @strategy`

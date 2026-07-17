@@ -1,12 +1,12 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "QuantDinger CoinOS Skills API",
+    "title": "ChanQuant CoinOS Skills API",
     "version": "1.0.0",
     "description": "CoinOS Skills integration — crypto market data (AiCoin 200+ exchanges), CEX trading (Binance/OKX/Bybit/etc.), Hyperliquid whale analytics, Freqtrade strategy management, on-chain DEX (OKX Web3), and exchange account management.\n\nPowered by [coinos-skills](https://github.com/aicoincom/coinos-skills).",
     "contact": {
-      "name": "QuantDinger",
-      "url": "https://github.com/brokermr810/quantdinger"
+      "name": "ChanQuant",
+      "url": "https://github.com/brokermr810/chanquant"
     },
     "license": {
       "name": "See repository LICENSE"

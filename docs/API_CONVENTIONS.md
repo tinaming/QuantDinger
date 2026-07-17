@@ -1,6 +1,6 @@
-﻿# QuantDinger API conventions (OpenAPI SSOT)
+﻿# ChanQuant API conventions (OpenAPI SSOT)
 
-This document defines the **contract rules** for QuantDinger HTTP APIs.
+This document defines the **contract rules** for ChanQuant HTTP APIs.
 Machine-readable specs:
 
 | Spec | Path | Audience |
@@ -17,7 +17,7 @@ Browse the human spec locally: open [`docs/api/index.html`](api/index.html) (Red
 ### Human Web API (`/api/...`)
 
 - Authenticated with **user JWT** (`Authorization: Bearer <jwt>`) unless noted.
-- Used by the QuantDinger web/mobile UI.
+- Used by the ChanQuant web/mobile UI.
 
 ### Agent Gateway (`/api/agent/v1/...`)
 
@@ -84,7 +84,7 @@ Tag or extension every operation when migrating to flask-smorest:
 | Tier | OpenAPI | Who may rely on it |
 |------|---------|-------------------|
 | **Public** | default tag, no extension | Open-source community, third-party clients |
-| **Internal** | `x-visibility: internal` | QuantDinger product; may change without notice |
+| **Internal** | `x-visibility: internal` | ChanQuant product; may change without notice |
 | **Private** | `x-visibility: private` | Admin / sensitive; minimal public docs |
 
 **Public modules (migration priority):** `community`, `market`, `indicator`, `backtest`, `global-market`, `health`.

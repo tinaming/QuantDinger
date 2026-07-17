@@ -1,4 +1,4 @@
-# Alpaca Trading Module
+﻿# Alpaca Trading Module
 
 Trade US stocks, ETFs, and crypto via [Alpaca Markets](https://alpaca.markets) REST API.
 Mirrors `ibkr_trading/` module structure for consistency.
@@ -134,7 +134,7 @@ All endpoints require `@login_required`:
 
 ## Troubleshooting: WebSocket `400 invalid syntax`
 
-QuantDinger **connection test** and live orders use the **REST Trading API** (`TradingClient.get_account()`), **not** the market-data WebSocket at `wss://stream.data.alpaca.markets/...`.
+ChanQuant **connection test** and live orders use the **REST Trading API** (`TradingClient.get_account()`), **not** the market-data WebSocket at `wss://stream.data.alpaca.markets/...`.
 
 If you see Alpaca error **code 400 / invalid syntax** from the [streaming docs](https://docs.alpaca.markets/us/docs/streaming-market-data#authentication), that is almost always from a **WebSocket client** (custom script, another app, or a chart feed), not from `/api/alpaca/connect` or `/strategies/test-connection`.
 

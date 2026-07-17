@@ -1,4 +1,4 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 This file provides guidance to Qoder (qoder.com) when working with code in this repository.
 
@@ -6,15 +6,15 @@ This file provides guidance to Qoder (qoder.com) when working with code in this 
 
 ## Project Overview
 
-QuantDinger is a self-hosted, open-source AI quant trading infrastructure. The stack is:
+ChanQuant is a self-hosted, open-source AI quant trading infrastructure. The stack is:
 
 - **Backend**: Python 3.12 / Flask / Gunicorn (in `backend_api_python/`)
 - **Database**: PostgreSQL 16 + Redis 7
 - **Frontend**: Vue SPA served by Nginx (prebuilt image from GHCR, separate repo)
-- **MCP Server**: `quantdinger-mcp` Python package (in `mcp_server/`)
+- **MCP Server**: `ChanQuant-mcp` Python package (in `mcp_server/`)
 - **Deployment**: Docker Compose
 
-The backend is the primary codebase in this repo. The frontend source lives in a sibling repo (`QuantDinger-Vue`) and is pulled as a prebuilt image by default.
+The backend is the primary codebase in this repo. The frontend source lives in a sibling repo (`ChanQuant-Vue`) and is pulled as a prebuilt image by default.
 
 ---
 
@@ -24,7 +24,7 @@ The backend is the primary codebase in this repo. The frontend source lives in a
 
 ```powershell
 # Start the backend dev server (Flask threaded mode)
-cd d:\aaron\miniso\QuantDinger\backend_api_python
+cd d:\aaron\miniso\ChanQuant\backend_api_python
 python run.py
 ```
 
@@ -47,7 +47,7 @@ docker compose logs -f backend
 
 ```powershell
 # Run all tests from backend_api_python/
-cd d:\aaron\miniso\QuantDinger\backend_api_python
+cd d:\aaron\miniso\ChanQuant\backend_api_python
 pytest
 
 # Run a single test file
@@ -66,7 +66,7 @@ Tests use `conftest.py` which sets `SKIP_STARTUP_HOOKS=1` and `CACHE_ENABLED=fal
 
 ```powershell
 # Run structural quality guardrail (checks file sizes, banned patterns, etc.)
-cd d:\aaron\miniso\QuantDinger\backend_api_python
+cd d:\aaron\miniso\ChanQuant\backend_api_python
 python scripts/backend_quality_check.py
 ```
 
@@ -83,9 +83,9 @@ python scripts/bump_version.py 3.0.32
 
 ```powershell
 # Install and run MCP server locally
-cd d:\aaron\miniso\QuantDinger\mcp_server
+cd d:\aaron\miniso\ChanQuant\mcp_server
 pip install -e .
-quantdinger-mcp
+ChanQuant-mcp
 ```
 
 ---
@@ -159,7 +159,7 @@ Use `SKIP_STARTUP_HOOKS=1` to disable all hooks (used in tests).
 
 ### Dual Strategy Runtimes
 
-QuantDinger supports two strategy authoring models:
+ChanQuant supports two strategy authoring models:
 
 1. **IndicatorStrategy** — vectorized dataframe scripts producing `buy`/`sell` signal columns; backtests run in `app/services/backtest.py`
 2. **ScriptStrategy** — event-driven `on_bar(ctx, bar)` scripts with explicit `ctx.buy()` / `ctx.sell()` calls; runtime in `app/services/strategy_script_runtime.py`
@@ -201,7 +201,7 @@ Key areas:
 | Auth | `SECRET_KEY` (must not be default), `ADMIN_USER`, `ADMIN_PASSWORD` |
 | Database | `DATABASE_URL`, `DB_POOL_MIN`, `DB_POOL_MAX` |
 | LLM/AI | `LLM_PROVIDER`, provider-specific keys (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, etc.) |
-| Agent Gateway | `AGENT_LIVE_TRADING_ENABLED`, `QUANTDINGER_DEPLOYMENT_MODE` |
+| Agent Gateway | `AGENT_LIVE_TRADING_ENABLED`, `ChanQuant_DEPLOYMENT_MODE` |
 | Workers | `ENABLE_PENDING_ORDER_WORKER`, `ENABLE_PORTFOLIO_MONITOR`, `ENABLE_REFLECTION_WORKER` |
 | Proxy | `PROXY_URL` (for exchange traffic), `LLM_PROXY_URL` (separate for LLM providers) |
 
@@ -234,12 +234,12 @@ See `docs/agent/AI_INTEGRATION_DESIGN.md` for the full design document.
 
 ## MCP Server
 
-The `mcp_server/` directory contains the `quantdinger-mcp` Python package:
+The `mcp_server/` directory contains the `ChanQuant-mcp` Python package:
 
 - Wraps the Agent Gateway as Model Context Protocol tools
-- Published to PyPI as `quantdinger-mcp`
+- Published to PyPI as `ChanQuant-mcp`
 - Supports stdio, SSE, and streamable-http transports
-- Requires an agent token (`QUANTDINGER_AGENT_TOKEN`) and base URL (`QUANTDINGER_BASE_URL`)
+- Requires an agent token (`ChanQuant_AGENT_TOKEN`) and base URL (`ChanQuant_BASE_URL`)
 
 ---
 
@@ -259,7 +259,7 @@ Exchange API keys stored in `qd_exchange_credentials.encrypted_config` are encry
 
 ### SaaS Mode Guard
 
-When `QUANTDINGER_DEPLOYMENT_MODE=saas`, the Agent Gateway enforces:
+When `ChanQuant_DEPLOYMENT_MODE=saas`, the Agent Gateway enforces:
 - T-scope (trading) rejected at token issuance with 403
 - `paper_only=true` forced on all tokens
 

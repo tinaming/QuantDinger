@@ -1,7 +1,7 @@
 """
 Symbol Mapping and Conversion
 
-Converts QuantDinger system symbols to IB contract format.
+Converts ChanQuant system symbols to IB contract format.
 """
 
 from typing import Tuple, Optional

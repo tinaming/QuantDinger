@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "quantdinger": {
+      "command": "C:\\Users\\aaron\\AppData\\Roaming\\Python\\Python313\\Scripts\\quantdinger-mcp.exe",
+      "env": {
+        "QUANTDINGER_BASE_URL": "http://localhost:5000",
+        "QUANTDINGER_AGENT_TOKEN": "qd_agent_0m7iCb06EDi6zIigxQm2CYO_ayUEnR2NUB5ZC6J23mA"
+      }
+    }
+  }
+}

@@ -1,14 +1,14 @@
-# Installation Troubleshooting / 安装排错指南
+﻿# Installation Troubleshooting / 安装排错指南
 
-This guide collects common first-time Docker installation issues for QuantDinger, especially on Windows with Docker Desktop and a local proxy.
+This guide collects common first-time Docker installation issues for ChanQuant, especially on Windows with Docker Desktop and a local proxy.
 
-本文整理 QuantDinger 首次 Docker 安装时常见的问题，尤其适用于 Windows、Docker Desktop、本地代理环境。
+本文整理 ChanQuant 首次 Docker 安装时常见的问题，尤其适用于 Windows、Docker Desktop、本地代理环境。
 
 ## Quick Checks / 快速检查
 
-Run these commands from the QuantDinger repository root, next to `docker-compose.yml`.
+Run these commands from the ChanQuant repository root, next to `docker-compose.yml`.
 
-请在 QuantDinger 仓库根目录执行，也就是 `docker-compose.yml` 所在目录。
+请在 ChanQuant 仓库根目录执行，也就是 `docker-compose.yml` 所在目录。
 
 ```bash
 docker compose pull
@@ -194,7 +194,7 @@ If your proxy client supports it, enable `Allow LAN` or `Allow connections from 
 
 ```text
 dependency postgres failed to start
-container quantdinger-db is unhealthy
+container ChanQuant-db is unhealthy
 ```
 
 Postgres logs show:

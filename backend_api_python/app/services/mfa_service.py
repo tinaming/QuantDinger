@@ -41,7 +41,7 @@ def _env_int(key: str, default: int, min_value: int = 1, max_value: int = 10_000
 
 
 def _hash_secret(value: str) -> str:
-    salt = (Config.SECRET_KEY or os.getenv("SECRET_KEY") or "quantdinger").encode("utf-8")
+    salt = (Config.SECRET_KEY or os.getenv("SECRET_KEY") or "chanquant").encode("utf-8")
     return hmac.new(salt, value.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
@@ -128,7 +128,7 @@ class MfaService:
 
         pyotp, qrcode = self._load_totp_libs()
         secret = pyotp.random_base32()
-        issuer = (os.getenv("BRAND_APP_NAME") or "QuantDinger").strip() or "QuantDinger"
+        issuer = (os.getenv("BRAND_APP_NAME") or "ChanQuant").strip() or "ChanQuant"
         account_label = (label or f"user-{user_id}").strip()
         uri = pyotp.TOTP(secret).provisioning_uri(name=account_label, issuer_name=issuer)
         qr_image = self._make_qr_data_url(qrcode, uri)

@@ -51,7 +51,7 @@ def build_webhook_text(payload: Dict[str, Any]) -> Tuple[str, str]:
     explicit_title = str(data.get("title") or "").strip()
     explicit_msg = str(data.get("message") or "").strip()
     if explicit_title or explicit_msg:
-        return (explicit_title or "QuantDinger"), (explicit_msg or "")
+        return (explicit_title or "ChanQuant"), (explicit_msg or "")
 
     strategy = data.get("strategy") or {}
     instrument = data.get("instrument") or {}
@@ -70,7 +70,7 @@ def build_webhook_text(payload: Dict[str, Any]) -> Tuple[str, str]:
         title_bits.append(symbol)
     if signal_type:
         title_bits.append(signal_type.upper())
-    title = " · ".join(title_bits) if title_bits else "QuantDinger Signal"
+    title = " · ".join(title_bits) if title_bits else "ChanQuant Signal"
 
     body_lines: List[str] = []
     if strategy_name:

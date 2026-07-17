@@ -1,4 +1,4 @@
-# QuantDinger — Development Guide
+﻿# ChanQuant — Development Guide
 
 ## Prerequisites
 
@@ -6,14 +6,14 @@
 |------|---------|-------|
 | Docker & Docker Compose | 20+ | required for the default setup |
 | Python | 3.10+ | only if running backend outside Docker |
-| Node.js | 22 LTS | only if you maintain the private QuantDinger-Vue or mobile source repos |
+| Node.js | 22 LTS | only if you maintain the private ChanQuant-Vue or mobile source repos |
 
 ## Quick Start (Docker)
 
 ```bash
 # 1. Clone
-git clone https://github.com/<your-org>/quantdinger.git
-cd quantdinger
+git clone https://github.com/<your-org>/ChanQuant.git
+cd ChanQuant
 
 # 2. Configure
 cp backend_api_python/env.example backend_api_python/.env
@@ -39,7 +39,7 @@ The stack includes:
 ## Project Structure
 
 ```
-quantdinger/
+ChanQuant/
 ├── backend_api_python/          # Flask API
 │   ├── app/
 │   │   ├── config/              # Settings, API keys, DB config
@@ -54,7 +54,7 @@ quantdinger/
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── docs/                        # Changelog, architecture notes
-├── docker-compose.yml           # frontend service pulls ghcr.io/.../quantdinger-frontend
+├── docker-compose.yml           # frontend service pulls ghcr.io/.../ChanQuant-frontend
 ├── docker-compose.ghcr.yml      # backend, frontend, and mobile pulled from GHCR (zero-clone deploy)
 └── README.md
 ```
@@ -73,15 +73,15 @@ The dev server starts on `http://localhost:5000` with auto-reload.
 
 ## Frontend (private Vue repository)
 
-The open-source tree **does not** contain Vue source or build artefacts. UI work happens in the private **QuantDinger-Vue** repo. Releases are fully automated:
+The open-source tree **does not** contain Vue source or build artefacts. UI work happens in the private **ChanQuant-Vue** repo. Releases are fully automated:
 
 ```bash
-# In QuantDinger-Vue
+# In ChanQuant-Vue
 git tag v3.0.9
 git push origin v3.0.9
 ```
 
-The `release-frontend.yml` workflow there builds `linux/amd64 + linux/arm64` images via buildx and pushes them to `ghcr.io/brokermr810/quantdinger-frontend`, tagged with the semver value, `{major}.{minor}`, and `latest`.
+The `release-frontend.yml` workflow there builds `linux/amd64 + linux/arm64` images via buildx and pushes them to `ghcr.io/brokermr810/ChanQuant-frontend`, tagged with the semver value, `{major}.{minor}`, and `latest`.
 
 This repo's `docker-compose.yml` (and `docker-compose.ghcr.yml`) references that image by default. To pin a version while testing:
 
@@ -103,19 +103,19 @@ The container reads `BACKEND_URL` at start time and substitutes it into the ngin
 
 ### Building frontend from local source
 
-For iterating on Vue source (theme tweaks, debugging, customised UI), drop the source into the gitignored `./QuantDinger-Vue/` slot at the repo root and layer the `docker-compose.build.yml` override on top. The main `docker-compose.yml` only declares `image:` for frontend (so users who only pull never need the directory to exist); the override file adds the `build:` block:
+For iterating on Vue source (theme tweaks, debugging, customised UI), drop the source into the gitignored `./ChanQuant-Vue/` slot at the repo root and layer the `docker-compose.build.yml` override on top. The main `docker-compose.yml` only declares `image:` for frontend (so users who only pull never need the directory to exist); the override file adds the `build:` block:
 
 ```bash
-# Expected layout — clone QuantDinger-Vue into ./QuantDinger-Vue/ at this repo root:
-#   QuantDinger/
-#     QuantDinger-Vue/                <- gitignored; clone goes here
+# Expected layout — clone ChanQuant-Vue into ./ChanQuant-Vue/ at this repo root:
+#   ChanQuant/
+#     ChanQuant-Vue/                <- gitignored; clone goes here
 #     backend_api_python/
 #     docker-compose.yml
 #     docker-compose.build.yml        <- enables local frontend build
 
-git clone https://github.com/brokermr810/QuantDinger-Vue.git QuantDinger-Vue
+git clone https://github.com/brokermr810/ChanQuant-Vue.git ChanQuant-Vue
 
-# Build frontend from ./QuantDinger-Vue, pull everything else:
+# Build frontend from ./ChanQuant-Vue, pull everything else:
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 # Rebuild after editing Vue source:
@@ -129,13 +129,13 @@ Tip: drop `COMPOSE_FILE=docker-compose.yml:docker-compose.build.yml` into your r
 
 Key behaviour:
 
-- **Without the override**: Compose pulls `ghcr.io/.../quantdinger-frontend:<tag>` as usual; `./QuantDinger-Vue/` does not need to exist.
-- **With the override**: Compose builds from `./QuantDinger-Vue/` (or `FRONTEND_SRC_PATH` if set) and tags the result with whatever `FRONTEND_TAG` / `IMAGE_TAG` resolves to. The locally built image then satisfies plain `docker compose up` for subsequent runs until you `docker compose pull frontend` to overwrite it.
+- **Without the override**: Compose pulls `ghcr.io/.../ChanQuant-frontend:<tag>` as usual; `./ChanQuant-Vue/` does not need to exist.
+- **With the override**: Compose builds from `./ChanQuant-Vue/` (or `FRONTEND_SRC_PATH` if set) and tags the result with whatever `FRONTEND_TAG` / `IMAGE_TAG` resolves to. The locally built image then satisfies plain `docker compose up` for subsequent runs until you `docker compose pull frontend` to overwrite it.
 
-Source path override (keep the Vue clone somewhere else than `./QuantDinger-Vue/`):
+Source path override (keep the Vue clone somewhere else than `./ChanQuant-Vue/`):
 
 ```bash
-FRONTEND_SRC_PATH=/abs/path/to/QuantDinger-Vue \
+FRONTEND_SRC_PATH=/abs/path/to/ChanQuant-Vue \
   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 

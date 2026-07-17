@@ -14,6 +14,6 @@ def local_desktop_brokers_allowed() -> bool:
 def desktop_broker_cloud_reject_message() -> str:
     return (
         "This server has disabled IBKR local desktop broker access "
-        "(requires local TWS or IB Gateway). Deploy QuantDinger on your own "
+        "(requires local TWS or IB Gateway). Deploy ChanQuant on your own "
         "machine or private server and install IBKR TWS/Gateway."
     )

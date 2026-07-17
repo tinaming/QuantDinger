@@ -28,7 +28,7 @@ def _fetch_yahoo_chart_quote(symbol: str) -> Optional[Dict[str, Any]]:
         resp = requests.get(
             f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}",
             params={"interval": "1d", "range": "5d"},
-            headers={"User-Agent": "Mozilla/5.0 (compatible; QuantDinger/1.0)"},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; ChanQuant/1.0)"},
             timeout=10,
         )
         resp.raise_for_status()
@@ -60,7 +60,7 @@ def _fetch_stooq_us_quote(symbol: str) -> Optional[Dict[str, Any]]:
         resp = requests.get(
             "https://stooq.com/q/l/",
             params={"s": sym, "f": "sd2t2ohlcv", "h": "", "e": "csv"},
-            headers={"User-Agent": "Mozilla/5.0 (compatible; QuantDinger/1.0)"},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; ChanQuant/1.0)"},
             timeout=8,
         )
         resp.raise_for_status()

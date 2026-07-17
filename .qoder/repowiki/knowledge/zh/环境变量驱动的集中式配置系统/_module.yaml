@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: configuration_system
+title: 环境变量驱动的集中式配置系统
+scope: []
+source_files:
+    - backend_api_python/app/config/settings.py
+    - backend_api_python/app/config/api_keys.py
+    - backend_api_python/app/config/database.py
+    - backend_api_python/app/config/data_sources.py
+    - backend_api_python/app/utils/config_loader.py
+    - backend_api_python/run.py
+    - backend_api_python/app/routes/settings.py
+    - backend_api_python/env.example
+depends_on: []
+related_to: []

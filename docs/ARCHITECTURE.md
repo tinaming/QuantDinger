@@ -1,4 +1,4 @@
-# QuantDinger Backend Architecture
+﻿# ChanQuant Backend Architecture
 
 This document is the practical map for contributors and AI coding agents. It
 explains where code belongs today and the target direction for gradual cleanup.
@@ -90,7 +90,7 @@ When a route starts to need helpers, move the helpers to a service module first.
 
 ## Adapter Rules
 
-- Adapters normalize third-party APIs into QuantDinger contracts.
+- Adapters normalize third-party APIs into ChanQuant contracts.
 - Adapters should not know about users, JWTs, Flask, or frontend wording.
 - Exchange-specific error handling stays near the adapter.
 - Business services decide whether an adapter error is retryable or user-facing.

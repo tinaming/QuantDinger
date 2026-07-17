@@ -21,7 +21,7 @@ os.environ.setdefault("SKIP_STARTUP_HOOKS", "1")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Sync QuantDinger local symbol master data")
+    parser = argparse.ArgumentParser(description="Sync ChanQuant local symbol master data")
     parser.add_argument(
         "--markets",
         nargs="*",
