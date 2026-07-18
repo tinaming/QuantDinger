@@ -132,12 +132,6 @@ class DataSourceFactory:
             raw,
         )
         return raw
-        logger.warning(
-            "DataSourceFactory.normalize_market(): unknown market %r — "
-            "passing through as-is; downstream get_source() will likely fail.",
-            raw,
-        )
-        return raw
 
     @classmethod
     def get_source(cls, market: str) -> BaseDataSource:
@@ -168,7 +162,7 @@ class DataSourceFactory:
             return cls.get_source("Crypto")
         if key in ("futures",):
             return cls.get_source("Futures")
-        if key in ("forex", "fx"):
+        if key in ("forex", "fx", "mt5"):
             return cls.get_source("Forex")
         if key in ("usstock", "us_stocks", "stock", "stocks", "ibkr", "alpaca"):
             return cls.get_source("USStock")
@@ -189,8 +183,7 @@ class DataSourceFactory:
             from app.data_sources.crypto import CryptoDataSource
             return CryptoDataSource()
         elif market == 'CNStock':
-            from app.data_sources.cn_stock import CNStockDataSource
-            return CNStockDataSource()
+            return cls._create_cn_stock_source()
         elif market == 'HKStock':
             from app.data_sources.hk_stock import HKStockDataSource
             return HKStockDataSource()
@@ -208,6 +201,74 @@ class DataSourceFactory:
             return MOEXDataSource()
         else:
             raise UnsupportedMarketError(market)
+
+    @classmethod
+    def _create_cn_stock_source(cls) -> BaseDataSource:
+        """
+        创建 A 股数据源，根据 CN_STOCK_DATA_SOURCE 配置选择实现。
+
+        配置值:
+          auto       — 优先 QMT（Windows），失败 fallback 到外部 API
+          qmt        — 强制使用 QMT/xtdata（仅 Windows）
+          twelvedata — 使用 TwelveData API
+          tencent    — 使用腾讯财经
+          default    — 使用内置多层 fallback（原始 CNStockDataSource）
+        """
+        import os
+        import sys
+
+        mode = (os.environ.get('CN_STOCK_DATA_SOURCE', 'auto') or 'auto').strip().lower()
+
+        if mode == 'qmt':
+            return cls._try_create_qmt_source(required=True)
+
+        if mode == 'twelvedata' or mode == 'tencent' or mode == 'default':
+            from app.data_sources.cn_stock import CNStockDataSource
+            logger.info("CNStock data source: using %s mode (CNStockDataSource)", mode)
+            return CNStockDataSource()
+
+        # mode == 'auto': try QMT first, fallback to CNStockDataSource
+        qmt_source = cls._try_create_qmt_source(required=False)
+        if qmt_source is not None:
+            logger.info("CNStock data source: auto mode → QMT (xtdata)")
+            return qmt_source
+
+        logger.info("CNStock data source: auto mode → QMT unavailable, falling back to CNStockDataSource")
+        from app.data_sources.cn_stock import CNStockDataSource
+        return CNStockDataSource()
+
+    @staticmethod
+    def _try_create_qmt_source(required: bool = False):
+        """
+        尝试创建 QMTDataSource。失败时返回 None（非 required 模式）。
+        """
+        import os
+        import sys
+
+        lib_path = (os.environ.get('QMT_LIB_PATH', '') or '').strip()
+
+        # QMT 仅支持 Windows
+        if sys.platform != 'win32':
+            if required:
+                raise RuntimeError("QMT data source is only available on Windows")
+            return None
+
+        # 检查 xtquant 是否可导入
+        try:
+            _test_path = lib_path if lib_path else None
+            if _test_path and _test_path not in sys.path:
+                sys.path.insert(0, _test_path)
+            from xtquant import xtdata  # noqa: F401
+        except ImportError:
+            if required:
+                raise RuntimeError(
+                    "xtquant is not available. Install miniQMT and set QMT_LIB_PATH "
+                    "to the site-packages directory containing xtquant."
+                )
+            return None
+
+        from app.data_sources.qmt_data import QMTDataSource
+        return QMTDataSource(lib_path=lib_path)
     
     @classmethod
     def get_kline(

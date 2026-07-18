@@ -3,7 +3,10 @@ Factory for direct exchange clients.
 
 Supports:
 - Crypto exchanges: Binance, OKX, Bitget, Bybit, Coinbase, Kraken, Gate, HTX
-- Traditional brokers: Interactive Brokers (IBKR) and Alpaca
+- Traditional brokers: Interactive Brokers (IBKR) for US stocks
+- Forex brokers: MetaTrader 5 (MT5)
+- Alpaca: REST broker for US stocks + crypto
+- QMT (miniQMT): A-share (China A-Stock) broker via xtquant SDK
 """
 
 from __future__ import annotations
@@ -31,9 +34,17 @@ from app.services.live_trading.htx import HtxClient
 IBKRClient = None
 IBKRConfig = None
 
+# Lazy import MT5 to avoid ImportError if MetaTrader5 not installed
+MT5Client = None
+MT5Config = None
+
 # Lazy import Alpaca to avoid ImportError if alpaca-py not installed
 AlpacaClient = None
 AlpacaConfig = None
+
+# Lazy import QMT to avoid ImportError if xtquant not installed
+QMTClient = None
+QMTConfig = None
 
 
 def _get(cfg: Dict[str, Any], *keys: str) -> str:
@@ -258,10 +269,21 @@ def create_client(exchange_config: Dict[str, Any], *, market_type: str = "swap")
         # This factory only creates clients based on exchange_id
         return create_ibkr_client(exchange_config)
 
+    # Forex brokers (MT5 for Forex only)
+    if exchange_id == "mt5":
+        # Note: Market category validation should be done at the caller level
+        # This factory only creates clients based on exchange_id
+        return create_mt5_client(exchange_config)
+
     # Alpaca: REST broker for US stocks + crypto (no local terminal needed).
     # Caller is responsible for validating market_category in (USStock, Crypto).
     if exchange_id == "alpaca":
         return create_alpaca_client(exchange_config)
+
+    # QMT (miniQMT): A-share (CNStock) broker via xtquant SDK
+    # (local desktop only — miniQMT client must be running and logged in).
+    if exchange_id == "qmt":
+        return create_qmt_client(exchange_config)
 
     raise LiveTradingError(f"Unsupported exchange_id: {exchange_id}")
 
@@ -328,6 +350,80 @@ def create_ibkr_client(exchange_config: Dict[str, Any]):
     return client
 
 
+def create_mt5_client(exchange_config: Dict[str, Any]):
+    """
+    Create MT5 client for forex trading.
+
+    exchange_config should contain:
+    - mt5_login: MT5 account number
+    - mt5_password: MT5 password
+    - mt5_server: Broker server name (e.g., "ICMarkets-Demo")
+    - mt5_terminal_path: Optional path to terminal64.exe
+    - market_category: Must be "Forex" (validated)
+    
+    Note: MT5 is ONLY for Forex trading, not for Crypto or Stocks.
+    """
+    global MT5Client, MT5Config
+
+    # Validate market category - MT5 is ONLY for Forex
+    market_category = str(exchange_config.get("market_category") or "").strip()
+    if market_category and market_category != "Forex":
+        raise LiveTradingError(
+            f"MT5 can only be used for Forex trading, but market_category is '{market_category}'. "
+            f"MT5 does not support Crypto or Stock trading. Please use MT5 only with Forex market."
+        )
+
+    # Lazy import to avoid ImportError if MetaTrader5 not installed
+    if MT5Client is None or MT5Config is None:
+        try:
+            from app.services.mt5_trading import MT5Client as _MT5Client, MT5Config as _MT5Config
+            MT5Client = _MT5Client
+            MT5Config = _MT5Config
+        except ImportError:
+            raise LiveTradingError(
+                "MT5 trading requires MetaTrader5 library. Run: pip install MetaTrader5\n"
+                "Note: This library only works on Windows."
+            )
+
+    # Handle login as int (may come as string from JSON)
+    login_raw = exchange_config.get("mt5_login") or 0
+    try:
+        login = int(login_raw) if login_raw else 0
+    except (ValueError, TypeError):
+        # Try converting string to int
+        try:
+            login = int(str(login_raw).strip())
+        except (ValueError, TypeError):
+            login = 0
+    
+    password = str(exchange_config.get("mt5_password") or "").strip()
+    server = str(exchange_config.get("mt5_server") or "").strip()
+    terminal_path = str(exchange_config.get("mt5_terminal_path") or "").strip()
+
+    if not login or not password or not server:
+        raise LiveTradingError("MT5 requires login, password, and server")
+
+    config = MT5Config(
+        login=login,
+        password=password,
+        server=server,
+        terminal_path=terminal_path,
+    )
+
+    client = MT5Client(config)
+
+    # Connect immediately
+    if not client.connect():
+        raise LiveTradingError(
+            "Failed to connect to MT5 terminal. Please check:\n"
+            "1. MT5 terminal is running\n"
+            "2. Credentials are correct\n"
+            "3. You are on Windows"
+        )
+
+    return client
+
+
 def create_alpaca_client(exchange_config: Dict[str, Any]):
     """
     Create Alpaca client for US stock + crypto trading.
@@ -338,7 +434,7 @@ def create_alpaca_client(exchange_config: Dict[str, Any]):
     - paper:      Boolean (default True). 'true'/'false' strings also accepted.
     - base_url:   Optional explicit URL override (otherwise paper/live decides)
 
-    Unlike IBKR, Alpaca is stateless REST — no terminal/gateway needed,
+    Unlike IBKR/MT5, Alpaca is stateless REST — no terminal/gateway needed,
     so it's the recommended USStock broker on cloud / SaaS deployments where
     ALLOW_LOCAL_DESKTOP_BROKERS is false.
     """
@@ -384,6 +480,81 @@ def create_alpaca_client(exchange_config: Dict[str, Any]):
             "paper/live (PK*=paper, AK*=live), and network access. "
             "HTTP 400 'invalid syntax' on market-data WebSocket is usually a bad "
             "auth/subscribe JSON or symbol (use BTC/USD not BTC/USDT for crypto)."
+        )
+    return client
+
+
+def create_qmt_client(exchange_config: Dict[str, Any]):
+    """
+    Create QMT (miniQMT) client for A-share (China A-Stock) trading.
+
+    exchange_config should contain:
+    - qmt_path:        Path to miniQMT ``userdata_mini`` directory
+    - qmt_account_id:  Funded securities account id (资金账号)
+    - qmt_session_id:  Session id (int, default 123456)
+    - qmt_username:    miniQMT login username (for reference)
+    - qmt_password:    miniQMT login password (for reference)
+    - qmt_lib_path:    Path to site-packages containing the xtquant package
+
+    Like IBKR/MT5, QMT requires a local desktop application (miniQMT) running
+    and logged in on the same machine. It is gated by ALLOW_LOCAL_DESKTOP_BROKERS.
+    """
+    global QMTClient, QMTConfig
+
+    if QMTClient is None or QMTConfig is None:
+        try:
+            from app.services.qmt_trading import QMTClient as _QMTClient, QMTConfig as _QMTConfig
+            QMTClient = _QMTClient
+            QMTConfig = _QMTConfig
+        except ImportError:
+            raise LiveTradingError(
+                "QMT trading requires the xtquant package (shipped with miniQMT). "
+                "Ensure miniQMT is installed and qmt_lib_path points to the "
+                "site-packages directory containing the xtquant package."
+            )
+
+    qmt_path = _get(exchange_config, "qmt_path", "qmtPath")
+    qmt_account_id = _get(exchange_config, "qmt_account_id", "qmtAccountId", "qmt_account")
+    qmt_lib_path = _get(exchange_config, "qmt_lib_path", "qmtLibPath")
+
+    # session_id: default 123456, can be overridden
+    session_id_raw = exchange_config.get("qmt_session_id", 123456)
+    try:
+        session_id = int(session_id_raw)
+    except (TypeError, ValueError):
+        session_id = 123456
+
+    # username / password are stored for reference (miniQMT must be logged in already)
+    qmt_username = _get(exchange_config, "qmt_username", "qmtUsername")
+    qmt_password = _get(exchange_config, "qmt_password", "qmtPassword")
+
+    if not qmt_path:
+        raise LiveTradingError(
+            "QMT requires qmt_path (path to miniQMT userdata_mini directory)."
+        )
+    if not qmt_account_id:
+        raise LiveTradingError(
+            "QMT requires qmt_account_id (funded securities account id / 资金账号)."
+        )
+
+    config = QMTConfig(
+        qmt_path=qmt_path,
+        qmt_account_id=qmt_account_id,
+        qmt_session_id=session_id,
+        qmt_username=qmt_username,
+        qmt_password=qmt_password,
+        qmt_lib_path=qmt_lib_path,
+    )
+
+    client = QMTClient(config)
+    if not client.connect():
+        raise LiveTradingError(
+            "Failed to connect to miniQMT (xtquant). Please check:\n"
+            "1. miniQMT client is running and logged in\n"
+            "2. qmt_path points to the correct userdata_mini directory\n"
+            "3. qmt_account_id is a valid funded account\n"
+            "4. qmt_lib_path points to the site-packages with xtquant\n"
+            "5. You are on Windows"
         )
     return client
 

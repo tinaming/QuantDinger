@@ -1,4 +1,10 @@
-"""Local desktop broker policy for IBKR."""
+"""
+Local desktop brokers (IBKR TWS/Gateway, MetaTrader 5, QMT/miniQMT).
+
+These require software running on the same machine as the API process
+(or reachable private network). SaaS / single-container cloud installs
+cannot reach the user's home PC by default — gate with env.
+"""
 
 from __future__ import annotations
 
@@ -6,14 +12,15 @@ import os
 
 
 def local_desktop_brokers_allowed() -> bool:
-    """When False, IBKR credential creation and related flows are rejected."""
+    """When False, IBKR/MT5/QMT credential creation and related flows are rejected."""
     v = os.getenv("ALLOW_LOCAL_DESKTOP_BROKERS", "true").strip().lower()
     return v in ("1", "true", "yes", "on")
 
 
 def desktop_broker_cloud_reject_message() -> str:
     return (
-        "This server has disabled IBKR local desktop broker access "
-        "(requires local TWS or IB Gateway). Deploy QuantDinger on your own "
-        "machine or private server and install IBKR TWS/Gateway."
+        "当前部署环境已关闭 IBKR / MT5 / QMT（需本机 TWS、IB Gateway、MT5 终端或 miniQMT 客户端）。"
+        "请在个人电脑或私有服务器上本地部署 QuantDinger，并安装相应的本地交易终端。"
+        " | This server has disabled IBKR/MT5/QMT (requires local TWS/Gateway, MT5, or miniQMT). "
+        "Deploy QuantDinger on your own machine and install the corresponding terminal."
     )

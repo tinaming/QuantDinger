@@ -35,6 +35,8 @@ def _build_broker_markets() -> Dict[str, Dict[str, Set[str]]]:
     matrix: Dict[str, Dict[str, Set[str]]] = {
         # US stocks via Interactive Brokers (TWS/Gateway, local desktop only)
         "ibkr": {"USStock": {"spot"}},
+        # Forex via MetaTrader 5 terminal (local desktop only)
+        "mt5": {"Forex": {"spot"}},
         # Alpaca: REST broker for US equities + crypto.
         # Crypto is *spot only* on Alpaca - they have no perpetual / margin
         # crypto product, so a 'swap' market_type is impossible regardless of
@@ -43,6 +45,10 @@ def _build_broker_markets() -> Dict[str, Dict[str, Set[str]]]:
             "USStock": {"spot"},
             "Crypto": {"spot"},
         },
+        # QMT (miniQMT): A-share (China A-Stock) broker via xtquant SDK.
+        # Local desktop only — miniQMT client must be running and logged in.
+        # A-shares are spot-only (T+1, no perpetual/margin derivatives in QMT).
+        "qmt": {"CNStock": {"spot"}},
     }
     for ex, capability in CRYPTO_VENUE_CAPABILITIES.items():
         matrix[ex] = {"Crypto": set(capability.market_types)}
@@ -59,28 +65,28 @@ BROKER_MARKETS: Dict[str, Dict[str, Set[str]]] = _build_broker_markets()
 # margin accounts, but neither _execute_ibkr_order nor _execute_alpaca_order
 # in pending_order_worker.py implement the short path (they reject any
 # signal containing 'short').
-LONG_ONLY_BROKERS: Set[str] = {"ibkr", "alpaca"}
+LONG_ONLY_BROKERS: Set[str] = {"ibkr", "alpaca", "qmt"}
 
 
 # Map bot strategy type -> markets where that bot makes sense and can
 # actually execute. Reasoning:
 #   grid: needs continuous high-frequency quotes + bidirectional. USStock
-#         dies during the 16-hour close + open gaps. OK on Crypto.
+#         dies during the 16-hour close + open gaps. OK on Crypto and Forex.
 #   martingale: needs tiny add-on lots + bidirectional. Stock min-share size
 #               + gap risk makes it impractical outside crypto perpetuals.
 #   dca / trend: long-only by nature, fine on every market we support.
 BOT_TYPE_MARKETS: Dict[str, Set[str]] = {
-    "grid":       {"Crypto"},
+    "grid":       {"Crypto", "Forex"},
     "martingale": {"Crypto"},
-    "dca":        {"Crypto", "USStock"},
-    "trend":      {"Crypto", "USStock"},
+    "dca":        {"Crypto", "USStock", "Forex", "CNStock"},
+    "trend":      {"Crypto", "USStock", "Forex", "CNStock"},
 }
 
 
-# Markets we recognize as legal canonical values. Anything outside this set
-# is considered analysis/backtest-only (e.g. CNStock, HKStock, MOEX, Futures
-# generic) and may not be used for live strategies.
-LIVE_MARKET_CATEGORIES: Set[str] = {"Crypto", "USStock"}
+# Markets we recognize as legal canonical values for live trading.
+# CNStock (A-shares) is now live-tradeable via QMT/miniQMT.
+# HKStock / MOEX / Futures generic remain analysis-only.
+LIVE_MARKET_CATEGORIES: Set[str] = {"Crypto", "USStock", "Forex", "CNStock"}
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +167,8 @@ def validate_strategy_config(
         3. (broker, market) combination must be in BROKER_MARKETS.
         4. market_type must be in allowed_market_types(broker, market).
         5. Long-only brokers (ibkr, alpaca) must have trade_direction='long'.
-        6. For Crypto, short signals require market_type='swap'.
+        6. For Crypto, short signals require market_type='swap' (Forex on
+           MT5 stores spot but is naturally bidirectional).
         7. bot_type must be compatible with market_category.
 
     Returns:
@@ -173,14 +180,16 @@ def validate_strategy_config(
     td = (trade_direction or "").strip().lower()
     bt = (bot_type or "").strip().lower()
 
+    # Rule 1: market is one we can route in live trading
+    if mc and mc not in LIVE_MARKET_CATEGORIES:
+        raise ValueError(
+            f"market_category='{mc}' is not supported for live trading. "
+            f"Supported: {sorted(LIVE_MARKET_CATEGORIES)}. "
+            "(HKStock / MOEX / Futures are analysis-only.)"
+        )
+
     # Rule 2 + 3: broker x market combination
     if not ex:
-        if mc and mc not in LIVE_MARKET_CATEGORIES:
-            raise ValueError(
-                f"market_category='{mc}' is not supported for live trading. "
-                f"Supported: {sorted(LIVE_MARKET_CATEGORIES)}. "
-                "(CNStock / HKStock / MOEX / Futures are analysis-only.)"
-            )
         if require_exchange:
             raise ValueError(
                 "exchange_id is required for live strategies. "
@@ -195,16 +204,6 @@ def validate_strategy_config(
         known = sorted(BROKER_MARKETS.keys())
         raise ValueError(
             f"Unknown exchange_id='{ex}'. Known brokers: {known}."
-        )
-
-    # Rule 1: market is one we can route in live trading. This runs after the
-    # broker existence check so removed brokers report as unknown even when
-    # paired with an analysis-only market.
-    if mc and mc not in LIVE_MARKET_CATEGORIES:
-        raise ValueError(
-            f"market_category='{mc}' is not supported for live trading. "
-            f"Supported: {sorted(LIVE_MARKET_CATEGORIES)}. "
-            "(CNStock / HKStock / MOEX / Futures are analysis-only.)"
         )
 
     if mc and mc not in BROKER_MARKETS[ex]:
@@ -239,11 +238,13 @@ def validate_strategy_config(
             f"{ex.upper()} live execution in QuantDinger is currently "
             f"long-only (got trade_direction='{td}'). For short selling "
             f"please use a perpetual-swap crypto exchange "
-            f"(Binance/OKX/Bybit/Bitget) for crypto. "
-            f"Stock short selling on IBKR/Alpaca is not yet implemented."
+            f"(Binance/OKX/Bybit/Bitget) for crypto, or MT5 for forex. "
+            f"Stock short selling on IBKR/Alpaca/QMT is not yet implemented."
         )
 
     # Rule 6: crypto short requires swap.
+    # Forex on MT5 stores market_type='spot' but is naturally bidirectional
+    # (short = SELL), so this rule only applies to crypto markets.
     if mc == "Crypto" and td == "short" and mt and mt != "swap":
         raise ValueError(
             f"Short selling crypto requires market_type='swap', got '{mt}'. "
