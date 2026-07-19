@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "gitee": {
+      "command": "npx",
+      "args": ["-y", "@gitee/mcp-gitee@latest"],
+      "env": {
+        "GITEE_API_BASE": "https://gitee.com/api/v5",
+        "GITEE_ACCESS_TOKEN": "0ef2d181ce1af7525d1d7d44296e1187"
+      }
+    },
+    "quantdinger": {
+      "command": "C:\\Users\\aaron\\AppData\\Roaming\\Python\\Python313\\Scripts\\quantdinger-mcp.exe",
+      "env": {
+        "QUANTDINGER_BASE_URL": "http://localhost:5000",
+        "QUANTDINGER_AGENT_TOKEN": "qd_agent_0m7iCb06EDi6zIigxQm2CYO_ayUEnR2NUB5ZC6J23mA"
+      }
+    }
+  }
+}

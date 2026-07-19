@@ -1312,12 +1312,21 @@ def _research_task_flags(message: str, intent: str, has_image: bool = False) -> 
     wants_trade_plan = any(k in text for k in ("交易计划", "trade plan", "trading plan", "entry trigger", "stop loss", "take profit", "position sizing"))
     wants_macro = any(k in text for k in ("nfp", "cpi", "fomc", "fed", "rates", "pce", "gdp", "inflation", "payroll", "非农", "利率", "通胀", "就业", "宏观"))
     wants_market_data = any(
-        k in text for k in ("price", "quote", "trend", "support", "resistance", "行情", "价格", "走势", "支撑", "阻力", "k线", "kline", "多少钱", "股价", "现价")
+        k in text for k in ("price", "quote", "trend", "support", "resistance", "行情", "价格", "走势", "支撑", "阻力", "k线", "kline", "多少钱", "股价", "现价",
+                             # Stock/company mentions — user asking about a specific asset
+                             "股票", "股份", "stock", "share", "ticker",
+                             )
     )
     return {
         "intent": intent,
         "needs_market_data": wants_trade_plan or wants_market_data or (intent in {"market_analysis", "opportunity_radar"} and not wants_macro),
-        "needs_news": any(k in text for k in ("latest", "news", "headline", "event", "ipo", "spac", "spacex", "新闻", "消息", "事件", "上市", "影响")),
+        "needs_news": any(k in text for k in (
+            "latest", "news", "headline", "event", "ipo", "spac", "spacex",
+            "新闻", "消息", "事件", "上市", "影响",
+            # Search verbs — user asking to search/research means they want web results
+            "搜索", "搜一下", "查一下", "查找", "看看", "研究", "了解",
+            "search", "look up", "find out", "research",
+        )),
         "needs_macro": wants_macro,
         "needs_fundamentals": any(k in text for k in ("valuation", "market cap", "earnings", "revenue", "fundamental", "估值", "市值", "财报", "营收", "基本面")),
         "needs_chart": has_image or any(k in text for k in ("chart", "screenshot", "kline", "k线图", "截图", "看图")),
@@ -1382,7 +1391,7 @@ def _build_research_context(context: dict, has_image: bool = False) -> dict:
 
     candidates = _local_symbol_candidates(message)
     needs_symbol_discovery = flags["needs_market_data"] and not candidates
-    search_context = _search_intelligence(message, candidates, language) if (flags["needs_news"] or flags["needs_fundamentals"] or needs_symbol_discovery) else {
+    search_context = _search_intelligence(message, candidates, language) if (flags["needs_news"] or flags["needs_fundamentals"] or flags["needs_market_data"] or needs_symbol_discovery) else {
         "web_results": [],
         "news_results": [],
         "search_queries": [],
