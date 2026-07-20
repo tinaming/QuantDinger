@@ -2097,7 +2097,11 @@ class TradingExecutor:
 
             # ============================================
             # ============================================
-            history_limit = int(os.getenv('K_LINE_HISTORY_GET_NUMBER', 500))
+            # 短周期需要更多历史数据用于 CZSC 分析
+            _tf_history = {'10s': 5000, '1m': 2000, '3m': 2000, '5m': 2000, '15m': 2000}
+            _default_history = _tf_history.get(timeframe, 500)
+            _env_val = int(os.getenv('K_LINE_HISTORY_GET_NUMBER', '0'))
+            history_limit = max(_default_history, _env_val) if _env_val > 0 else _default_history
             klines = self._fetch_latest_kline(
                 symbol, timeframe, limit=history_limit, market_category=market_category,
                 exchange_id=kline_exchange_id, market_type=kline_market_type,
@@ -2465,7 +2469,51 @@ class TradingExecutor:
                                             initial_last_add_price=initial_last_add_price
                                         )
                                         if indicator_result:
-                                            pending_signals = indicator_result.get('pending_signals', [])
+                                            # 信号持久化合并：保留未过期的旧信号，加入新检测到的信号
+                                            _new_signals = indicator_result.get('pending_signals', [])
+                                            _now_ts = int(time.time())
+                                            _exp_thresh = max(timeframe_seconds * 2, 120) if timeframe in ('10s', '1m', '3m') else timeframe_seconds * 2
+                                            # Refresh timestamps for new signals: the indicator ran NOW and confirmed
+                                            # the condition, so edge timestamps from historical data should be refreshed.
+                                            # Only refresh ENTRY signals - exit signals should expire naturally.
+                                            _exit_types = {'close_long', 'close_short'}
+                                            for _ns in _new_signals:
+                                                if _ns.get('type') not in _exit_types and _ns.get('timestamp', 0) > 0 and (_now_ts - _ns.get('timestamp', 0)) > _exp_thresh:
+                                                    _ns['timestamp'] = _now_ts
+                                            _new_signal_types = {s.get('type') for s in _new_signals}
+                                            _merged = [
+                                                s for s in (pending_signals or [])
+                                                if s.get('type') not in _new_signal_types
+                                                and (s.get('timestamp', 0) == 0 or (_now_ts - s.get('timestamp', 0)) < _exp_thresh)
+                                            ]
+                                            # Add new signals, but filter out stale exit signals
+                                            for _ns in _new_signals:
+                                                if _ns.get('timestamp', 0) == 0 or (_now_ts - _ns.get('timestamp', 0)) < _exp_thresh:
+                                                    _merged.append(_ns)
+                                            # 去重：每种 signal type 只保留最新的（与 realtime path 一致）
+                                            _deduped = {}
+                                            for sig in sorted(_merged, key=lambda s: s.get('timestamp', 0), reverse=True):
+                                                stype = sig.get('type')
+                                                if stype not in _deduped:
+                                                    _deduped[stype] = sig
+                                            pending_signals = list(_deduped.values())
+                                            # Refresh stale timestamps: if indicator still outputs a signal
+                                            # type, the condition is valid NOW regardless of when the edge fired.
+                                            # Only refresh ENTRY signals - exit signals should expire naturally.
+                                            _exit_types = {'close_long', 'close_short'}
+                                            for _s in pending_signals:
+                                                if _s.get('type') not in _exit_types and _s.get('timestamp', 0) > 0 and (_now_ts - _s.get('timestamp', 0)) > _exp_thresh:
+                                                    _s['timestamp'] = _now_ts
+                                            # Resolve conflicting signals: exit takes priority over entry in same direction
+                                            _types = {s.get('type') for s in pending_signals}
+                                            if 'close_long' in _types and 'open_long' in _types:
+                                                pending_signals = [s for s in pending_signals if s.get('type') != 'open_long']
+                                            if 'close_short' in _types and 'open_short' in _types:
+                                                pending_signals = [s for s in pending_signals if s.get('type') != 'open_short']
+                                            # DIAG: log signal merge result for short timeframes
+                                            if timeframe in ('10s', '1m', '3m'):
+                                                _diag = [(s.get('type'), round(s.get('trigger_price',0),6), s.get('timestamp',0)) for s in pending_signals[:6]]
+                                                logger.info(f"[DIAG_MERGE] strategy={strategy_id} tf={timeframe} signals={_diag}")
                                             last_kline_time = indicator_result.get('last_kline_time', 0)
                                             new_hp = indicator_result.get('new_highest_price', 0)
 
@@ -2668,7 +2716,45 @@ class TradingExecutor:
                                     initial_last_add_price=initial_last_add_price
                                 )
                                 if indicator_result:
-                                    pending_signals = indicator_result.get('pending_signals', [])
+                                    # Realtime path: 合并未过期旧信号与新信号（与 kline-poll path 一致）
+                                    _new_signals = indicator_result.get('pending_signals', [])
+                                    _now_ts = int(time.time())
+                                    _exp_thresh = max(timeframe_seconds * 2, 120) if timeframe in ('10s', '1m', '3m') else timeframe_seconds * 2
+                                    # Refresh timestamps for new signals from realtime indicator
+                                    # Only refresh ENTRY signals - exit signals should expire naturally.
+                                    _exit_types = {'close_long', 'close_short'}
+                                    for _ns in _new_signals:
+                                        if _ns.get('type') not in _exit_types and _ns.get('timestamp', 0) > 0 and (_now_ts - _ns.get('timestamp', 0)) > _exp_thresh:
+                                            _ns['timestamp'] = _now_ts
+                                    _new_signal_types = {s.get('type') for s in _new_signals}
+                                    _merged = [
+                                        s for s in (pending_signals or [])
+                                        if s.get('type') not in _new_signal_types
+                                        and (s.get('timestamp', 0) == 0 or (_now_ts - s.get('timestamp', 0)) < _exp_thresh)
+                                    ]
+                                    # Add new signals, but filter out stale exit signals
+                                    for _ns in _new_signals:
+                                        if _ns.get('timestamp', 0) == 0 or (_now_ts - _ns.get('timestamp', 0)) < _exp_thresh:
+                                            _merged.append(_ns)
+                                    # 去重：每种 signal type 只保留最新的
+                                    _deduped = {}
+                                    for sig in sorted(_merged, key=lambda s: s.get('timestamp', 0), reverse=True):
+                                        stype = sig.get('type')
+                                        if stype not in _deduped:
+                                            _deduped[stype] = sig
+                                    pending_signals = list(_deduped.values())
+                                    # Refresh stale timestamps for realtime path
+                                    # Only refresh ENTRY signals - exit signals should expire naturally.
+                                    _exit_types = {'close_long', 'close_short'}
+                                    for _s in pending_signals:
+                                        if _s.get('type') not in _exit_types and _s.get('timestamp', 0) > 0 and (_now_ts - _s.get('timestamp', 0)) > _exp_thresh:
+                                            _s['timestamp'] = _now_ts
+                                    # Resolve conflicting signals: exit takes priority over entry in same direction
+                                    _types = {s.get('type') for s in pending_signals}
+                                    if 'close_long' in _types and 'open_long' in _types:
+                                        pending_signals = [s for s in pending_signals if s.get('type') != 'open_long']
+                                    if 'close_short' in _types and 'open_short' in _types:
+                                        pending_signals = [s for s in pending_signals if s.get('type') != 'open_short']
                                     new_hp = indicator_result.get('new_highest_price', 0)
                                     if indicator_result.get('indicator_both_mode'):
                                         indicator_both_mode = True
@@ -2690,7 +2776,8 @@ class TradingExecutor:
                     # ============================================
                     current_ts = int(time.time())
                     if pending_signals:
-                        expiration_threshold = timeframe_seconds * 2
+                        # Short timeframes need longer expiration: CZSC signals are sparse (every 30-80 bars)
+                        expiration_threshold = max(timeframe_seconds * 2, 120) if timeframe in ('10s', '1m', '3m') else timeframe_seconds * 2
                         valid_signals = []
                         for s in pending_signals:
                             signal_time = s.get('timestamp', 0)
@@ -2703,7 +2790,8 @@ class TradingExecutor:
 
                     # Unified cadence log: at most once per tick.
                     if pending_signals:
-                        logger.info(f"[monitoring] strategy={strategy_id} price={current_price}, pending_signals={len(pending_signals)}")
+                        _sig_summary = ', '.join(f"{s.get('type')}@{s.get('trigger_price',0):.6f}" for s in pending_signals[:4])
+                        logger.info(f"[monitoring] strategy={strategy_id} price={current_price}, pending={len(pending_signals)} [{_sig_summary}]")
 
                     triggered_signals = []
                     signals_to_remove = []
@@ -2723,7 +2811,11 @@ class TradingExecutor:
                         if signal_type in ['close_long', 'close_short'] and exit_trigger_mode == 'immediate':
                             triggered = True
                         
-                        entry_trigger_mode = trading_config.get('entry_trigger_mode', 'price')  # 'price' or 'immediate'
+                        # 短周期（10s, 1m, 5m）自动使用 immediate 模式，避免价格触发条件错过快速行情
+                        _default_entry_trigger = 'immediate' if timeframe in ('10s', '1m', '3m', '5m') else 'price'
+                        entry_trigger_mode = trading_config.get('entry_trigger_mode', _default_entry_trigger)
+                        if 'entry_trigger_mode' not in trading_config and _default_entry_trigger == 'immediate':
+                            logger.info(f"Strategy {strategy_id}: auto-selected entry_trigger_mode='immediate' for {timeframe} timeframe (no explicit config)")
                         if signal_type in ['open_long', 'open_short', 'add_long', 'add_short'] and entry_trigger_mode == 'immediate':
                             triggered = True
 
@@ -3953,18 +4045,23 @@ class TradingExecutor:
             if all(col in executed_df.columns for col in ['open_long', 'close_long', 'open_short', 'close_short']):
                 signal_mode = trading_config.get('signal_mode', 'confirmed') # 'confirmed' or 'aggressive'
                 exit_signal_mode = trading_config.get('exit_signal_mode', 'aggressive') # 'confirmed' or 'aggressive'
-                
+
+                # 扩展检测窗口：扫描最近 signal_lookback_bars 根已确认 bar，捕获 edge trigger 信号
+                # CZSC 10s 信号间隔 ~30-80 bar，需要大窗口确保捕获
+                _tf = str(trading_config.get('timeframe', ''))
+                _default_lookback = 100 if _tf in ('10s',) else (40 if _tf in ('1m', '3m', '5m') else 20)
+                signal_lookback_bars = min(int(trading_config.get('signal_lookback_bars', _default_lookback)), 200)
+
                 entry_check_set = set()
                 exit_check_set = set()
-                
-                if len(executed_df) > 1:
-                    entry_check_set.add(len(executed_df) - 2)
-                    exit_check_set.add(len(executed_df) - 2)
-                
+
+                for offset in range(2, min(signal_lookback_bars + 2, len(executed_df))):
+                    idx = len(executed_df) - offset
+                    entry_check_set.add(idx)
+                    exit_check_set.add(idx)
+
                 if signal_mode == 'aggressive' and len(executed_df) > 0:
                     entry_check_set.add(len(executed_df) - 1)
-                
-                if exit_signal_mode == 'aggressive' and len(executed_df) > 0:
                     exit_check_set.add(len(executed_df) - 1)
                 
                 check_indices = sorted(entry_check_set.union(exit_check_set), reverse=True)
@@ -4104,7 +4201,111 @@ class TradingExecutor:
                                 'position_size': reduce_pct,
                                 'timestamp': signal_timestamp
                             })
-            
+
+            # ---- CZSC short-timeframe signal synthesis ----
+            # For 10s data, bi_dir flips are very sparse (every 30-160 bars).
+            # The edge-triggered indicator may not produce signals in the lookback window.
+            # Synthesize entry/close signals based on the current CZSC stroke direction,
+            # with full position awareness to avoid duplicate entries.
+            _has_entry = any(s.get('type') in ('open_long', 'open_short') for s in pending_signals)
+            _czsc_tf = str((trading_config or {}).get('timeframe', ''))
+            if (not _has_entry and 'czsc_bi_dir' in executed_df.columns
+                    and _czsc_tf in ('10s', '1m', '3m')):
+                _n = len(executed_df)
+                _bi = executed_df['czsc_bi_dir']
+                # Current bi_dir value at the last bar
+                _curr_bi = int(_bi.iloc[-1]) if _n > 0 else 0
+                # Current position: 1=long, -1=short, 0=flat
+                _pos = initial_position  # passed from caller
+                _trade_dir = str((trading_config or {}).get('trade_direction', 'both')).lower()
+                _last_close = float(executed_df['close'].iloc[-1]) if _n > 0 else 0.0
+                _synth_ts = int(time.time())
+
+                # 1) If flat: generate entry signal based on current bi_dir
+                if _pos == 0 and _curr_bi != 0:
+                    if _curr_bi == 1 and _trade_dir in ('long', 'both'):
+                        if not any(s['type'] == 'open_long' for s in pending_signals):
+                            pending_signals.append({
+                                'type': 'open_long',
+                                'trigger_price': _last_close,
+                                'position_size': 0.0,
+                                'timestamp': _synth_ts
+                            })
+                    elif _curr_bi == -1 and _trade_dir in ('short', 'both'):
+                        if not any(s['type'] == 'open_short' for s in pending_signals):
+                            pending_signals.append({
+                                'type': 'open_short',
+                                'trigger_price': _last_close,
+                                'position_size': 0.0,
+                                'timestamp': _synth_ts
+                            })
+
+                # 2) If position opposes bi_dir: generate close + reverse
+                elif _pos == 1 and _curr_bi == -1:
+                    # Long position but bi_dir turned down → close long
+                    if not any(s['type'] == 'close_long' for s in pending_signals):
+                        pending_signals.append({
+                            'type': 'close_long',
+                            'trigger_price': _last_close,
+                            'position_size': 0.0,
+                            'timestamp': _synth_ts
+                        })
+                    # Also open short if allowed
+                    if _trade_dir in ('short', 'both') and not any(s['type'] == 'open_short' for s in pending_signals):
+                        pending_signals.append({
+                            'type': 'open_short',
+                            'trigger_price': _last_close,
+                            'position_size': 0.0,
+                            'timestamp': _synth_ts
+                        })
+                elif _pos == -1 and _curr_bi == 1:
+                    # Short position but bi_dir turned up → close short
+                    if not any(s['type'] == 'close_short' for s in pending_signals):
+                        pending_signals.append({
+                            'type': 'close_short',
+                            'trigger_price': _last_close,
+                            'position_size': 0.0,
+                            'timestamp': _synth_ts
+                        })
+                    # Also open long if allowed
+                    if _trade_dir in ('long', 'both') and not any(s['type'] == 'open_long' for s in pending_signals):
+                        pending_signals.append({
+                            'type': 'open_long',
+                            'trigger_price': _last_close,
+                            'position_size': 0.0,
+                            'timestamp': _synth_ts
+                        })
+                # 3) Position aligned with bi_dir: no entry needed (already in the right direction)
+
+                # Diagnostic log for CZSC synthesis
+                logger.info(
+                    f"[CZSC_SYNTH] tf={_czsc_tf}, curr_bi={_curr_bi}, pos={_pos}, "
+                    f"trade_dir={_trade_dir}, pending_types="
+                    f"{[s['type'] for s in pending_signals]}"
+                )
+            # 去重：每种 signal type 只保留最新的（timestamp 最大的），防止 lookback 窗口内同类型信号导致重复执行
+            _deduped_signals = {}
+            for sig in sorted(pending_signals, key=lambda s: s.get('timestamp', 0), reverse=True):
+                stype = sig.get('type')
+                if stype not in _deduped_signals:
+                    _deduped_signals[stype] = sig
+            pending_signals = list(_deduped_signals.values())
+
+            # CZSC 诊断日志：记录信号检测窗口内的状态，帮助排查实盘信号捕获问题
+            if any(c.startswith('czsc_') for c in executed_df.columns):
+                _tf = (trading_config or {}).get('timeframe', '')
+                _bi_dir_tail = executed_df['czsc_bi_dir'].tail(5).tolist() if 'czsc_bi_dir' in executed_df.columns else []
+                _signal_count_entry = sum(
+                    1 for idx in entry_check_set
+                    if (idx < len(executed_df) and (executed_df['open_long'].iloc[idx] or executed_df['open_short'].iloc[idx]))
+                )
+                logger.info(
+                    f"[CZSC_DIAG] bi_dir[-5:]={_bi_dir_tail}, "
+                    f"entry_signals_in_window={_signal_count_entry}, "
+                    f"lookback_bars={signal_lookback_bars}, "
+                    f"timeframe={_tf}"
+                )
+
             return {
                 'pending_signals': pending_signals,
                 'last_kline_time': last_kline_time,
