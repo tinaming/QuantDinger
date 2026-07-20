@@ -4219,7 +4219,14 @@ class TradingExecutor:
                 _pos = initial_position  # passed from caller
                 _trade_dir = str((trading_config or {}).get('trade_direction', 'both')).lower()
                 _last_close = float(executed_df['close'].iloc[-1]) if _n > 0 else 0.0
-                _synth_ts = int(time.time())
+                # Use the last bar's timestamp (not wall-clock time) so that the
+                # once-per-candle dedup key is stable within the same candle.
+                # With time.time(), every tick produced a unique key, causing
+                # repeated order execution every ~10s (signal churn).
+                try:
+                    _synth_ts = int(executed_df.index[-1].timestamp())
+                except Exception:
+                    _synth_ts = int(time.time())
 
                 # 1) If flat: generate entry signal based on current bi_dir
                 if _pos == 0 and _curr_bi != 0:
@@ -4289,6 +4296,16 @@ class TradingExecutor:
                 stype = sig.get('type')
                 if stype not in _deduped_signals:
                     _deduped_signals[stype] = sig
+            # Conflict resolution: when both close_X and open_X exist simultaneously
+            # (e.g. close_long + open_long from rapid bi_dir flips in lookback window),
+            # drop the entry signal — close first, re-enter on the next confirmed candle.
+            _types_set = set(_deduped_signals.keys())
+            if 'close_long' in _types_set and 'open_long' in _types_set:
+                del _deduped_signals['open_long']
+                logger.info("[CZSC_SYNTH] conflict resolved: dropped open_long (close_long present)")
+            if 'close_short' in _types_set and 'open_short' in _types_set:
+                del _deduped_signals['open_short']
+                logger.info("[CZSC_SYNTH] conflict resolved: dropped open_short (close_short present)")
             pending_signals = list(_deduped_signals.values())
 
             # CZSC 诊断日志：记录信号检测窗口内的状态，帮助排查实盘信号捕获问题
