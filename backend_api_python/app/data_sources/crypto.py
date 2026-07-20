@@ -564,7 +564,7 @@ class CryptoDataSource(BaseDataSource):
                 start_dt = end_dt - timedelta(seconds=total_seconds)
                 if after_time is not None:
                     floor_dt = datetime.fromtimestamp(int(after_time), tz=timezone.utc)
-                    start_dt = min(start_dt, floor_dt)
+                    start_dt = max(start_dt, floor_dt)
                 timeframe_ms = TIMEFRAME_SECONDS.get(timeframe, 86400) * 1000
                 now_ms = now_ts * 1000
                 since = int(start_dt.timestamp() * 1000)
@@ -691,7 +691,7 @@ class CryptoDataSource(BaseDataSource):
                 start_dt = end_dt - timedelta(seconds=total_seconds)
                 if after_time is not None:
                     floor_dt = datetime.fromtimestamp(int(after_time), tz=timezone.utc)
-                    start_dt = min(start_dt, floor_dt)
+                    start_dt = max(start_dt, floor_dt)
                 tf_ms = TIMEFRAME_SECONDS.get(timeframe, 86400) * 1000
                 now_ms = now_ts * 1000
                 since = int(start_dt.timestamp() * 1000)
