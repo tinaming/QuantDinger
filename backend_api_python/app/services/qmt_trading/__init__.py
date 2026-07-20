@@ -11,13 +11,18 @@ Prerequisites:
 - A funded securities account id (资金账号)
 """
 
-from app.services.qmt_trading.client import QMTClient, QMTConfig, OrderResult
+from app.services.qmt_trading.client import (
+    QMTClient, QMTConfig, OrderResult,
+    get_qmt_client, reset_qmt_client,
+)
 from app.services.qmt_trading.symbols import normalize_symbol, parse_symbol
 
 __all__ = [
     "QMTClient",
     "QMTConfig",
     "OrderResult",
+    "get_qmt_client",
+    "reset_qmt_client",
     "normalize_symbol",
     "parse_symbol",
 ]

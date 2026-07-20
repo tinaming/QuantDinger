@@ -593,9 +593,9 @@ class QMTClient:
                 volume = int(getattr(pos, "volume", 0) or 0)
                 can_use = int(getattr(pos, "can_use_volume", 0) or 0)
                 open_price = float(getattr(pos, "open_price", 0) or 0)
-                avg_price = float(getattr(pos, "avg_cost", 0) or 0)
+                avg_price = float(getattr(pos, "avg_price", 0) or 0)
                 market_value = float(getattr(pos, "market_value", 0) or 0)
-                profit = float(getattr(pos, "profit", 0) or 0)
+                profit = float(getattr(pos, "float_profit", 0) or 0)
 
                 result.append({
                     "symbol": code,

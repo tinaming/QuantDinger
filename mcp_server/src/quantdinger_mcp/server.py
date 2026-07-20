@@ -1309,6 +1309,114 @@ def cn_stock_data_status() -> Any:
     return _get("/api/agent/v1/markets/CNStock/data-source-status")
 
 
+# ───────────────────────────── QMT A-Share Trading ─────────────────────────────
+
+
+def _delete(path: str) -> Any:
+    r = _client.delete(path)
+    return _unwrap(r)
+
+
+@mcp.tool()
+def qmt_status() -> Any:
+    """QMT (miniQMT) connection status and A-share account summary.
+
+    Returns whether the miniQMT terminal is connected and the
+    configured account ID.  Requires ALLOW_LOCAL_DESKTOP_BROKERS=true.
+    """
+    return _get("/api/agent/v1/qmt/status")
+
+
+@mcp.tool()
+def qmt_asset() -> Any:
+    """Query A-share account asset (cash, frozen, market value, total).
+
+    Requires a running miniQMT terminal on the backend host.
+    """
+    return _get("/api/agent/v1/qmt/asset")
+
+
+@mcp.tool()
+def qmt_positions(symbol: str = "") -> Any:
+    """Query A-share stock positions.
+
+    Args:
+        symbol: Optional filter, e.g. "600036" or "600036.SH".
+                Leave empty to get all positions.
+    """
+    params = {}
+    if symbol:
+        params["symbol"] = symbol
+    return _get("/api/agent/v1/qmt/positions", params=params)
+
+
+@mcp.tool()
+def qmt_orders(symbol: str = "") -> Any:
+    """Query today's A-share orders.
+
+    Args:
+        symbol: Optional filter by stock code.
+    """
+    params = {}
+    if symbol:
+        params["symbol"] = symbol
+    return _get("/api/agent/v1/qmt/orders", params=params)
+
+
+@mcp.tool()
+def qmt_quote(symbol: str) -> Any:
+    """Real-time quote for an A-share stock.
+
+    Args:
+        symbol: Stock code, e.g. "600036" or "600036.SH".
+    """
+    return _get("/api/agent/v1/qmt/quote", params={"symbol": symbol})
+
+
+@mcp.tool()
+def qmt_place_order(
+    symbol: str,
+    side: str,
+    volume: int,
+    order_type: str = "market",
+    price: float | None = None,
+    comment: str = "QuantDinger",
+) -> Any:
+    """Place an A-share order via miniQMT (requires T scope).
+
+    Live execution requires AGENT_LIVE_TRADING_ENABLED=true on the backend.
+    Otherwise the order is recorded as paper (simulated fill).
+
+    Args:
+        symbol: Stock code, e.g. "600036" or "600036.SH".
+        side: "buy" or "sell".
+        volume: Number of shares (must be positive, ideally multiple of 100).
+        order_type: "market" (latest price) or "limit".
+        price: Required for limit orders. Ignored for market orders.
+        comment: Order remark (default "QuantDinger").
+    """
+    body: dict[str, Any] = {
+        "symbol": symbol,
+        "side": side,
+        "volume": int(volume),
+        "order_type": order_type,
+        "comment": comment,
+    }
+    if order_type == "limit" and price is not None:
+        body["price"] = float(price)
+    return _post("/api/agent/v1/qmt/orders", json=body)
+
+
+@mcp.tool()
+def qmt_cancel_order(order_id: int) -> Any:
+    """Cancel an A-share order by order_id (requires T scope).
+
+    Args:
+        order_id: The order ID returned by qmt_place_order.
+    """
+    return _delete(f"/api/agent/v1/qmt/orders/{int(order_id)}")
+
+
 # ───────────────────────────── Portfolio (read-only) ─────────────────────────────
 
 
