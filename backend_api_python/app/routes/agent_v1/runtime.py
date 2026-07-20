@@ -133,7 +133,7 @@ def stop_strategy(strategy_id: int):
 
     executor_ok = True
     try:
-        from app.routes.strategy_services import get_trading_executor
+        from app import get_trading_executor
 
         executor_ok = bool(get_trading_executor().stop_strategy(strategy_id, persist_status=False))
     except Exception as exc:
@@ -155,3 +155,36 @@ def stop_strategy(strategy_id: int):
         "status": "stopped",
         "executor_stopped": executor_ok,
     }, message="stopped")
+
+
+@agent_v1_bp.route("/strategies/<int:strategy_id>/start", methods=["POST"])
+@agent_required(SCOPE_T)
+def start_strategy(strategy_id: int):
+    """Start one tenant strategy executor thread."""
+    user_id = current_user_id()
+    strategy = _strategy_service.get_strategy(strategy_id, user_id=user_id)
+    if not strategy:
+        return error(404, "Strategy not found", http=404)
+
+    if str(strategy.get("strategy_type") or "") == "PromptBasedStrategy":
+        return error(400, "PromptBasedStrategy is not supported in local runtime")
+
+    if not _strategy_service.update_strategy_status(strategy_id, "running", user_id=user_id):
+        return error(500, "Failed to persist running status", http=500)
+
+    executor_ok = True
+    try:
+        from app import get_trading_executor
+        executor_ok = bool(get_trading_executor().start_strategy(strategy_id))
+    except Exception as exc:
+        logger.warning(f"agent_v1 start executor failed for strategy {strategy_id}: {exc}")
+        executor_ok = False
+
+    latest = _strategy_service.get_strategy(strategy_id, user_id=user_id)
+    status = str((latest or {}).get("status") or "").lower()
+
+    return envelope({
+        "strategy_id": strategy_id,
+        "status": status,
+        "executor_started": executor_ok,
+    }, message="started")
