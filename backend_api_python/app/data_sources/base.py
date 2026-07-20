@@ -13,6 +13,7 @@ logger = get_logger(__name__)
 
 
 TIMEFRAME_SECONDS = {
+    '10s': 10,
     '1m': 60,
     '3m': 180,
     '5m': 300,

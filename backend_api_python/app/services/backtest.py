@@ -32,7 +32,8 @@ class BacktestService:
     
     # Timeframe in seconds
     TIMEFRAME_SECONDS = {
-        '1m': 60, '5m': 300, '15m': 900, '30m': 1800,
+        '10s': 10,
+        '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800,
         '1H': 3600, '4H': 14400, '1D': 86400, '1W': 604800
     }
     
@@ -2424,6 +2425,15 @@ class BacktestService:
 
         # Earliest candle we need (backtest may span up to ~2y; align fetch window to real start)
         after_time = int((start_date - timedelta(days=1)).timestamp())
+
+        # Clamp after_time to stay within exchange's maximum lookback from NOW
+        # (e.g. Gate.io caps at 10000 bars from current time: 10s≈27h, 1m≈6.9d).
+        max_lookback_bars = 9500  # safety margin below exchange hard cap
+        max_lookback_seconds = tf_seconds * max_lookback_bars
+        now_ts = int(datetime.now().timestamp())
+        earliest_allowed = now_ts - max_lookback_seconds
+        if after_time < earliest_allowed:
+            after_time = earliest_allowed
 
         # Calculate before_time (end date + 1 day)
         before_time = int((end_date + timedelta(days=1)).timestamp())

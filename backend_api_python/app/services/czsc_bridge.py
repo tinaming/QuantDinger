@@ -68,6 +68,7 @@ def get_czsc_import_error() -> Optional[str]:
 # czsc Freq enum (1.0.x): F1, F5, F15, F30, F60, F240 (or D), D, W
 
 _TIMEFRAME_TO_FREQ: Dict[str, str] = {
+    '10s': '1分钟',  # czsc has no native 10s; map to 1分钟 for structural analysis
     '1m': '1分钟',
     '5m': '5分钟',
     '15m': '15分钟',
@@ -299,6 +300,16 @@ def _compute_features_inner(df: pd.DataFrame, freq: str, symbol: str = 'SYMBOL')
 
     # ---- Step 4: Map strokes (笔) to df index ----
     _map_strokes(czsc_obj, czsc_df, bi_dir, bi_start_price, bi_end_price, bi_length, n)
+
+    # ---- Step 4.1: Forward-fill trailing zero bi_dir bars ----
+    # The current (incomplete) stroke leaves trailing bars with bi_dir=0.
+    # Fill them with the last completed stroke direction so signal detection works.
+    _last_dir = 0
+    for _i in range(n):
+        if bi_dir[_i] != 0:
+            _last_dir = bi_dir[_i]
+        elif _last_dir != 0:
+            bi_dir[_i] = _last_dir
 
     # ---- Step 5: Map centers (中枢) to df index ----
     _map_centers(czsc_obj, czsc_df, zs_level, zs_zd, zs_zg, zs_position, n)
