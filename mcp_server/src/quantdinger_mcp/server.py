@@ -560,10 +560,7 @@ def start_strategy(strategy_id: int, confirm_start: bool = False) -> Any:
                 ),
             },
         }
-    return _patch(
-        f"/api/agent/v1/strategies/{int(strategy_id)}",
-        json={"status": "running"},
-    )
+    return _post(f"/api/agent/v1/strategies/{int(strategy_id)}/start")
 
 
 @mcp.tool()
