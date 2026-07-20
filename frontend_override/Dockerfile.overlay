@@ -1,0 +1,17 @@
+# Dockerfile.overlay — Brand replacement overlay for frontend static files
+#
+# Strategy: extend the upstream GHCR frontend image, overlaying locally
+# brand-replaced static files on top of the original nginx html directory.
+# This preserves the upstream nginx.conf, entrypoint, and health-check config.
+#
+# The local html/ directory was created by:
+#   1. docker cp quantdinger-frontend:/usr/share/nginx/html/ frontend_override/html/
+#   2. powershell -File frontend_override/replace-brand.ps1
+#
+# Build (from repo root):
+#   docker build -t chanquant-frontend:branded \
+#     -f frontend_override/Dockerfile.overlay .
+FROM ghcr.io/brokermr810/quantdinger-frontend:latest
+
+# Overlay brand-replaced files (overwrites matching paths, adds new logo SVGs)
+COPY frontend_override/html /usr/share/nginx/html

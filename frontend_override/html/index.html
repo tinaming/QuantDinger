@@ -1,0 +1,180 @@
+﻿<!DOCTYPE html>
+<html lang="zh-cmn-Hans">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <link rel="icon" href="./slogo.png">
+    <title>ChanQuant</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .first-loading-wrp {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 32px;
+        color: #111827;
+        background:
+          linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(20, 184, 166, 0.08)),
+          #f8fbff;
+      }
+
+      .first-loading-card {
+        width: min(420px, 100%);
+        display: grid;
+        justify-items: center;
+        gap: 18px;
+        padding: 36px 34px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
+        backdrop-filter: blur(16px);
+      }
+
+      .brand-mark {
+        width: 104px;
+        height: 104px;
+        object-fit: contain;
+        filter: drop-shadow(0 18px 32px rgba(37, 99, 235, 0.18));
+        animation: qdFloat 2.8s ease-in-out infinite;
+      }
+
+      .brand-title {
+        margin: 2px 0 0;
+        color: #0f172a;
+        font-size: 30px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .brand-subtitle {
+        margin: 0;
+        color: #64748b;
+        font-size: 14px;
+        font-weight: 600;
+        text-align: center;
+      }
+
+      .loading-line {
+        width: 220px;
+        height: 4px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.12);
+      }
+
+      .loading-line::before {
+        content: "";
+        display: block;
+        width: 42%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #1d4ed8, #14b8a6);
+        animation: qdLoad 1.15s ease-in-out infinite;
+      }
+
+      .loading-copy {
+        margin: 0;
+        color: #64748b;
+        font-size: 13px;
+      }
+
+      @keyframes qdLoad {
+        0% {
+          transform: translateX(-110%);
+        }
+        100% {
+          transform: translateX(260%);
+        }
+      }
+
+      @keyframes qdFloat {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-6px);
+        }
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .first-loading-wrp {
+          color: #f8fafc;
+          background:
+            linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(20, 184, 166, 0.12)),
+            #0b1120;
+        }
+
+        .first-loading-card {
+          border-color: rgba(148, 163, 184, 0.2);
+          background: rgba(15, 23, 42, 0.78);
+          box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+        }
+
+        .brand-title {
+          color: #f8fafc;
+        }
+
+        .brand-subtitle,
+        .loading-copy {
+          color: #94a3b8;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .first-loading-card {
+          padding: 30px 22px;
+        }
+
+        .brand-mark {
+          width: 88px;
+          height: 88px;
+        }
+
+        .brand-title {
+          font-size: 26px;
+        }
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-Bv_zhOcS.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/vendor-utils-CIDSAJZe.js">
+    <link rel="modulepreload" crossorigin href="./assets/vendor-9zn8LPJn.js">
+    <link rel="modulepreload" crossorigin href="./assets/vue-core-YzJN5R7J.js">
+    <link rel="modulepreload" crossorigin href="./assets/ant-ecosystem-B_Ju6ZU9.js">
+    <link rel="modulepreload" crossorigin href="./assets/ant-design-vue-BVDxegCK.js">
+    <link rel="modulepreload" crossorigin href="./assets/ant-pro-layout-BZ_DX24D.js">
+    <link rel="stylesheet" crossorigin href="./assets/ant-design-vue-Bhq-_IVo.css">
+    <link rel="stylesheet" crossorigin href="./assets/ant-pro-layout-BKFZB355.css">
+    <link rel="stylesheet" crossorigin href="./assets/index-B1ghwBMZ.css">
+  </head>
+  <body>
+    <noscript>
+      <strong>We're sorry but ChanQuant doesn't work properly without JavaScript enabled. Please enable it to continue.</strong>
+    </noscript>
+    <div id="app">
+      <div class="first-loading-wrp">
+        <div class="first-loading-card">
+          <img class="brand-mark" src="./slogo.png" alt="ChanQuant">
+          <h2 class="brand-title">ChanQuant</h2>
+          <p class="brand-subtitle">AI quantitative trading infrastructure</p>
+          <div class="loading-line" aria-hidden="true"></div>
+          <p class="loading-copy">Loading workspace...</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -171,7 +171,7 @@ services:
     #   IMAGE_TAG      — unified knob, sets both FE and BE (BE only relevant in ghcr.yml)
     #   latest         — fallback; pin semver in project-root .env (e.g. IMAGE_TAG=3.0.10)
     image: ${FRONTEND_IMAGE:-ghcr.io/brokermr810/quantdinger-frontend}:${FRONTEND_TAG:-${IMAGE_TAG:-latest}}
-    pull_policy: always
+    pull_policy: never  # "never" for local branded overlay; set "always" to revert to GHCR upstream
     container_name: quantdinger-frontend
     restart: unless-stopped
     ports:
