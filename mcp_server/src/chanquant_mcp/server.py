@@ -1,6 +1,6 @@
 """
 
-QuantDinger MCP server — exposes the Agent Gateway as MCP tools.
+ChanQuant MCP server — exposes the Agent Gateway as MCP tools.
 
 
 
@@ -116,6 +116,10 @@ MCP_TOOL_NAMES = (
 
     "analyze_czsc",
     "czsc_status",
+    "list_czsc_signals",
+    "compute_czsc_signals",
+    "czsc_multilevel",
+    "czsc_resample",
     "cn_stock_data_status",
 
     "list_portfolio_positions",
@@ -145,7 +149,7 @@ def _env(name: str, required: bool = True) -> str:
 
         print(
 
-            f"[quantdinger-mcp] missing required env var: {name}",
+            f"[chanquant-mcp] missing required env var: {name}",
 
             file=sys.stderr,
 
@@ -159,17 +163,21 @@ def _env(name: str, required: bool = True) -> str:
 
 
 
-BASE_URL = _env("QUANTDINGER_BASE_URL").rstrip("/")
+_base_url = (os.environ.get("CHANQUANT_BASE_URL") or os.environ.get("QUANTDINGER_BASE_URL") or "").strip()
 
-AGENT_TOKEN = _env("QUANTDINGER_AGENT_TOKEN")
+BASE_URL = (_base_url or _env("QUANTDINGER_BASE_URL")).rstrip("/")
 
-TIMEOUT_S = float(os.environ.get("QUANTDINGER_TIMEOUT_S", "60"))
+_agent_token = (os.environ.get("CHANQUANT_AGENT_TOKEN") or os.environ.get("QUANTDINGER_AGENT_TOKEN") or "").strip()
 
-JOB_STREAM_MAX_EVENTS = int(os.environ.get("QUANTDINGER_MCP_JOB_STREAM_MAX_EVENTS", "200"))
+AGENT_TOKEN = _agent_token or _env("QUANTDINGER_AGENT_TOKEN")
 
-JOB_STREAM_MAX_SECONDS = float(os.environ.get("QUANTDINGER_MCP_JOB_STREAM_MAX_SECONDS", "300"))
+TIMEOUT_S = float(os.environ.get("CHANQUANT_TIMEOUT_S") or os.environ.get("QUANTDINGER_TIMEOUT_S", "60"))
 
-JOB_POLL_MAX_SECONDS = float(os.environ.get("QUANTDINGER_MCP_JOB_POLL_MAX_SECONDS", "300"))
+JOB_STREAM_MAX_EVENTS = int(os.environ.get("CHANQUANT_MCP_JOB_STREAM_MAX_EVENTS") or os.environ.get("QUANTDINGER_MCP_JOB_STREAM_MAX_EVENTS", "200"))
+
+JOB_STREAM_MAX_SECONDS = float(os.environ.get("CHANQUANT_MCP_JOB_STREAM_MAX_SECONDS") or os.environ.get("QUANTDINGER_MCP_JOB_STREAM_MAX_SECONDS", "300"))
+
+JOB_POLL_MAX_SECONDS = float(os.environ.get("CHANQUANT_MCP_JOB_POLL_MAX_SECONDS") or os.environ.get("QUANTDINGER_MCP_JOB_POLL_MAX_SECONDS", "300"))
 
 
 
@@ -267,11 +275,11 @@ def _unwrap(r: httpx.Response) -> Any:
 
 mcp = FastMCP(
 
-    "quantdinger",
+    "chanquant",
 
     instructions=(
 
-        "Tools for the QuantDinger self-hosted quant platform. "
+        "Tools for the ChanQuant self-hosted quant platform. "
 
         "All tools are tenant-scoped via the configured agent token. "
 
@@ -315,6 +323,9 @@ mcp = FastMCP(
         "including source code (secrets redacted). "
         "CZSC (缠论): call czsc_status first to check library availability, "
         "then analyze_czsc for Chan-theory structural analysis (bi/duan/zhongshu/signals). "
+        "Use list_czsc_signals to enumerate 250+ signal functions, compute_czsc_signals "
+        "to calculate specific signals, czsc_multilevel for multi-timeframe analysis, "
+        "and czsc_resample to aggregate bars to a target frequency. "
         "CN-STOCK DATA: cn_stock_data_status reports A-share data-source tier health."
 
     ),
@@ -764,7 +775,7 @@ def stream_job_until_done(
 
 def get_indicator_authoring_contract() -> Any:
 
-    """Fetch QuantDinger indicator I/O contract + starter Python template.
+    """Fetch ChanQuant indicator I/O contract + starter Python template.
 
 
 
@@ -1296,6 +1307,133 @@ def analyze_czsc(
 
 
 @mcp.tool()
+def list_czsc_signals(
+    grouped: bool = True,
+    namespace: str = "",
+    category: str = "",
+) -> Any:
+    """List all available CZSC signal functions (250+).
+
+    Returns signal names, parameter templates, categories, and
+    namespaces.  Signals are grouped by module (cxt/tas/jcc/vol/
+    pressure/bar etc.) when grouped=True.
+
+    Args:
+        grouped:   Group results by namespace (default True).
+        namespace: Filter by namespace(s), comma-separated (e.g. "cxt,tas").
+        category:  Filter by "kline" or "trader" (empty = both).
+    """
+    params: dict[str, Any] = {"grouped": str(grouped).lower()}
+    if namespace:
+        params["namespace"] = namespace
+    if category:
+        params["category"] = category
+    return _get("/api/agent/v1/czsc/signals", params=params)
+
+
+@mcp.tool()
+def compute_czsc_signals(
+    market: str,
+    symbol: str,
+    signals_config: list,
+    timeframe: str = "1H",
+    limit: int = 500,
+) -> Any:
+    """Compute selected CZSC signal functions on K-line data.
+
+    Calculates the specified signal functions and returns their
+    values as ``czsc_signal_*`` columns.  Use ``list_czsc_signals``
+    first to discover available signals.
+
+    Args:
+        market:         e.g. "CNStock", "Crypto".
+        symbol:         e.g. "sh600519", "BTC/USDT".
+        signals_config: List of signal config dicts, each with 'name' key
+                        (e.g. [{"name": "cxt_bi_end_V240526", "freq": "30分钟"}]).
+        timeframe:      "1m"/"5m"/"15m"/"30m"/"1H"/"4H"/"1D".
+        limit:          Number of bars, 100..3000.
+    """
+    limit = max(100, min(3000, int(limit)))
+    return _post(
+        "/api/agent/v1/czsc/signals/compute",
+        json={
+            "market": market,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "limit": limit,
+            "signals_config": signals_config,
+        },
+    )
+
+
+@mcp.tool()
+def czsc_multilevel(
+    market: str,
+    symbol: str,
+    timeframe: str = "5m",
+    limit: int = 500,
+    target_timeframes: list | None = None,
+) -> Any:
+    """Multi-timeframe CZSC joint analysis (多级别联立).
+
+    Analyzes market structure across multiple timeframes and
+    returns per-frequency summaries with cross-validation
+    (trend alignment, bi/duan direction agreement).
+
+    Args:
+        market:             e.g. "CNStock", "Crypto".
+        symbol:             e.g. "sh600519", "BTC/USDT".
+        timeframe:          Base timeframe (e.g. "1m", "5m").
+        limit:              Number of bars, 100..3000.
+        target_timeframes:  List of target timeframes to analyze
+                           (e.g. ["15m", "1H", "1D"]). Auto-selects if empty.
+    """
+    limit = max(100, min(3000, int(limit)))
+    body: dict[str, Any] = {
+        "market": market,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "limit": limit,
+    }
+    if target_timeframes:
+        body["target_timeframes"] = target_timeframes
+    return _post("/api/agent/v1/czsc/multilevel", json=body)
+
+
+@mcp.tool()
+def czsc_resample(
+    market: str,
+    symbol: str,
+    target_freq: str,
+    timeframe: str = "1m",
+    limit: int = 500,
+) -> Any:
+    """Resample K-line bars to a target frequency.
+
+    Uses CZSC's Rust-backed resample_bars for precise aggregation
+    (e.g. 1-minute bars to 5-minute or daily bars).
+
+    Args:
+        market:      e.g. "CNStock", "Crypto".
+        symbol:      e.g. "sh600519", "BTC/USDT".
+        target_freq: Target frequency in Chinese (e.g. "5分钟", "60分钟", "日线").
+        timeframe:   Source timeframe (e.g. "1m").
+        limit:       Number of source bars, 100..5000.
+    """
+    limit = max(100, min(5000, int(limit)))
+    return _post(
+        "/api/agent/v1/czsc/resample",
+        json={
+            "market": market,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "target_freq": target_freq,
+            "limit": limit,
+        },
+    )
+
+
+@mcp.tool()
 def cn_stock_data_status() -> Any:
     """Check CN-stock (A股) data-source availability.
 
@@ -1743,7 +1881,7 @@ _TRANSPORTS = {"stdio", "sse", "streamable-http"}
 
 def _resolve_transport() -> str:
 
-    raw = (os.environ.get("QUANTDINGER_MCP_TRANSPORT") or "stdio").strip().lower()
+    raw = (os.environ.get("CHANQUANT_MCP_TRANSPORT") or os.environ.get("QUANTDINGER_MCP_TRANSPORT") or "stdio").strip().lower()
 
     if raw in ("http", "streaming-http", "streamable_http"):
 
@@ -1753,7 +1891,7 @@ def _resolve_transport() -> str:
 
         print(
 
-            f"[quantdinger-mcp] unknown transport '{raw}'. "
+            f"[chanquant-mcp] unknown transport '{raw}'. "
 
             f"Expected one of: {sorted(_TRANSPORTS)} (or http/streaming-http alias).",
 
@@ -1771,9 +1909,9 @@ def _resolve_transport() -> str:
 
 def _apply_http_settings_from_env() -> None:
 
-    host = (os.environ.get("QUANTDINGER_MCP_HOST") or "").strip()
+    host = (os.environ.get("CHANQUANT_MCP_HOST") or os.environ.get("QUANTDINGER_MCP_HOST") or "").strip()
 
-    port_raw = (os.environ.get("QUANTDINGER_MCP_PORT") or "").strip()
+    port_raw = (os.environ.get("CHANQUANT_MCP_PORT") or os.environ.get("QUANTDINGER_MCP_PORT") or "").strip()
 
     settings = getattr(mcp, "settings", None)
 
@@ -1801,7 +1939,7 @@ def _apply_http_settings_from_env() -> None:
 
             print(
 
-                f"[quantdinger-mcp] invalid QUANTDINGER_MCP_PORT='{port_raw}', ignoring.",
+                f"[chanquant-mcp] invalid MCP_PORT='{port_raw}', ignoring.",
 
                 file=sys.stderr,
 
@@ -1819,15 +1957,15 @@ def main() -> None:
 
     Transport selection (env-only — works in both desktop and cloud):
 
-      QUANTDINGER_MCP_TRANSPORT=stdio              (default; stdin/stdout)
+      CHANQUANT_MCP_TRANSPORT=stdio              (default; stdin/stdout)
 
-      QUANTDINGER_MCP_TRANSPORT=sse                (SSE over HTTP)
+      CHANQUANT_MCP_TRANSPORT=sse                (SSE over HTTP)
 
-      QUANTDINGER_MCP_TRANSPORT=streamable-http    (newer MCP HTTP transport)
+      CHANQUANT_MCP_TRANSPORT=streamable-http    (newer MCP HTTP transport)
 
-      QUANTDINGER_MCP_HOST=0.0.0.0                 (bind for HTTP transports)
+      CHANQUANT_MCP_HOST=0.0.0.0                 (bind for HTTP transports)
 
-      QUANTDINGER_MCP_PORT=7800                    (port for HTTP transports)
+      CHANQUANT_MCP_PORT=7800                    (port for HTTP transports)
 
     """
 

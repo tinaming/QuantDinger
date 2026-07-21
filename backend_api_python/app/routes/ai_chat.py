@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import math
 import re
+import time
+from collections import Counter
 from datetime import date, datetime
 from typing import Any
 
@@ -260,11 +262,11 @@ def _classify_agent_intent(message: str, attachments: list[dict], context: dict,
     has_image = bool(attachments)
     fallback = _fallback_agent_intent(message, has_image, context)
     system_prompt = (
-        "You are the QuantDinger Agent Intent Router. Classify the user's message into a "
+        "You are the ChanQuant Agent Intent Router. Classify the user's message into a "
         "workflow plan for a global quantitative trading terminal. Return JSON only. "
         "Do not answer the user. Decide whether this is chat/research or an executable "
         "workflow such as strategy creation, backtest, scheduled analysis, bot creation, or debugging. "
-        "For strategy creation, prefer QuantDinger native workflows: indicator_ide for chart/backtest "
+        "For strategy creation, prefer ChanQuant native workflows: indicator_ide for chart/backtest "
         "strategies, script_strategy for Python ScriptStrategy, trading_bot for bot presets. "
         "If the user asks to create/build/write/generate a runnable strategy and enough target context "
         "is available, set should_execute=true. If required data is missing, list it in required_missing. "
@@ -328,6 +330,69 @@ def _get_or_classify_agent_intent(message: str, attachments: list[dict], context
     if isinstance(existing, dict) and existing.get("intent"):
         return _normalize_agent_intent(existing, message, bool(attachments), context, language)
     return _classify_agent_intent(message, attachments, context, language)
+
+
+def _restore_session_context(context: dict, session: dict) -> dict:
+    """Restore symbol/market/strategy_id from DB session when frontend doesn't send them."""
+    if not session:
+        return context
+    if not context.get("symbol") and session.get("context_symbol"):
+        context["symbol"] = session["context_symbol"]
+    if not context.get("market") and session.get("context_market"):
+        context["market"] = session["context_market"]
+    if not context.get("strategy_id") and session.get("context_strategy_id"):
+        context["strategy_id"] = session["context_strategy_id"]
+    return context
+
+
+def _classify_intent_with_session(
+    cur, sid: int | None, message: str, attachments: list[dict], context: dict, language: str
+) -> tuple[dict, str]:
+    """Classify intent, inheriting session dominant intent for follow-up messages.
+
+    Returns (agent_plan, intent) tuple.
+    """
+    agent_plan = _get_or_classify_agent_intent(message, attachments, context, language)
+    if not sid:
+        intent = str(agent_plan.get("intent") or _detect_intent(message, bool(attachments)))
+        return agent_plan, intent
+
+    # Look at recent messages for intent inheritance
+    recent = _load_recent_messages(cur, sid, limit=10)
+    intents = [m.get("intent") for m in recent if m.get("role") == "user" and m.get("intent")]
+    if not intents:
+        intent = str(agent_plan.get("intent") or _detect_intent(message, bool(attachments)))
+        return agent_plan, intent
+
+    # Find the dominant (most common) non-general intent from session history
+    counter = Counter(i for i in intents if i and i != "general")
+    dominant = counter.most_common(1)[0][0] if counter else None
+
+    current_intent = agent_plan.get("intent") or _detect_intent(message, bool(attachments))
+    msg_lower = message.lower()
+
+    # Heuristic: short follow-up / clarification → inherit session intent
+    is_follow_up = (
+        len(message) < 80
+        and current_intent == "general"
+        and dominant
+        and dominant != "general"
+        and not any(k in msg_lower for k in (
+            "新", "换一个", "另外", "别的", "new ", "switch", "another",
+            "行情", "分析", "看看", "帮我",
+        ))
+    )
+
+    if is_follow_up:
+        agent_plan = dict(agent_plan)
+        agent_plan["intent"] = dominant
+        agent_plan["confidence"] = max(agent_plan.get("confidence", 50), 70)
+        agent_plan["_inherited"] = True
+        return agent_plan, dominant
+
+    intent = str(current_intent)
+    return agent_plan, intent
+
 
 def _normalize_attachments(raw_attachments: Any) -> list[dict]:
     if not raw_attachments:
@@ -824,16 +889,23 @@ def _search_intelligence(message: str, candidates: list[dict], language: str) ->
         service = get_search_service()
         provider_status = service.provider_status() if hasattr(service, "provider_status") else []
         for q in queries[:3]:
-            for item in service.search(q, num_results=5, days=14):
-                web_results.append({
-                    "title": item.get("title") or "",
-                    "snippet": item.get("snippet") or "",
-                    "link": item.get("link") or item.get("url") or "",
-                    "source": item.get("source") or "",
-                    "published": item.get("published") or "",
-                    "query": q,
-                })
+            try:
+                for item in service.search(q, num_results=5, days=14):
+                    web_results.append({
+                        "title": item.get("title") or "",
+                        "snippet": item.get("snippet") or "",
+                        "link": item.get("link") or item.get("url") or "",
+                        "source": item.get("source") or "",
+                        "published": item.get("published") or "",
+                        "query": q,
+                    })
+            except Exception as search_err:
+                logger.warning("[search_intelligence] query=%r failed: %s", q, search_err)
+                web_results.append({"error": str(search_err), "query": q})
+        if not web_results:
+            logger.warning("[search_intelligence] all %d queries returned empty for message=%r", len(queries), message[:80])
     except Exception as e:
+        logger.error("[search_intelligence] service init failed: %s", e, exc_info=True)
         web_results.append({"error": str(e), "query": query})
 
     return {
@@ -1312,12 +1384,21 @@ def _research_task_flags(message: str, intent: str, has_image: bool = False) -> 
     wants_trade_plan = any(k in text for k in ("交易计划", "trade plan", "trading plan", "entry trigger", "stop loss", "take profit", "position sizing"))
     wants_macro = any(k in text for k in ("nfp", "cpi", "fomc", "fed", "rates", "pce", "gdp", "inflation", "payroll", "非农", "利率", "通胀", "就业", "宏观"))
     wants_market_data = any(
-        k in text for k in ("price", "quote", "trend", "support", "resistance", "行情", "价格", "走势", "支撑", "阻力", "k线", "kline", "多少钱", "股价", "现价")
+        k in text for k in ("price", "quote", "trend", "support", "resistance", "行情", "价格", "走势", "支撑", "阻力", "k线", "kline", "多少钱", "股价", "现价",
+                             # Stock/company mentions — user asking about a specific asset
+                             "股票", "股份", "stock", "share", "ticker",
+                             )
     )
     return {
         "intent": intent,
         "needs_market_data": wants_trade_plan or wants_market_data or (intent in {"market_analysis", "opportunity_radar"} and not wants_macro),
-        "needs_news": any(k in text for k in ("latest", "news", "headline", "event", "ipo", "spac", "spacex", "新闻", "消息", "事件", "上市", "影响")),
+        "needs_news": any(k in text for k in (
+            "latest", "news", "headline", "event", "ipo", "spac", "spacex",
+            "新闻", "消息", "事件", "上市", "影响",
+            # Search verbs — user asking to search/research means they want web results
+            "搜索", "搜一下", "查一下", "查找", "看看", "研究", "了解",
+            "search", "look up", "find out", "research",
+        )),
         "needs_macro": wants_macro,
         "needs_fundamentals": any(k in text for k in ("valuation", "market cap", "earnings", "revenue", "fundamental", "估值", "市值", "财报", "营收", "基本面")),
         "needs_chart": has_image or any(k in text for k in ("chart", "screenshot", "kline", "k线图", "截图", "看图")),
@@ -1382,7 +1463,7 @@ def _build_research_context(context: dict, has_image: bool = False) -> dict:
 
     candidates = _local_symbol_candidates(message)
     needs_symbol_discovery = flags["needs_market_data"] and not candidates
-    search_context = _search_intelligence(message, candidates, language) if (flags["needs_news"] or flags["needs_fundamentals"] or needs_symbol_discovery) else {
+    search_context = _search_intelligence(message, candidates, language) if (flags["needs_news"] or flags["needs_fundamentals"] or flags["needs_market_data"] or needs_symbol_discovery) else {
         "web_results": [],
         "news_results": [],
         "search_queries": [],
@@ -1591,6 +1672,39 @@ def _enrich_context(context: dict, has_image: bool = False) -> dict:
     return enriched
 
 
+def _enrich_context_followup(context: dict, has_image: bool = False) -> dict:
+    """Lightweight enrich for follow-up messages in an existing session.
+
+    Skips expensive market snapshot and news search unless the user
+    explicitly asks for fresh data. Keeps the LLM focused on conversation
+    context rather than being overwhelmed by stale data.
+    """
+    enriched = dict(context or {})
+    message = str(enriched.get("user_message") or "").lower()
+    # Only fetch market data if user explicitly mentions prices/trends
+    needs_fresh_data = any(
+        k in message for k in (
+            "价格", "行情", "多少钱", "现价", "走势", "price", "quote",
+            "最新", "latest", "新闻", "news", "消息", "事件",
+            "搜索", "搜", "查", "找", "看看", "帮我", "分析",
+            "search", "find", "look", "show", "check",
+            "趋势", "涨跌", "买入", "卖出", "目标价",
+        )
+    )
+    if needs_fresh_data and "market_snapshot" not in enriched:
+        snapshot = _build_market_snapshot(enriched)
+        if snapshot:
+            enriched["market_snapshot"] = snapshot
+    # Lightweight research only for explicit news/macro requests
+    intent = str(enriched.get("intent") or "")
+    if needs_fresh_data:
+        research = _build_research_context(enriched, has_image=has_image)
+        if research:
+            enriched["research_context"] = research
+            enriched["intelligence_context"] = _legacy_intelligence_context(research)
+    return enriched
+
+
 def _compact_memory_text(value: Any, limit: int = 900) -> str:
     text = re.sub(r"\s+", " ", _plain_text(value)).strip()
     if len(text) > limit:
@@ -1719,10 +1833,10 @@ def _build_system_prompt(language: str, context: dict, intent: str, has_image: b
     context_line = ", ".join(context_bits) or "no explicit selected symbol"
     image_line = "The user attached chart/K-line screenshots; analyze visible chart structure, indicators, labels and risk." if has_image else "No image is attached."
     base = (
-        "You are QuantDinger Copilot, a trading system assistant for open-source quant users. "
+        "You are ChanQuant Copilot, a trading system assistant for open-source quant users. "
         f"Reply in {lang_name}. Current intent={intent}; context: {context_line}. {image_line}\n"
         "Be practical and careful. Do not promise profit or invent unavailable live data. "
-        "If the user asks to write strategy code, stay inside QuantDinger native workflows. "
+        "If the user asks to write strategy code, stay inside ChanQuant native workflows. "
         "Use Indicator IDE code for indicator strategies, Python ScriptStrategy for script strategies, and Trading Bot parameters for bot workflows. "
         "Never output Pine Script, TradingView-only code, broker-specific scripts, or unrelated platform syntax unless the user explicitly asks for that platform. "
         "For strategy work, first clarify missing requirements, then propose design, then generate runnable code only when the user confirms or asks to generate. "
@@ -1749,7 +1863,7 @@ def _build_system_prompt(language: str, context: dict, intent: str, has_image: b
     base += "\n" + build_tool_prompt(language, intent) + "\n"
     if context.get("agent_task"):
         base += (
-            f"\n[QuantDinger agent task]\n{_json_dumps(context.get('agent_task'))}\n"
+            f"\n[ChanQuant agent task]\n{_json_dumps(context.get('agent_task'))}\n"
             "Treat this as a workflow state, not a casual chat. Keep the next action explicit.\n"
         )
     session_memory = context.get("session_working_memory")
@@ -1765,7 +1879,7 @@ def _build_system_prompt(language: str, context: dict, intent: str, has_image: b
     research_context = context.get("research_context")
     if isinstance(research_context, dict) and research_context:
         base += (
-            "\n[QuantDinger Research Context]\n"
+            "\n[ChanQuant Research Context]\n"
             + _json_dumps(research_context)[:14000]
             + "\n"
             "Use the Research Context decision_order. If selected_context_conflict.has_conflict is true, explain the mismatch and prefer the user's message entity unless the user explicitly chose the selected UI symbol. "
@@ -1823,9 +1937,17 @@ def _build_llm_messages(history: list[dict], message: str, attachments: list[dic
                 content += f"\n[Historical attachment(s): {names}. Image bytes are stored for UI history; ask the user to reattach if visual detail is needed again.]"
         messages.append({"role": role, "content": content})
 
+    # D: Only include essential context fields to reduce prompt noise
+    essential_ctx = {}
+    if context.get("symbol"):
+        essential_ctx["symbol"] = context["symbol"]
+    if context.get("market"):
+        essential_ctx["market"] = context["market"]
+    if context.get("strategy_id"):
+        essential_ctx["strategy_id"] = context["strategy_id"]
     context_note = ""
-    if context:
-        context_note = f"\n\n[Selected context]\n{_json_dumps(context)}"
+    if essential_ctx:
+        context_note = f"\n\n[Selected context]\n{_json_dumps(essential_ctx)}"
     user_text = (message or "").strip() + context_note
     if attachments:
         content: list[dict] = [{"type": "text", "text": user_text}]
@@ -2189,23 +2311,46 @@ def chat_message():
     if not message and not attachments:
         return jsonify({"code": 0, "msg": "Missing message", "data": None}), 400
 
-    agent_plan = _get_or_classify_agent_intent(message, attachments, context, language)
-    intent = str(agent_plan.get("intent") or _detect_intent(message, bool(attachments)))
-    context["user_message"] = message
-    context["intent"] = intent
-    context["agent_intent"] = agent_plan
-    context["language"] = language
-    context = _enrich_context(context, has_image=bool(attachments))
-
+    t0 = time.perf_counter()
     try:
         with get_db_connection() as db:
             cur = db.cursor()
             _ensure_tables(cur)
+            # A: Load session early and restore context for intent inheritance
             session = _get_session(cur, user_id, int(session_id)) if session_id else None
+            is_follow_up = False
+            if session:
+                context = _restore_session_context(context, session)
+                is_follow_up = True
+            t_session = time.perf_counter()
+
+            context["user_message"] = message
+            context["language"] = language
+
             if session:
                 sid = int(session["id"])
+                # Skip standalone intent classification — _classify_intent_with_session handles it
+                # B: Intent inheritance — re-classify with session history
+                agent_plan, intent = _classify_intent_with_session(
+                    cur, sid, message, attachments, context, language
+                )
+                context["intent"] = intent
+                context["agent_intent"] = agent_plan
             else:
+                agent_plan = _get_or_classify_agent_intent(message, attachments, context, language)
+                intent = str(agent_plan.get("intent") or _detect_intent(message, bool(attachments)))
+                context["intent"] = intent
+                context["agent_intent"] = agent_plan
                 sid = _create_session(cur, user_id, _title_from_message(message or "Chart analysis"), context)
+            t_intent = time.perf_counter()
+
+            # Use lightweight enrich for follow-up messages to avoid overwhelming LLM with stale data
+            if is_follow_up:
+                context = _enrich_context_followup(context, has_image=bool(attachments))
+            else:
+                context = _enrich_context(context, has_image=bool(attachments))
+            t_enrich = time.perf_counter()
+
             user_message_id = _insert_message(
                 cur,
                 session_id=sid,
@@ -2229,7 +2374,9 @@ def chat_message():
             context["user_memories"] = _get_user_memories(cur, user_id)
             history = _load_recent_messages(cur, sid, limit=20)
             llm_messages = _build_llm_messages(history[:-1], message or "Please analyze the attached chart image.", attachments, context, language, intent)
+            t_build = time.perf_counter()
             raw = LLMService().call_llm_api(llm_messages, temperature=0.35, use_json_mode=True)
+            t_llm = time.perf_counter()
             parsed = _parse_llm_json(raw)
             answer = str(parsed.get("answer") or raw or "").strip()
             if not answer:
@@ -2255,6 +2402,13 @@ def chat_message():
             )
             db.commit()
             cur.close()
+            t_total = time.perf_counter()
+            logger.info(
+                "[chat_timing] total=%.1fs session=%.1fs intent=%.1fs enrich=%.1fs build=%.1fs llm=%.1fs | follow_up=%s intent=%s",
+                t_total - t0, t_session - t0, t_intent - t_session, t_enrich - t_intent,
+                t_build - t_enrich, t_llm - t_build,
+                is_follow_up, intent,
+            )
 
         return jsonify({
             "code": 1,
@@ -2300,29 +2454,67 @@ def chat_message_stream():
     if not message and not attachments:
         return jsonify({"code": 0, "msg": "Missing message", "data": None}), 400
 
-    agent_plan = _get_or_classify_agent_intent(message, attachments, context, language)
-    intent = str(agent_plan.get("intent") or _detect_intent(message, bool(attachments)))
+    # A: Pre-load session to restore context before intent classification
+    _pre_session = None
+    _pre_sid = None
+    _is_follow_up = False
+    t0 = time.perf_counter()
+    try:
+        with get_db_connection() as _pre_db:
+            _pre_cur = _pre_db.cursor()
+            _ensure_tables(_pre_cur)
+            _pre_session = _get_session(_pre_cur, user_id, int(session_id)) if session_id else None
+            if _pre_session:
+                context = _restore_session_context(context, _pre_session)
+                _pre_sid = int(_pre_session["id"])
+                _is_follow_up = True
+            _pre_cur.close()
+    except Exception:
+        pass
+    t_session = time.perf_counter()
+
     context["user_message"] = message
+    context["language"] = language
+
+    if _is_follow_up:
+        # Skip standalone intent classification — generate() handles it with session history
+        agent_plan = {}
+        intent = ""
+    else:
+        agent_plan = _get_or_classify_agent_intent(message, attachments, context, language)
+        intent = str(agent_plan.get("intent") or _detect_intent(message, bool(attachments)))
     context["intent"] = intent
     context["agent_intent"] = agent_plan
-    context["language"] = language
-    context = _enrich_context(context, has_image=bool(attachments))
+    t_intent = time.perf_counter()
+
+    if _is_follow_up:
+        context = _enrich_context_followup(context, has_image=bool(attachments))
+    else:
+        context = _enrich_context(context, has_image=bool(attachments))
+    t_enrich = time.perf_counter()
 
     @stream_with_context
     def generate():
-        sid = None
+        sid = _pre_sid
         costs = {}
         chunks: list[str] = []
-        usage_action = _agent_usage_action(agent_plan, context, language)
+        nonlocal agent_plan, intent
         try:
             with get_db_connection() as db:
                 cur = db.cursor()
                 _ensure_tables(cur)
-                session = _get_session(cur, user_id, int(session_id)) if session_id else None
-                if session:
-                    sid = int(session["id"])
+                if _pre_session:
+                    session = _pre_session
+                    # B: Intent inheritance for follow-up messages
+                    agent_plan, intent = _classify_intent_with_session(
+                        cur, sid, message, attachments, context, language
+                    )
+                    context["intent"] = intent
+                    context["agent_intent"] = agent_plan
                 else:
                     sid = _create_session(cur, user_id, _title_from_message(message or "Chart analysis"), context)
+
+                usage_action = _agent_usage_action(agent_plan, context, language)
                 user_message_id = _insert_message(
                     cur,
                     session_id=sid,
@@ -2363,6 +2555,7 @@ def chat_message_stream():
                 for delta in LLMService().stream_llm_api(llm_messages, temperature=0.35):
                     chunks.append(delta)
                     yield _sse("delta", {"text": delta})
+                t_llm_done = time.perf_counter()
 
                 answer = "".join(chunks).strip() or "The model did not return a usable answer."
                 assistant_id = _insert_message(
@@ -2381,6 +2574,13 @@ def chat_message_stream():
                 )
                 db.commit()
                 cur.close()
+                t_total = time.perf_counter()
+                logger.info(
+                    "[chat_stream_timing] total=%.1fs pre(session=%.1fs intent=%.1fs enrich=%.1fs) gen(llm=%.1fs) | follow_up=%s intent=%s",
+                    t_total - t0, t_session - t0, t_intent - t_session, t_enrich - t_intent,
+                    t_llm_done - t_enrich,
+                    _is_follow_up, intent,
+                )
                 yield _sse("done", {
                     "session_id": sid,
                     "message_id": assistant_id,
@@ -2622,7 +2822,7 @@ def export_chat_report_pdf():
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
 
     symbol = re.sub(r"[^A-Za-z0-9._-]+", "_", _plain_text(report.get("symbol") or target.get("symbol") or "report")).strip("_")
-    filename = f"QuantDinger_{symbol or 'report'}_{_now_utc().strftime('%Y%m%d')}.pdf"
+    filename = f"ChanQuant_{symbol or 'report'}_{_now_utc().strftime('%Y%m%d')}.pdf"
     return Response(
         pdf_bytes,
         mimetype="application/pdf",

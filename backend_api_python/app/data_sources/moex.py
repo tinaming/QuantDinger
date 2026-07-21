@@ -11,7 +11,7 @@ historical candles and last-trade ticker data.
 ISS candle intervals (minutes):
     1, 10, 60, 24 (=day), 7 (=week), 31 (=month)
 
-QuantDinger timeframes are mapped to the closest ISS interval.
+ChanQuant timeframes are mapped to the closest ISS interval.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-# QuantDinger timeframe -> MOEX ISS candle interval (minutes; 24=day, 7=week, 31=month)
+# ChanQuant timeframe -> MOEX ISS candle interval (minutes; 24=day, 7=week, 31=month)
 # 5m / 15m / 30m / 4H are not natively offered by ISS; we resample from the
 # nearest finer interval (1m for sub-hour, 60m for 4H).
 INTERVAL_MAP: Dict[str, int] = {
@@ -65,7 +65,7 @@ class MOEXDataSource(BaseDataSource):
             b = DEFAULT_BOARD
         self.board = b
         self._session = requests.Session()
-        self._session.headers.update({"User-Agent": "QuantDinger/MOEX-DataSource"})
+        self._session.headers.update({"User-Agent": "ChanQuant/MOEX-DataSource"})
 
     # ------------------------------------------------------------------ helpers
     @staticmethod

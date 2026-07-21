@@ -1,6 +1,6 @@
-# Code of Conduct
+﻿# Code of Conduct
 
-QuantDinger is a technical, builder-first open-source project.
+ChanQuant is a technical, builder-first open-source project.
 We value clear thinking, respectful collaboration, and long-term credibility.
 
 This Code of Conduct exists to ensure that all contributors and users
@@ -11,7 +11,7 @@ can participate in a professional, constructive environment.
 ## 1) Our Commitment
 
 We are committed to providing a harassment-free and respectful experience
-for everyone involved in the QuantDinger community, regardless of:
+for everyone involved in the ChanQuant community, regardless of:
 
 - age, gender identity, or expression
 - sexual orientation
@@ -53,7 +53,7 @@ The following behaviors are not tolerated:
 
 ## 4) Scope
 
-This Code of Conduct applies to all official QuantDinger spaces, including:
+This Code of Conduct applies to all official ChanQuant spaces, including:
 
 - GitHub issues, pull requests, discussions, and code reviews
 - Any community channels linked from this repository
@@ -112,5 +112,5 @@ Disruptive behavior is not.
 ## 8) Attribution
 
 This Code of Conduct is informed by widely adopted open-source standards,
-including the Contributor Covenant, and adapted for QuantDinger’s
+including the Contributor Covenant, and adapted for ChanQuant’s
 engineering-focused environment.

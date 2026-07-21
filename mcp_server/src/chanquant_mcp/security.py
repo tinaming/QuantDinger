@@ -1,4 +1,4 @@
-"""Client-side safety rails for the QuantDinger MCP server."""
+"""Client-side safety rails for the ChanQuant MCP server."""
 from __future__ import annotations
 
 import re

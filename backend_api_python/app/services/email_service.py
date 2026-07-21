@@ -296,28 +296,28 @@ class EmailService:
         
         # Prepare email content based on type
         if code_type == 'register':
-            subject = 'QuantDinger - Verification Code for Registration'
+            subject = 'ChanQuant - Verification Code for Registration'
             action_text = 'complete your registration'
         elif code_type == 'login':
-            subject = 'QuantDinger - Quick Login Verification Code'
+            subject = 'ChanQuant - Quick Login Verification Code'
             action_text = 'log in to your account'
         elif code_type == 'reset_password':
-            subject = 'QuantDinger - Password Reset Verification Code'
+            subject = 'ChanQuant - Password Reset Verification Code'
             action_text = 'reset your password'
         elif code_type == 'change_password':
-            subject = 'QuantDinger - Verification Code for Password Change'
+            subject = 'ChanQuant - Verification Code for Password Change'
             action_text = 'change your password'
         elif code_type == 'change_email':
-            subject = 'QuantDinger - Verification Code for Email Change'
+            subject = 'ChanQuant - Verification Code for Email Change'
             action_text = 'change your email address'
         else:
-            subject = 'QuantDinger - Verification Code'
+            subject = 'ChanQuant - Verification Code'
             action_text = 'complete the verification'
         
         html_body = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #1890ff; margin: 0;">QuantDinger</h1>
+                <h1 style="color: #1890ff; margin: 0;">ChanQuant</h1>
                 <p style="color: #666; margin-top: 5px;">AI-Driven Quantitative Insights</p>
             </div>
             
@@ -341,7 +341,7 @@ class EmailService:
             </div>
             
             <div style="text-align: center; margin-top: 30px; color: #999; font-size: 12px;">
-                <p>&copy; QuantDinger. All rights reserved.</p>
+                <p>&copy; ChanQuant. All rights reserved.</p>
             </div>
         </div>
         """

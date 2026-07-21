@@ -1,6 +1,6 @@
-# MetaTrader 5 (MT5) 外汇实盘交易指南
+﻿# MetaTrader 5 (MT5) 外汇实盘交易指南
 
-QuantDinger 支持通过 MetaTrader 5 终端进行外汇实盘交易。
+ChanQuant 支持通过 MetaTrader 5 终端进行外汇实盘交易。
 
 ## 概述
 
@@ -53,7 +53,7 @@ pip install MetaTrader5
 PowerShell：
 
 ```powershell
-cd C:\path\to\QuantDinger\backend_api_python
+cd C:\path\to\ChanQuant\backend_api_python
 
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -71,7 +71,7 @@ pip install -r requirements-windows.txt
 启动后端（入口：`backend_api_python/run.py`）：
 
 ```powershell
-cd C:\path\to\QuantDinger\backend_api_python
+cd C:\path\to\ChanQuant\backend_api_python
 .\.venv\Scripts\Activate.ps1
 python run.py
 ```

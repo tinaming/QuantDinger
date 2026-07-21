@@ -29,6 +29,7 @@ COINOS_TRADING = "CoinOS-Trading"
 COINOS_FREQTRADE = "CoinOS-Freqtrade"
 COINOS_ACCOUNT = "CoinOS-Account"
 COINOS_ONCHAIN = "CoinOS-Onchain"
+CHANLUN = "ChanLun"
 
 ALL_TAGS = [
     {"name": HEALTH, "description": "Liveness and API metadata (Public)"},
@@ -60,4 +61,5 @@ ALL_TAGS = [
     {"name": COINOS_FREQTRADE, "description": "Freqtrade strategy create/backtest/deploy/control (Internal)"},
     {"name": COINOS_ACCOUNT, "description": "Exchange account management and API key info (Internal)"},
     {"name": COINOS_ONCHAIN, "description": "On-chain DEX via OKX Web3 — swap, wallet, gas (Internal)"},
+    {"name": CHANLUN, "description": "ChanLun (缠论) aggregated analysis — fractals, strokes, centers, buy/sell points (Public)"},
 ]

@@ -1,4 +1,4 @@
-﻿# QuantDinger API Inventory
+﻿# ChanQuant API Inventory
 
 This inventory is a static snapshot extracted from Flask route decorators on the
 4.0 branch. It is a refactor guide, not a replacement for generated OpenAPI.

@@ -265,7 +265,7 @@ def build_payment_uri(
     *,
     contract: Optional[str] = None,
     order_id: Optional[int] = None,
-    label: str = "QuantDinger",
+    label: str = "ChanQuant",
 ) -> str:
     """Build a chain-specific deep-link URI that wallets can scan to
     auto-fill recipient + amount.

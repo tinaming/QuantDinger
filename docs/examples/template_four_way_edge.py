@@ -1,5 +1,5 @@
 # ============================================================
-# QuantDinger 四路信号空壳模板（契约 v1）
+# ChanQuant 四路信号空壳模板（契约 v1）
 # ------------------------------------------------------------
 # 复制到指标 IDE 作为新策略起点；与平台默认模板一致。
 # 文档: docs/SIGNAL_EXECUTION_STANDARD_CN.md
@@ -8,7 +8,7 @@
 my_indicator_name = "四路信号策略模板"
 my_indicator_description = "在此填写策略逻辑说明；默认双均线示例，可整体替换计算段。"
 
-# --- QuantDinger execution contract (v1) ---
+# --- ChanQuant execution contract (v1) ---
 # signal_form: four_way
 # exit_owner: engine
 # flip_mode: R2

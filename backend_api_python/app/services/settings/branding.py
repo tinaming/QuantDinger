@@ -7,17 +7,17 @@ from typing import Dict, List
 
 
 BRAND_DEFAULTS = {
-    "app_name": "QuantDinger",
-    "copyright": "© 2025-2026 QuantDinger. All rights reserved.",
-    "contact_email": "support@quantdinger.com",
-    "contact_support_url": "https://t.me/quantdinger",
-    "contact_feature_request_url": "https://github.com/brokermr810/QuantDinger/issues",
-    "contact_live_chat_url": "https://t.me/quantdinger",
-    "social_github": "https://github.com/brokermr810/QuantDinger",
-    "social_x": "https://x.com/quantdinger_en",
-    "social_discord": "https://discord.com/invite/tyx5B6TChr",
-    "social_telegram": "https://t.me/quantdinger",
-    "social_youtube": "https://youtube.com/@quantdinger",
+    "app_name": "ChanQuant",
+    "copyright": "© 2025-2026 ChanQuant. All rights reserved.",
+    "contact_email": "",
+    "contact_support_url": "",
+    "contact_feature_request_url": "",
+    "contact_live_chat_url": "",
+    "social_github": "",
+    "social_x": "",
+    "social_discord": "",
+    "social_telegram": "",
+    "social_youtube": "",
 }
 
 

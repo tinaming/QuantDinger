@@ -273,7 +273,7 @@ def add_moex_rows(col: Collector) -> None:
         "https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json",
         params={"iss.meta": "off"},
         timeout=25,
-        headers={"User-Agent": "QuantDinger/1.0"},
+        headers={"User-Agent": "ChanQuant/1.0"},
     )
     resp.raise_for_status()
     data = resp.json().get("securities", {})

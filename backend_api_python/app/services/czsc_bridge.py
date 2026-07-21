@@ -1,5 +1,5 @@
 """
-CZSC (缠论) Pre-computation Bridge for QuantDinger.
+CZSC (缠论) Pre-computation Bridge for ChanQuant.
 
 czsc uses Rust (PyO3) for core algorithms, so it cannot run inside the
 safe_exec sandbox. This module pre-computes Chan Theory features on the
@@ -18,6 +18,8 @@ DataFrame unchanged.
 from __future__ import annotations
 
 import re
+import threading
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -62,9 +64,9 @@ def get_czsc_import_error() -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Timeframe mapping: QuantDinger -> czsc Freq
+# Timeframe mapping: ChanQuant -> czsc Freq
 # ---------------------------------------------------------------------------
-# QuantDinger timeframes: '1m', '5m', '15m', '30m', '1H', '4H', '1D', '1W'
+# ChanQuant timeframes: '1m', '5m', '15m', '30m', '1H', '4H', '1D', '1W'
 # czsc Freq enum (1.0.x): F1, F5, F15, F30, F60, F240 (or D), D, W
 
 _TIMEFRAME_TO_FREQ: Dict[str, str] = {
@@ -75,17 +77,21 @@ _TIMEFRAME_TO_FREQ: Dict[str, str] = {
     '30m': '30分钟',
     '1H': '60分钟',
     '1h': '60分钟',
-    '4H': '日线',     # czsc has no 4H; approximate to daily for structure analysis
-    '4h': '日线',
+    '2H': '120分钟',
+    '2h': '120分钟',
+    '4H': '240分钟',   # czsc 1.0 has F240 (240分钟 = 4H)
+    '4h': '240分钟',
     '1D': '日线',
     '1d': '日线',
     '1W': '周线',
     '1w': '周线',
+    '1M': '月线',
+    '1mo': '月线',
 }
 
 
 def _map_timeframe_to_freq(timeframe: str) -> Optional[Any]:
-    """Map QuantDinger timeframe string to czsc Freq enum."""
+    """Map ChanQuant timeframe string to czsc Freq enum."""
     if not _CZSC_AVAILABLE:
         return None
     freq_str = _TIMEFRAME_TO_FREQ.get(timeframe)
@@ -139,6 +145,22 @@ CZSC_COLUMNS: List[Dict[str, str]] = [
         'desc': 'Number of K-lines contained in the current stroke so far',
     },
     {
+        'name': 'czsc_duan_dir',
+        'dtype': 'int',
+        'desc': 'Current segment (段) direction: 1=upward segment (上升段), -1=downward segment (下降段), 0=none. '
+                'A segment consists of 3+ consecutive strokes with progressively higher/lower extremes.',
+    },
+    {
+        'name': 'czsc_duan_start_price',
+        'dtype': 'float',
+        'desc': 'Starting price of the current segment',
+    },
+    {
+        'name': 'czsc_duan_end_price',
+        'dtype': 'float',
+        'desc': 'Ending price of the current segment (latest bar within this segment)',
+    },
+    {
         'name': 'czsc_zs_level',
         'dtype': 'int',
         'desc': 'Center (中枢) level: 0=no center, higher value = larger center',
@@ -177,7 +199,7 @@ def get_czsc_column_docs() -> str:
     """Return formatted documentation string for all czsc_ columns.
 
     Used by the AI generation system prompt to teach LLMs about available
-    Chan Theory features.
+    Chan Theory features. Now includes signal function reference from czsc 1.0.
     """
     lines = [
         "# CZSC (缠论/Chan Theory) Columns",
@@ -196,6 +218,20 @@ def get_czsc_column_docs() -> str:
         "use `czsc_bs_type != ''` for buy/sell point triggers; "
         "combine `czsc_trend` with `czsc_zs_position` for trend-following filters."
     )
+
+    # Append signal function reference if available
+    try:
+        from app.services.czsc_signals import get_signal_docs_for_prompt
+        signal_docs = get_signal_docs_for_prompt(
+            namespace_filter=['cxt', 'tas', 'jcc', 'vol', 'pressure', 'bar'],
+            max_per_namespace=8,
+        )
+        if signal_docs:
+            lines.append("")
+            lines.append(signal_docs)
+    except Exception:
+        pass
+
     return '\n'.join(lines)
 
 
@@ -214,6 +250,86 @@ def code_uses_czsc(code: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# In-process LRU cache for CZSC computation results
+# ---------------------------------------------------------------------------
+_CZSC_CACHE: dict = {}
+_CZSC_CACHE_TIMESTAMPS: dict = {}
+_CZSC_CACHE_MAX_SIZE = 256
+_cache_lock = threading.Lock()
+
+# TTL by K-line period category (seconds)
+_CACHE_TTL_MINUTE = 60      # 1m / 5m / 15m
+_CACHE_TTL_HOUR = 300       # 30m / 1H / 2H / 4H
+_CACHE_TTL_DAY = 3600       # 1D / 1W / 1M
+
+_MINUTE_FREQS = frozenset({'1m', '5m', '15m'})
+_HOUR_FREQS = frozenset({'30m', '1H', '1h', '2H', '2h', '4H', '4h'})
+
+
+def _cache_ttl_for_freq(freq: str) -> int:
+    """Return cache TTL in seconds based on K-line frequency."""
+    if freq in _MINUTE_FREQS:
+        return _CACHE_TTL_MINUTE
+    if freq in _HOUR_FREQS:
+        return _CACHE_TTL_HOUR
+    return _CACHE_TTL_DAY
+
+
+def _build_cache_key(df: pd.DataFrame, freq: str, symbol: str) -> Optional[tuple]:
+    """Build a hashable cache key from DataFrame metadata.
+
+    Returns None if a key cannot be reliably constructed.
+    """
+    bar_count = len(df)
+    last_ts: Any = None
+    try:
+        if isinstance(df.index, pd.DatetimeIndex) and len(df) > 0:
+            last_ts = df.index[-1].isoformat()
+        elif 'dt' in df.columns and len(df) > 0:
+            last_ts = str(df['dt'].iloc[-1])
+        elif 'time' in df.columns and len(df) > 0:
+            last_ts = str(df['time'].iloc[-1])
+        elif 'datetime' in df.columns and len(df) > 0:
+            last_ts = str(df['datetime'].iloc[-1])
+    except Exception:
+        last_ts = None
+
+    if last_ts is None:
+        return None
+    return (symbol, freq, bar_count, last_ts)
+
+
+def _cache_get(key: tuple, ttl: int) -> Optional[pd.DataFrame]:
+    """Return cached DataFrame copy if present and not expired, else None."""
+    with _cache_lock:
+        now = time.monotonic()
+        ts = _CZSC_CACHE_TIMESTAMPS.get(key)
+        if ts is None:
+            return None
+        if now - ts > ttl:
+            # Expired
+            _CZSC_CACHE.pop(key, None)
+            _CZSC_CACHE_TIMESTAMPS.pop(key, None)
+            return None
+        cached = _CZSC_CACHE.get(key)
+        if cached is None:
+            return None
+        return cached.copy()
+
+
+def _cache_put(key: tuple, df: pd.DataFrame) -> None:
+    """Store DataFrame in cache, evicting oldest entries if at capacity."""
+    with _cache_lock:
+        if len(_CZSC_CACHE) >= _CZSC_CACHE_MAX_SIZE:
+            # Evict the oldest entry by timestamp
+            oldest_key = min(_CZSC_CACHE_TIMESTAMPS, key=_CZSC_CACHE_TIMESTAMPS.get)
+            _CZSC_CACHE.pop(oldest_key, None)
+            _CZSC_CACHE_TIMESTAMPS.pop(oldest_key, None)
+        _CZSC_CACHE[key] = df
+        _CZSC_CACHE_TIMESTAMPS[key] = time.monotonic()
+
+
+# ---------------------------------------------------------------------------
 # Core: compute czsc features and inject as DataFrame columns
 # ---------------------------------------------------------------------------
 
@@ -229,7 +345,7 @@ def compute_czsc_features(
     Args:
         df: Standard OHLCV DataFrame with columns open/high/low/close/volume.
             May have DatetimeIndex or integer index.
-        freq: QuantDinger timeframe string (e.g. '1H', '15m', '1D').
+        freq: ChanQuant timeframe string (e.g. '1H', '15m', '1D').
         force: If True, compute features even if code doesn't reference czsc_.
         symbol: Symbol name for czsc analysis (default 'SYMBOL').
 
@@ -244,11 +360,26 @@ def compute_czsc_features(
         # Need enough bars for meaningful Chan analysis (at least a few strokes)
         return df
 
+    # --- Cache lookup ---
+    cache_key = _build_cache_key(df, freq, symbol)
+    if cache_key is not None:
+        ttl = _cache_ttl_for_freq(freq)
+        cached = _cache_get(cache_key, ttl)
+        if cached is not None:
+            logger.debug(f"czsc_bridge: cache hit for {symbol} {freq} ({len(df)} bars)")
+            return cached
+
     try:
-        return _compute_features_inner(df, freq, symbol)
+        result = _compute_features_inner(df, freq, symbol)
     except Exception as e:
         logger.warning(f"czsc_bridge: feature computation failed: {e}", exc_info=True)
         return df
+
+    # --- Cache store (only if computation produced new czsc_ columns) ---
+    if cache_key is not None and any(c.startswith('czsc_') for c in result.columns):
+        _cache_put(cache_key, result)
+
+    return result
 
 
 def _compute_features_inner(df: pd.DataFrame, freq: str, symbol: str = 'SYMBOL') -> pd.DataFrame:
@@ -312,6 +443,9 @@ def _compute_features_inner(df: pd.DataFrame, freq: str, symbol: str = 'SYMBOL')
             bi_dir[_i] = _last_dir
 
     # ---- Step 5: Map centers (中枢) to df index ----
+    # czsc 1.0 does NOT expose zs_list on the CZSC object; centers are
+    # computed locally inside signal functions. Our _map_centers helper
+    # reconstructs them from bi_list (stroke overlap method).
     _map_centers(czsc_obj, czsc_df, zs_level, zs_zd, zs_zg, zs_position, n)
 
     # ---- Step 6: Detect buy/sell points (买卖点) ----
@@ -320,7 +454,12 @@ def _compute_features_inner(df: pd.DataFrame, freq: str, symbol: str = 'SYMBOL')
     # ---- Step 7: Classify trend ----
     _classify_trend(czsc_obj, trend_arr, n)
 
-    # ---- Step 8: Assign columns to result df ----
+    # ---- Step 8: Map duan (段 / segments) ----
+    # Duan detection from bi_list: a segment is formed by 3+ consecutive
+    # strokes in the same direction with progressively higher/lower extremes.
+    duan_dir_arr, duan_start_price, duan_end_price = _detect_duan(czsc_obj, czsc_df, n)
+
+    # ---- Step 9: Assign columns to result df ----
     result['czsc_fx_mark'] = fx_mark
     result['czsc_fx_price'] = fx_price
     result['czsc_bi_dir'] = bi_dir
@@ -333,10 +472,15 @@ def _compute_features_inner(df: pd.DataFrame, freq: str, symbol: str = 'SYMBOL')
     result['czsc_zs_position'] = zs_position
     result['czsc_bs_type'] = bs_type
     result['czsc_trend'] = trend_arr
+    result['czsc_duan_dir'] = duan_dir_arr
+    result['czsc_duan_start_price'] = duan_start_price
+    result['czsc_duan_end_price'] = duan_end_price
 
+    n_strokes = len(getattr(czsc_obj, 'bi_list', []) or [])
+    n_fractals = len(getattr(czsc_obj, 'fx_list', []) or [])
     logger.info(
         f"czsc_bridge: injected {len(CZSC_COLUMNS)} columns "
-        f"({len(czsc_obj.bi_list)} strokes, {len(czsc_obj.fx_list)} fractals) "
+        f"({n_strokes} strokes, {n_fractals} fractals) "
         f"for {n} bars"
     )
     return result
@@ -727,6 +871,106 @@ def _classify_trend(czsc_obj: Any, trend_arr: np.ndarray, n: int) -> None:
     trend_arr[:] = trend_val
 
 
+def _get_bi_direction_int(bi: Any) -> int:
+    """Return direction of a stroke as int: 1=up, -1=down, 0=unknown."""
+    direction = str(getattr(bi, 'direction', ''))
+    if '向上' in direction or 'up' in direction.lower() or direction == '1' or '上升' in direction:
+        return 1
+    if '向下' in direction or 'down' in direction.lower() or direction == '-1' or '下降' in direction:
+        return -1
+    return 0
+
+
+def _detect_duan(
+    czsc_obj: Any,
+    czsc_df: pd.DataFrame,
+    n: int,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Detect segments (段) from stroke sequence.
+
+    A segment is formed when 3+ consecutive strokes have progressively
+    higher highs (upward segment) or lower lows (downward segment).
+    This is a simplified heuristic since czsc 1.0 does not expose a
+    native duan/segment API on the CZSC object.
+
+    Returns:
+        Tuple of (duan_dir, duan_start_price, duan_end_price) arrays.
+    """
+    duan_dir = np.zeros(n, dtype=np.int8)
+    duan_start_price = np.full(n, np.nan, dtype=np.float64)
+    duan_end_price = np.full(n, np.nan, dtype=np.float64)
+
+    try:
+        bi_list = getattr(czsc_obj, 'bi_list', []) or []
+    except Exception:
+        return duan_dir, duan_start_price, duan_end_price
+
+    if len(bi_list) < 3:
+        return duan_dir, duan_start_price, duan_end_price
+
+    # Walk through strokes and detect segment transitions
+    # A segment changes direction when a stroke breaks the previous
+    # segment's extreme in the opposite direction.
+    seg_start_idx = 0
+    seg_dir = _get_bi_direction_int(bi_list[0])
+    seg_extreme = 0.0
+
+    # Initialize with first stroke
+    first_start, first_end = _bi_bar_range(bi_list[0], czsc_df)
+    fx_a = getattr(bi_list[0], 'fx_a', None)
+    seg_start_p = float(getattr(fx_a, 'fx', 0)) if fx_a else 0.0
+    seg_extreme = seg_start_p
+
+    for i, bi in enumerate(bi_list):
+        bi_dir = _get_bi_direction_int(bi)
+        start_idx, end_idx = _bi_bar_range(bi, czsc_df)
+        fx_b = getattr(bi, 'fx_b', None)
+        bi_end_p = float(getattr(fx_b, 'fx', 0)) if fx_b else 0.0
+
+        # Check if segment direction flips
+        if bi_dir != 0 and bi_dir != seg_dir:
+            # Potential segment break: check if extreme is broken
+            break_seg = False
+            if seg_dir == 1 and bi_end_p < seg_start_p:
+                break_seg = True  # Down stroke broke below segment start
+            elif seg_dir == -1 and bi_end_p > seg_start_p:
+                break_seg = True  # Up stroke broke above segment start
+
+            if break_seg and i >= 2:
+                # Finalize previous segment
+                for j in range(max(0, seg_start_idx), min(end_idx, n)):
+                    duan_dir[j] = seg_dir
+                    duan_start_price[j] = seg_start_p
+                    duan_end_price[j] = seg_extreme
+
+                # Start new segment
+                seg_dir = bi_dir
+                seg_start_idx = start_idx
+                seg_start_p = float(getattr(getattr(bi, 'fx_a', None), 'fx', 0)) or bi_end_p
+                seg_extreme = bi_end_p
+                continue
+
+        # Update segment extreme
+        if seg_dir == 1 and bi_end_p > seg_extreme:
+            seg_extreme = bi_end_p
+        elif seg_dir == -1 and bi_end_p < seg_extreme:
+            seg_extreme = bi_end_p
+
+    # Finalize last segment
+    if seg_dir != 0:
+        last_end_idx = n - 1
+        try:
+            _, last_end_idx = _bi_bar_range(bi_list[-1], czsc_df)
+        except Exception:
+            pass
+        for j in range(max(0, seg_start_idx), min(last_end_idx + 1, n)):
+            duan_dir[j] = seg_dir
+            duan_start_price[j] = seg_start_p
+            duan_end_price[j] = seg_extreme
+
+    return duan_dir, duan_start_price, duan_end_price
+
+
 # ---------------------------------------------------------------------------
 # Mock columns for validation / dry-run
 # ---------------------------------------------------------------------------
@@ -745,6 +989,9 @@ def add_mock_czsc_columns(df: pd.DataFrame) -> pd.DataFrame:
     result['czsc_bi_start_price'] = np.full(n, 10000.0, dtype=np.float64)
     result['czsc_bi_end_price'] = np.full(n, 10000.0, dtype=np.float64)
     result['czsc_bi_length'] = np.ones(n, dtype=np.int32)
+    result['czsc_duan_dir'] = np.zeros(n, dtype=np.int8)
+    result['czsc_duan_start_price'] = np.full(n, 10000.0, dtype=np.float64)
+    result['czsc_duan_end_price'] = np.full(n, 10000.0, dtype=np.float64)
     result['czsc_zs_level'] = np.zeros(n, dtype=np.int32)
     result['czsc_zs_zd'] = np.full(n, 9900.0, dtype=np.float64)
     result['czsc_zs_zg'] = np.full(n, 10100.0, dtype=np.float64)

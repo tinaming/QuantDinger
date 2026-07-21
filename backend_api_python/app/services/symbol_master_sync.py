@@ -289,7 +289,7 @@ def fetch_moex_symbols() -> List[SymbolMasterRow]:
             "https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json",
             params={"iss.meta": "off"},
             timeout=20,
-            headers={"User-Agent": "QuantDinger/1.0"},
+            headers={"User-Agent": "ChanQuant/1.0"},
         )
         resp.raise_for_status()
         data = resp.json().get("securities", {})

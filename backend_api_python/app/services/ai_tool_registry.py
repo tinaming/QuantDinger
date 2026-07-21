@@ -1,4 +1,4 @@
-"""Metadata registry for QuantDinger agent tools.
+"""Metadata registry for ChanQuant agent tools.
 
 This registry describes system workflows that the AI may plan around. It is not
 an execution engine; routes that mutate state still enforce their own auth and
@@ -122,8 +122,8 @@ TOOLS: tuple[ToolDefinition, ...] = (
         category="strategy",
         label_zh="生成策略研发草稿",
         label_en="Generate Strategy Lab draft",
-        description_zh="根据用户确认的需求生成可落地到 QuantDinger 策略 IDE 的策略草稿。",
-        description_en="Generate a QuantDinger Strategy IDE draft after requirements are confirmed.",
+        description_zh="根据用户确认的需求生成可落地到 ChanQuant 策略 IDE 的策略草稿。",
+        description_en="Generate a ChanQuant Strategy IDE draft after requirements are confirmed.",
         route="/indicator-ide",
         requires=("strategy_requirements",),
         produces=("indicator_code", "backtest_plan"),
@@ -580,7 +580,7 @@ def build_tool_prompt(language: str = "zh-CN", intent: str = "") -> str:
             tools = targeted
     tools = sorted(tools, key=lambda tool: (-tool.priority, tool.id))[:8]
     lines = [
-        "[QuantDinger tool registry]",
+        "[ChanQuant tool registry]",
         "These are available system workflows. Treat write tools as user-confirmed handoffs, not autonomous execution.",
         "Live trading boundary: AI may create draft/stopped strategies or bots only; starting live execution must be a manual user action.",
     ]

@@ -1,12 +1,12 @@
-# QuantDinger Changelog
+﻿# ChanQuant Changelog
 
 This document records version updates, new features, bug fixes, and database migration instructions.
 
 ---
 
-## quantdinger-mcp 0.2.0 (2026-05-29) — PyPI package
+## ChanQuant-mcp 0.2.0 (2026-05-29) — PyPI package
 
-Standalone MCP server release (install: `pip install quantdinger-mcp==0.2.0` / `uvx quantdinger-mcp@0.2.0`).
+Standalone MCP server release (install: `pip install ChanQuant-mcp==0.2.0` / `uvx ChanQuant-mcp@0.2.0`).
 
 ### Added
 - **Indicator workspace tools**: `get_indicator_authoring_contract`, `validate_indicator_code`, `save_indicator`, `list_indicators`, `get_indicator`
@@ -23,7 +23,7 @@ Standalone MCP server release (install: `pip install quantdinger-mcp==0.2.0` / `
 - Trading (`quick-trade/*`) and admin APIs remain **not exposed** via MCP
 
 ### Requires
-- QuantDinger backend with Agent Gateway `/api/agent/v1` (indicator routes from this repo)
+- ChanQuant backend with Agent Gateway `/api/agent/v1` (indicator routes from this repo)
 - Agent token scopes: **R + W + B** recommended for full indicator workflow
 
 ---
@@ -84,7 +84,7 @@ No standalone `v3_*.sql` files remain in the repository.
 ### ⚠️ Upgrade Notes
 
 1. **Backend**: `docker compose up -d --build backend` (or restart) so new routes (`/api/users/login-logs`) and `login_notify` logic are loaded — `restart` alone is not enough if the image was built before this tag.
-2. **Frontend**: rebuild or run `npm run dev` with current `QuantDinger-Vue-src`; hard-refresh Profile to see the Login history tab.
+2. **Frontend**: rebuild or run `npm run dev` with current `ChanQuant-Vue-src`; hard-refresh Profile to see the Login history tab.
 3. **SMTP**: login alert emails require working `SMTP_*` env vars; in-app alerts require browser channel enabled in notification settings.
 4. **Bootstrap admin**: if you need to re-test the initial-password prompt, set `password_changed_at = NULL` only for `id = (SELECT MIN(id) FROM qd_users)`.
 
@@ -95,7 +95,7 @@ No standalone `v3_*.sql` files remain in the repository.
 | Login notify | `backend_api_python/app/services/login_notify.py` |
 | Auth hooks | `backend_api_python/app/routes/auth.py` |
 | Login logs API | `backend_api_python/app/routes/user.py` |
-| Profile UI | `QuantDinger-Vue-src/src/views/profile/index.vue` |
+| Profile UI | `ChanQuant-Vue-src/src/views/profile/index.vue` |
 | Schema | `backend_api_python/migrations/init.sql` |
 | Sandbox | `backend_api_python/app/utils/safe_exec.py` |
 | HTX V5 | `backend_api_python/app/services/live_trading/htx_v5.py`, `htx.py` |
@@ -238,8 +238,8 @@ Production screenshots surfaced two real issues, **fixed in the same version**:
 | `backend_api_python/migrations/init.sql` | `qd_usdt_orders` new columns + partial unique index + self-heal migration |
 | `backend_api_python/env.example` | New env vars (4-chain addresses / explorer keys / suffix precision) |
 | `backend_api_python/app/routes/billing.py` | New `/usdt/chains`; `/usdt/create` accepts `chain` param |
-| `QuantDinger-Vue-src/src/views/billing/index.vue` | Chain selection modal + URI QR + suffix highlight |
-| `QuantDinger-Vue-src/src/api/billing.js` | `listUsdtChains()` / `createUsdtOrder(plan, chain)` |
+| `ChanQuant-Vue-src/src/views/billing/index.vue` | Chain selection modal + URI QR + suffix highlight |
+| `ChanQuant-Vue-src/src/api/billing.js` | `listUsdtChains()` / `createUsdtOrder(plan, chain)` |
 | `backend_api_python/tests/test_usdt_payment_chains.py` | 15 new unit tests |
 
 ---
@@ -251,7 +251,7 @@ This release merges two weeks of work: **more rigorous backtesting**, **easier m
 ### 🚀 New Features
 
 #### Alpaca Markets adapter (US stocks / ETF / crypto · paper + live)
-Third **traditional broker** integrated into QuantDinger, on par with IBKR / MT5 (from [PR #101](https://github.com/brokermr810/QuantDinger/pull/101)):
+Third **traditional broker** integrated into ChanQuant, on par with IBKR / MT5 (from [PR #101](https://github.com/brokermr810/ChanQuant/pull/101)):
 - **Coverage**: US stocks, ETFs, crypto spot; both paper (`paper-api.alpaca.markets`) and live (`api.alpaca.markets`) accounts
 - **Adapter**: `backend_api_python/app/services/alpaca_trading/` (client / symbols / error normalization / OHLCV)
 - **Routes**: `/api/alpaca/connect|status|account|positions|orders|symbols`
@@ -281,7 +281,7 @@ Fixes a long-silent overfitting trap (smart tuning +36% headline on 70% train se
 - Backend `ExperimentRunnerService._build_best_output` exposes `oosSummary` / `oosScore` / `oosDegradation` / `oosOverfit` to frontend
 
 #### Crypto timeframe backend resample
-When an exchange lacks a native timeframe (e.g. OKX has no 30m), backend fetches finer OHLCV and exchange-aligned resample. Frontend unchanged; 13 new unit tests (from [PR #104](https://github.com/brokermr810/QuantDinger/pull/104)).
+When an exchange lacks a native timeframe (e.g. OKX has no 30m), backend fetches finer OHLCV and exchange-aligned resample. Frontend unchanged; 13 new unit tests (from [PR #104](https://github.com/brokermr810/ChanQuant/pull/104)).
 
 ### 🛠️ Engineering Improvements
 
@@ -295,7 +295,7 @@ Previously local PostgreSQL (non-Docker) required manual `psql -f migrations/ini
 `backend_api_python/app/utils/broker_session.py` provides client registry cached by `(user_id, broker_name)` with `threading.Lock`. Replaces shared global `_client` for IBKR / Alpaca with per-user isolation — no “one user reconnect kicks everyone offline”.
 
 #### OAuth `FRONTEND_URL` multi-frontend support
-`backend_api_python/app/services/oauth_service.py` parses `FRONTEND_URL` as comma-separated list: first entry = default post-login redirect origin; all entries = OAuth redirect whitelist. One backend can serve `ai.quantdinger.com` + `m.quantdinger.com`.
+`backend_api_python/app/services/oauth_service.py` parses `FRONTEND_URL` as comma-separated list: first entry = default post-login redirect origin; all entries = OAuth redirect whitelist. One backend can serve `ai.ChanQuant.com` + `m.ChanQuant.com`.
 
 #### Default indicators trimmed + SuperTrend example internationalized
 New users previously got 4 built-in indicators; now **1 high-quality SuperTrend example**: full English comments + `@param` range annotations + standard Wilder ATR / path-dependent SuperTrend — ready to run and demonstrates recommended multi-param strategy style.
@@ -329,7 +329,7 @@ ESLint green on all touched `.vue` / `.js` files.
 
 - **Zero breaking changes**: all backend routes, env vars, DB schema backward compatible
 - **Database**: first startup auto-applies `migrations/init.sql`; if PG user is not table owner, startup banner points to `ALTER TABLE ... OWNER TO <user>;`
-- **Frontend**: build `QuantDinger-Vue-src` and replace `frontend/dist` (repo `frontend/dist` includes this build)
+- **Frontend**: build `ChanQuant-Vue-src` and replace `frontend/dist` (repo `frontend/dist` includes this build)
 - **Alpaca**: add `alpaca-py>=0.30.0` to production `requirements.txt`, or `pip install alpaca-py` locally (already in `backend_api_python/requirements.txt`)
 
 ### 🗂️ Files Changed Overview
@@ -342,7 +342,7 @@ ESLint green on all touched `.vue` / `.js` files.
 
 ## V3.1.0 (2026-05-02) — AI Agent Gateway / MCP HTTP / SSE progress stream / Admin UI
 
-Extends QuantDinger from a **Web product for human users only** to a **dual-stack product for humans and AI agents**. Equips Agent runtimes like OpenClaw / NanoBot / Claude Code / Cursor / Codex with: a controlled HTTP gateway, scope-based fine-grained authorization, async jobs + live progress, MCP access, Admin ops panel, and a machine-readable contract (OpenAPI 3.0). **All Agent entry points deny live trading by default** — T-class (Trading) tokens use the paper order book even when granted to agents; real exchange access requires an explicit server-level switch.
+Extends ChanQuant from a **Web product for human users only** to a **dual-stack product for humans and AI agents**. Equips Agent runtimes like OpenClaw / NanoBot / Claude Code / Cursor / Codex with: a controlled HTTP gateway, scope-based fine-grained authorization, async jobs + live progress, MCP access, Admin ops panel, and a machine-readable contract (OpenAPI 3.0). **All Agent entry points deny live trading by default** — T-class (Trading) tokens use the paper order book even when granted to agents; real exchange access requires an explicit server-level switch.
 
 ### 🚀 New Features
 
@@ -375,14 +375,14 @@ Long jobs (`ai-optimize` / `structured-tune` / multi-round backtest pipelines) l
 - Completed jobs emit `snapshot + result` then close — no dual client logic
 - Runner contract: `runner(payload, on_progress)` second arg auto-detected; events to SSE subscribers and `qd_agent_jobs.progress` JSONB (reconnect reads latest snapshot)
 
-#### MCP Server (`mcp_server/` — published on PyPI: [`quantdinger-mcp`](https://pypi.org/project/quantdinger-mcp/))
+#### MCP Server (`mcp_server/` — published on PyPI: [`ChanQuant-mcp`](https://pypi.org/project/ChanQuant-mcp/))
 Standalone Python package wrapping Agent Gateway R / B subset as Model Context Protocol tools:
-- One-line install (any machine, no repo clone): `uvx quantdinger-mcp` / `pipx install quantdinger-mcp` / `pip install quantdinger-mcp`
-- Three transports via `QUANTDINGER_MCP_TRANSPORT`:
+- One-line install (any machine, no repo clone): `uvx ChanQuant-mcp` / `pipx install ChanQuant-mcp` / `pip install ChanQuant-mcp`
+- Three transports via `ChanQuant_MCP_TRANSPORT`:
   - `stdio` (default) — desktop IDE (Cursor / Claude Code) subprocess
   - `sse` — SSE-only clients
   - `streamable-http` — new MCP HTTP protocol; cloud Agent / remote IDE direct connect
-- HTTP mode also reads `QUANTDINGER_MCP_HOST` / `QUANTDINGER_MCP_PORT`
+- HTTP mode also reads `ChanQuant_MCP_HOST` / `ChanQuant_MCP_PORT`
 - Agent tokens only — **never use human JWT or exchange keys**
 
 #### Frontend Admin UI: Agent Tokens panel (admin only)
@@ -400,10 +400,10 @@ End-to-end architecture diagram at top of README (`docs/screenshots/architecture
 ### 🛠️ Tooling / Docs
 
 - `docs/agent/AGENT_ENVIRONMENT_DESIGN.md` — three-layer contract (Documentation → Command → Machine Interface) for **code-writing** Agents (Cursor / Claude Code / Codex)
-- `docs/agent/AI_INTEGRATION_DESIGN.md` — Agent design doc consuming QuantDinger as a **product** (personas, capability classes, security, roadmap, progress table). Currently v0.3
+- `docs/agent/AI_INTEGRATION_DESIGN.md` — Agent design doc consuming ChanQuant as a **product** (personas, capability classes, security, roadmap, progress table). Currently v0.3
 - `docs/agent/AGENT_QUICKSTART.md` — ops manual: token issuance, `/whoami`, market data, backtest, SSE watch, MCP setup with step-by-step `curl` examples
 - `docs/agent/agent-openapi.json` — OpenAPI 3.0 contract; all `/api/agent/v1/...` paths + `x-scope-class` extension
-- `.cursor/skills/quantdinger-agent-workflow/SKILL.md` — Skill for Cursor / Claude Code: red lines, entry points, validation in this repo
+- `.cursor/skills/ChanQuant-agent-workflow/SKILL.md` — Skill for Cursor / Claude Code: red lines, entry points, validation in this repo
 - `mcp_server/README.md` — MCP three-transport deployment examples
 
 ### ⚙️ Configuration
@@ -414,9 +414,9 @@ New optional env vars (secure defaults):
 |---|---|---|
 | `AGENT_JOBS_MAX_WORKERS` | `4` | Agent async job thread pool size |
 | `AGENT_LIVE_TRADING_ENABLED` | `false` | **Server-level live trading switch**. Even if token `paper_only=false`, paper only without this |
-| `QUANTDINGER_MCP_TRANSPORT` | `stdio` | MCP client transport (`stdio` / `sse` / `streamable-http`) |
-| `QUANTDINGER_MCP_HOST` | `127.0.0.1` | MCP HTTP bind host |
-| `QUANTDINGER_MCP_PORT` | `8000` | MCP HTTP bind port |
+| `ChanQuant_MCP_TRANSPORT` | `stdio` | MCP client transport (`stdio` / `sse` / `streamable-http`) |
+| `ChanQuant_MCP_HOST` | `127.0.0.1` | MCP HTTP bind host |
+| `ChanQuant_MCP_PORT` | `8000` | MCP HTTP bind port |
 
 ### ✅ Tests
 
@@ -432,7 +432,7 @@ This release adds 4 tables + 1 JSONB column, all **auto-created idempotently** b
 
 ```sql
 -- ============================================================
--- QuantDinger V3.1.0 Database Migration
+-- ChanQuant V3.1.0 Database Migration
 -- Agent Gateway: tokens / async jobs / audit / paper orders
 -- ============================================================
 
@@ -527,21 +527,21 @@ CREATE TABLE IF NOT EXISTS qd_agent_paper_orders (
 CREATE INDEX IF NOT EXISTS idx_agent_paper_orders_user  ON qd_agent_paper_orders(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_paper_orders_token ON qd_agent_paper_orders(agent_token_id);
 
-DO $$ BEGIN RAISE NOTICE '✅ QuantDinger V3.1.0 agent gateway schema migration completed!'; END $$;
+DO $$ BEGIN RAISE NOTICE '✅ ChanQuant V3.1.0 agent gateway schema migration completed!'; END $$;
 ```
 
 **Docker one-liner example:**
 
 ```bash
-docker compose exec -T postgres psql -U quantdinger -d quantdinger \
+docker compose exec -T postgres psql -U ChanQuant -d ChanQuant \
   -f /app/migrations/init.sql   # fully idempotent, safe to re-run
 ```
 
 Or save the SQL above to a file first:
 
 ```bash
-docker cp /path/to/v3.1.0_agent_gateway.sql quantdinger-db:/tmp/migrate.sql
-docker compose exec -T postgres psql -U quantdinger -d quantdinger -f /tmp/migrate.sql
+docker cp /path/to/v3.1.0_agent_gateway.sql ChanQuant-db:/tmp/migrate.sql
+docker compose exec -T postgres psql -U ChanQuant -d ChanQuant -f /tmp/migrate.sql
 ```
 
 **Migration Notes:**
@@ -563,10 +563,10 @@ docker compose exec -T postgres psql -U quantdinger -d quantdinger -f /tmp/migra
 
 **MCP server (new package):**
 - `mcp_server/pyproject.toml`, `mcp_server/README.md`
-- `mcp_server/src/quantdinger_mcp/{__init__.py, server.py}` — `FastMCP` + `httpx`, three transports via env
+- `mcp_server/src/ChanQuant_mcp/{__init__.py, server.py}` — `FastMCP` + `httpx`, three transports via env
 - `mcp_server/tests/test_transport_resolution.py`
 
-**Frontend (`QuantDinger-Vue-src/` + synced to `frontend/dist/`):**
+**Frontend (`ChanQuant-Vue-src/` + synced to `frontend/dist/`):**
 - `src/api/agent.js` — Agent admin API client
 - `src/views/agent-tokens/index.vue` — Tokens / Audit dual-tab page
 - `src/config/router.config.js` — new route `/agent-tokens`, `permission: ['admin']`
@@ -575,7 +575,7 @@ docker compose exec -T postgres psql -U quantdinger -d quantdinger -f /tmp/migra
 
 **Docs:**
 - `docs/agent/AGENT_ENVIRONMENT_DESIGN.md`, `docs/agent/AI_INTEGRATION_DESIGN.md` (v0.3), `docs/agent/AGENT_QUICKSTART.md`, `docs/agent/agent-openapi.json`, `docs/agent/README.md`
-- `.cursor/skills/quantdinger-agent-workflow/SKILL.md`
+- `.cursor/skills/ChanQuant-agent-workflow/SKILL.md`
 - `README.md` + `docs/README_CN.md` — architecture diagram at top + Agent doc nav links
 - `docs/screenshots/architecture.png` — end-to-end architecture diagram
 
@@ -588,7 +588,7 @@ docker compose exec -T postgres psql -U quantdinger -d quantdinger -f /tmp/migra
 1. **First startup may skip SQL**: Agent Gateway auto-creates tables on first request (`_ensure_schema`). Still recommended to run migration above on upgrade for complete indexes
 2. **Live switch off by default**: without `AGENT_LIVE_TRADING_ENABLED=true`, T-class tokens with `paper_only=false` still use `qd_agent_paper_orders` only. Product red line — do not weaken in docs/code
 3. **Issued tokens non-recoverable**: DB stores SHA-256 hash only; after reveal modal closes, token is lost — revoke and re-issue
-4. **MCP HTTP production**: `streamable-http` binds `127.0.0.1` by default; for external access set `QUANTDINGER_MCP_HOST=0.0.0.0` behind nginx / reverse proxy — **Agent-token clients only**
+4. **MCP HTTP production**: `streamable-http` binds `127.0.0.1` by default; for external access set `ChanQuant_MCP_HOST=0.0.0.0` behind nginx / reverse proxy — **Agent-token clients only**
 
 ---
 
@@ -618,7 +618,7 @@ All 9 locale files vs `zh-CN` baseline: **missing = 0** ✅
 - **`scripts/i18n-fill-ai.js`** — incremental AI translation. DeepSeek / Anthropic / OpenAI / OpenRouter; batch (default 80) + concurrency (default 6) + local cache (`scripts/.i18n-cache/`) + auto backup (`*.js.bak`); safe append write-back. Failed batches: 3 retries + partial retain. Preserves `{foo}`, `<code>…</code>`, `\n`, HTML tags, `BTC/ETH/USDT/AI/MT5`, etc.
 - **`scripts/i18n-patch-specials.js`** — one-shot fill for keys AI script misses: empty strings, nested objects (`trading-assistant.brokerNames`), Chinese measure-word singles (`dashboard.unit.trades` / `.strategies` left empty in ES/TH/VI)
 - **`scripts/README.md`** — toolchain docs: usage, API keys, cost estimates, quality tips
-- **`.gitignore`** — ignore `scripts/.i18n-cache/` and `QuantDinger-Vue-src/src/locales/lang/*.bak`
+- **`.gitignore`** — ignore `scripts/.i18n-cache/` and `ChanQuant-Vue-src/src/locales/lang/*.bak`
 
 ### Translation quality
 
@@ -634,7 +634,7 @@ None.
 
 ### 📦 Files Changed
 
-- `QuantDinger-Vue-src/src/locales/lang/{ar-SA,de-DE,en-US,fr-FR,ja-JP,ko-KR,th-TH,vi-VN,zh-TW}.js`
+- `ChanQuant-Vue-src/src/locales/lang/{ar-SA,de-DE,en-US,fr-FR,ja-JP,ko-KR,th-TH,vi-VN,zh-TW}.js`
 - `scripts/i18n-diff.js`、`scripts/i18n-fill-ai.js`、`scripts/i18n-patch-specials.js`、`scripts/README.md`
 - `.gitignore`
 
@@ -667,10 +667,10 @@ No new columns/tables; code-only fixes. Existing deployments **need no SQL**.
 
 - `backend_api_python/app/services/strategy.py` — `update_strategy` merge, `_compute_runtime_metrics`, list/detail runtime metrics
 - `backend_api_python/app/services/trading_executor.py` — `_script_orders_to_execution_signals` USDT→qty, `_hydrate_script_ctx_from_positions` balance/equity refresh
-- `QuantDinger-Vue-src/src/views/trading-bot/components/BotCreateWizard.vue` — martingale/trend forced market orders
-- `QuantDinger-Vue-src/src/views/trading-bot/components/botScriptTemplates.js` — grid dual budget, DCA time-based interval + external close reset
-- `QuantDinger-Vue-src/src/views/trading-bot/components/configs/GridConfig.vue`, `DCAConfig.vue` — param validation
-- `QuantDinger-Vue-src/src/locales/lang/*.js` — 4 new validation strings × 10 languages
+- `ChanQuant-Vue-src/src/views/trading-bot/components/BotCreateWizard.vue` — martingale/trend forced market orders
+- `ChanQuant-Vue-src/src/views/trading-bot/components/botScriptTemplates.js` — grid dual budget, DCA time-based interval + external close reset
+- `ChanQuant-Vue-src/src/views/trading-bot/components/configs/GridConfig.vue`, `DCAConfig.vue` — param validation
+- `ChanQuant-Vue-src/src/locales/lang/*.js` — 4 new validation strings × 10 languages
 
 ---
 
@@ -696,7 +696,7 @@ No new columns/tables; code-only fixes. Existing deployments **need no SQL**.
   - Backend `_simulate_trading_mtf` adds `bar_time` per trade — floor exec_tf to signal TF for **chart bar** start (UTC, `'%Y-%m-%d %H:%M'`)
   - Frontend `renderBacktestSignals` **prefers `trade.bar_time`**; nearest → **floor-snap** (last bar containing time) — eliminates ±1 bar offset
   - Non-MTF unchanged: `trade.time` equals signal bar time; fallback to `trade.time` still correct
-  - Files: `backend_api_python/app/services/backtest.py`, `QuantDinger-Vue-src/src/views/indicator-ide/index.vue`
+  - Files: `backend_api_python/app/services/backtest.py`, `ChanQuant-Vue-src/src/views/indicator-ide/index.vue`
 
 ### 🗄️ Database Migration
 
@@ -727,7 +727,7 @@ WHERE  lc.user_id = p.buyer_id
 **Manual run on existing DB (Docker one-liner):**
 
 ```bash
-docker compose exec -T postgres psql -U quantdinger -d quantdinger <<'SQL'
+docker compose exec -T postgres psql -U ChanQuant -d ChanQuant <<'SQL'
 ALTER TABLE qd_indicator_codes ADD COLUMN IF NOT EXISTS source_indicator_id INTEGER;
 CREATE INDEX IF NOT EXISTS idx_indicator_codes_source ON qd_indicator_codes USING btree (source_indicator_id);
 UPDATE qd_indicator_codes lc
@@ -745,7 +745,7 @@ SQL
 
 ### 🎨 Frontend / i18n
 
-- `QuantDinger-Vue-src/package.json`, `src/config/defaultSettings.js`, `src/layouts/BasicLayout.vue` version `3.0.1 → 3.0.2`; `README.md` and `docs/README_CN.md` badges synced
+- `ChanQuant-Vue-src/package.json`, `src/config/defaultSettings.js`, `src/layouts/BasicLayout.vue` version `3.0.1 → 3.0.2`; `README.md` and `docs/README_CN.md` badges synced
 - `zh-CN / zh-TW / en-US`: 12 new `community.sync*` / `community.hasUpdate` / `community.already_latest` i18n keys; other locales English fallback
 - Re-ran `npm run build`, synced `dist/` to `frontend/dist/`, `docker compose build frontend`
 - **Patch**: after Buy/Sell marker fix, again `npm run build` + sync `frontend/dist/` + `docker compose build backend frontend && up -d backend frontend`; no extra DB changes
@@ -786,8 +786,8 @@ ON CONFLICT (market, symbol) DO NOTHING;
 **Docker one-liner (file must be UTF-8):**
 
 ```bash
-docker cp backend_api_python/migrations/<your>.sql quantdinger-db:/tmp/migrate.sql
-docker compose exec -T postgres psql -U quantdinger -d quantdinger -f /tmp/migrate.sql
+docker cp backend_api_python/migrations/<your>.sql ChanQuant-db:/tmp/migrate.sql
+docker compose exec -T postgres psql -U ChanQuant -d ChanQuant -f /tmp/migrate.sql
 ```
 
 ---
@@ -795,7 +795,7 @@ docker compose exec -T postgres psql -U quantdinger -d quantdinger -f /tmp/migra
 ## V3.0.1 (2026-04-05) — Frontend / docs
 
 - **Frontend version**: private Vue repo `package.json`, footer display, and `frontend/VERSION` unified at **3.0.1**.
-- **Docs**: root `README.md` and `docs/README_CN.md` add QuantDinger exchange referral signup links (same as Profile “Open account”); version badge → 3.0.1.
+- **Docs**: root `README.md` and `docs/README_CN.md` add ChanQuant exchange referral signup links (same as Profile “Open account”); version badge → 3.0.1.
 - **Backtest Center**: dark theme icon and “Add symbol” modal styling aligned (`a-icon`, chart title area, Modal mount layer).
 
 ---
@@ -826,7 +826,7 @@ docker compose exec -T postgres psql -U quantdinger -d quantdinger -f /tmp/migra
 
 ```sql
 -- ============================================================
--- QuantDinger V2.2.4 Database Migration
+-- ChanQuant V2.2.4 Database Migration
 -- Strategy Backtest Persistence Upgrade
 -- ============================================================
 
@@ -893,7 +893,7 @@ CREATE INDEX IF NOT EXISTS idx_backtest_equity_points_run_id ON qd_backtest_equi
 
 ```sql
 -- ============================================================
--- QuantDinger V2.2.3 — qd_users.timezone (user profile timezone)
+-- ChanQuant V2.2.3 — qd_users.timezone (user profile timezone)
 -- ============================================================
 
 DO $$
@@ -951,7 +951,7 @@ ALTER TABLE qd_users ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) DEFAULT '';
 
 ```sql
 -- ============================================================
--- QuantDinger V2.2.2 Database Migration
+-- ChanQuant V2.2.2 Database Migration
 -- Polymarket Prediction Markets Integration
 -- ============================================================
 
@@ -1028,7 +1028,7 @@ CREATE INDEX IF NOT EXISTS idx_polymarket_opp_asset ON qd_polymarket_asset_oppor
 -- Migration Complete
 DO $$
 BEGIN
-    RAISE NOTICE '✅ QuantDinger V2.2.2 database migration completed!';
+    RAISE NOTICE '✅ ChanQuant V2.2.2 database migration completed!';
 END $$;
 ```
 
@@ -1126,7 +1126,7 @@ END $$;
 
 ```sql
 -- ============================================================
--- QuantDinger V2.2.1 Database Migration
+-- ChanQuant V2.2.1 Database Migration
 -- Membership, USDT Payment, VIP Free Indicators
 -- ============================================================
 
@@ -1236,7 +1236,7 @@ CREATE INDEX IF NOT EXISTS idx_quick_trades_created ON qd_quick_trades(created_a
 -- Migration Complete
 DO $$
 BEGIN
-    RAISE NOTICE '✅ QuantDinger V2.2.1 database migration completed!';
+    RAISE NOTICE '✅ ChanQuant V2.2.1 database migration completed!';
 END $$;
 ```
 
@@ -1307,7 +1307,7 @@ See `docs/CROSS_SECTIONAL_STRATEGY_GUIDE_CN.md` or `docs/CROSS_SECTIONAL_STRATEG
 
 ```sql
 -- ============================================================
--- QuantDinger V2.1.3 Database Migration
+-- ChanQuant V2.1.3 Database Migration
 -- Cross-Sectional Strategy Support
 -- ============================================================
 
@@ -1476,7 +1476,7 @@ output = {
 
 ```sql
 -- ============================================================
--- QuantDinger V2.1.1 Database Migration
+-- ChanQuant V2.1.1 Database Migration
 -- ============================================================
 
 -- 1. AI Analysis Memory Table
@@ -1657,7 +1657,7 @@ END $$;
 -- Migration Complete
 DO $$
 BEGIN
-    RAISE NOTICE '✅ QuantDinger V2.1.1 database migration completed!';
+    RAISE NOTICE '✅ ChanQuant V2.1.1 database migration completed!';
 END $$;
 ```
 

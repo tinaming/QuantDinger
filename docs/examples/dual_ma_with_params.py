@@ -17,7 +17,7 @@
 my_indicator_name = "双均线交叉策略"
 my_indicator_description = "EMA 金叉/死叉四路信号，边缘触发；退出由引擎 stopLoss/takeProfit 管理。"
 
-# --- QuantDinger execution contract (v1) ---
+# --- ChanQuant execution contract (v1) ---
 # signal_form: four_way
 # exit_owner: engine
 # flip_mode: R2

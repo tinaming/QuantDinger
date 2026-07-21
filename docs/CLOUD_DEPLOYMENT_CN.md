@@ -1,6 +1,6 @@
-# QuantDinger 云服务器部署指南
+﻿# ChanQuant 云服务器部署指南
 
-本文说明当前版本 QuantDinger 在云服务器上的 Docker 部署方式，覆盖推荐的 GHCR 预构建镜像部署、可选源码部署、Nginx、HTTPS、升级和常见排错。
+本文说明当前版本 ChanQuant 在云服务器上的 Docker 部署方式，覆盖推荐的 GHCR 预构建镜像部署、可选源码部署、Nginx、HTTPS、升级和常见排错。
 
 首次安装时如果遇到 Docker 拉镜像或 Postgres 启动问题，也请参考 [安装排错指南](INSTALL_TROUBLESHOOTING.md)。
 
@@ -60,10 +60,10 @@ docker compose version
 普通云服务器部署建议使用这个模式。后端、Web 前端、移动 H5 都从 GHCR 拉取镜像，不需要在服务器上本地构建 Python 或 Node 项目。
 
 ```bash
-mkdir -p ~/quantdinger
-cd ~/quantdinger
-curl -O https://raw.githubusercontent.com/brokermr810/QuantDinger/main/docker-compose.ghcr.yml
-curl -o backend.env https://raw.githubusercontent.com/brokermr810/QuantDinger/main/backend_api_python/env.example
+mkdir -p ~/ChanQuant
+cd ~/ChanQuant
+curl -O https://raw.githubusercontent.com/brokermr810/ChanQuant/main/docker-compose.ghcr.yml
+curl -o backend.env https://raw.githubusercontent.com/brokermr810/ChanQuant/main/backend_api_python/env.example
 ```
 
 首次启动前编辑 `backend.env`：
@@ -106,8 +106,8 @@ docker compose -f docker-compose.ghcr.yml ps
 只有需要在服务器上基于本地源码构建后端时，才建议使用这个模式。
 
 ```bash
-git clone https://github.com/brokermr810/QuantDinger.git
-cd QuantDinger
+git clone https://github.com/brokermr810/ChanQuant.git
+cd ChanQuant
 cp backend_api_python/env.example backend_api_python/.env
 ./scripts/generate-secret-key.sh
 ```
@@ -152,7 +152,7 @@ sudo apt update
 sudo apt install -y nginx
 ```
 
-创建 `/etc/nginx/sites-available/quantdinger.conf`：
+创建 `/etc/nginx/sites-available/ChanQuant.conf`：
 
 ```nginx
 server {
@@ -193,7 +193,7 @@ server {
 启用站点：
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/quantdinger.conf /etc/nginx/sites-enabled/quantdinger.conf
+sudo ln -s /etc/nginx/sites-available/ChanQuant.conf /etc/nginx/sites-enabled/ChanQuant.conf
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -282,7 +282,7 @@ docker compose up -d --build
 大版本升级前建议先备份 Postgres：
 
 ```bash
-docker exec quantdinger-db pg_dump -U quantdinger quantdinger > quantdinger_backup.sql
+docker exec ChanQuant-db pg_dump -U ChanQuant ChanQuant > ChanQuant_backup.sql
 ```
 
 ## 9. Postgres 18 和已有数据
@@ -332,9 +332,9 @@ docker compose -f docker-compose.ghcr.yml pull
 如果 GHCR 镜像拉取失败：
 
 ```bash
-docker pull ghcr.io/brokermr810/quantdinger-backend:latest
-docker pull ghcr.io/brokermr810/quantdinger-frontend:latest
-docker pull ghcr.io/brokermr810/quantdinger-mobile:latest
+docker pull ghcr.io/brokermr810/ChanQuant-backend:latest
+docker pull ghcr.io/brokermr810/ChanQuant-frontend:latest
+docker pull ghcr.io/brokermr810/ChanQuant-mobile:latest
 ```
 
 常见原因包括网络阻断、包可见性不是 public、或者固定的 tag 不存在。

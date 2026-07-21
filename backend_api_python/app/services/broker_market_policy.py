@@ -2,7 +2,7 @@
 Broker x market x market_type x trade_direction x bot_type compatibility policy.
 
 This module is the *single source of truth* for which combinations of
-exchange / market / contract type / direction / bot strategy QuantDinger
+exchange / market / contract type / direction / bot strategy ChanQuant
 will accept. All strategy CRUD endpoints, the live execution worker, and
 the frontend (via GET /api/policy/broker-market) read from here.
 
@@ -11,8 +11,8 @@ Centralizing the matrix prevents the previous bug pattern where the same
 ways in:
   - app/services/strategy.py (create / update / batch validators)
   - app/services/pending_order_worker.py (live execution gate)
-  - QuantDinger-Vue-src/src/views/trading-assistant/index.vue (UI guard)
-  - QuantDinger-Vue-src/src/views/trading-bot/components/BotCreateWizard.vue (bot guard)
+  - ChanQuant-Vue-src/src/views/trading-assistant/index.vue (UI guard)
+  - ChanQuant-Vue-src/src/views/trading-bot/components/BotCreateWizard.vue (bot guard)
 
 Adding a new broker now means updating BROKER_MARKETS here, plus the
 broker's client implementation. Everything else picks it up automatically.
@@ -59,7 +59,7 @@ def _build_broker_markets() -> Dict[str, Dict[str, Set[str]]]:
 BROKER_MARKETS: Dict[str, Dict[str, Set[str]]] = _build_broker_markets()
 
 
-# Brokers whose live execution path in QuantDinger only supports long-only
+# Brokers whose live execution path in ChanQuant only supports long-only
 # entries today. This is *our implementation choice*, not a platform
 # limitation: the IB API and alpaca-py both technically allow SELL_SHORT on
 # margin accounts, but neither _execute_ibkr_order nor _execute_alpaca_order
@@ -235,7 +235,7 @@ def validate_strategy_config(
     # Rule 5: long-only brokers
     if ex in LONG_ONLY_BROKERS and td and td != "long":
         raise ValueError(
-            f"{ex.upper()} live execution in QuantDinger is currently "
+            f"{ex.upper()} live execution in ChanQuant is currently "
             f"long-only (got trade_direction='{td}'). For short selling "
             f"please use a perpetual-swap crypto exchange "
             f"(Binance/OKX/Bybit/Bitget) for crypto, or MT5 for forex. "

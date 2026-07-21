@@ -1,13 +1,13 @@
-﻿# QuantDinger — AI / Agent Integration (Design)
+﻿# ChanQuant — AI / Agent Integration (Design)
 
 | Item | Value |
 |------|--------|
 | Status | Draft (for review and phased rollout) |
-| Audience | Maintainers; integrators wiring external AI agents into QuantDinger |
+| Audience | Maintainers; integrators wiring external AI agents into ChanQuant |
 | Depends on | [AGENT_ENVIRONMENT_DESIGN.md](AGENT_ENVIRONMENT_DESIGN.md) — three-layer contracts |
-| Repository | [QuantDinger](https://github.com/brokermr810/QuantDinger) |
+| Repository | [ChanQuant](https://github.com/brokermr810/ChanQuant) |
 
-> Companion to the multi-agent runtime design. That doc explains how *coding* agents work **inside the repo**. **This doc** explains how external and embedded **AI agents** consume QuantDinger as a **product** — research, strategy, backtest, and (carefully) execution.
+> Companion to the multi-agent runtime design. That doc explains how *coding* agents work **inside the repo**. **This doc** explains how external and embedded **AI agents** consume ChanQuant as a **product** — research, strategy, backtest, and (carefully) execution.
 
 ---
 
@@ -32,7 +32,7 @@
 
 | Persona | Example | Primary needs |
 |---------|---------|---------------|
-| **P1 Human trader** (existing) | QuantDinger user in browser | UI + REST + JWT session |
+| **P1 Human trader** (existing) | ChanQuant user in browser | UI + REST + JWT session |
 | **P2 In-product AI assistant** (existing) | `ai_chat` route, code-gen helpers | Same backend services, on behalf of a logged-in user |
 | **P3 External coding agent** | Cursor / Claude Code / Codex working *in the repo* | Repository contracts (covered by `AGENT_ENVIRONMENT_DESIGN.md`) |
 | **P4 External AI agent / app** *(new)* | Custom LLM workflow, MCP client, third-party automation | **Authenticated, scoped** access to research / backtest / (optional) trading |
@@ -109,7 +109,7 @@ Key decision: **the Agent Gateway is a thin layer**, not a parallel implementati
 
 ### 4.3 Identity model
 
-- A **Tenant** is the existing QuantDinger user (single-user or multi-user mode).
+- A **Tenant** is the existing ChanQuant user (single-user or multi-user mode).
 - An **Agent token** belongs to a Tenant and carries:
   - `agent_id` (human-readable label, e.g. `cursor-mcp`, `strategy-bot-1`)
   - `scopes` (subset of capability classes from §3)
@@ -207,24 +207,24 @@ MCP is **additive**: REST stays the source of truth, MCP only re-shapes it for c
 
 ## 8. Deployment topologies (self-hosted vs SaaS)
 
-QuantDinger ships as a **single backend** that intentionally supports two operational topologies. The Agent Gateway code is identical in both; the differences are entirely operator-controlled environment variables and where the database lives.
+ChanQuant ships as a **single backend** that intentionally supports two operational topologies. The Agent Gateway code is identical in both; the differences are entirely operator-controlled environment variables and where the database lives.
 
 ### 8.1 Topologies
 
 | Dimension | **Self-hosted** (default) | **SaaS / shared / hosted** |
 |-----------|---------------------------|----------------------------|
-| Selector env var | `QUANTDINGER_DEPLOYMENT_MODE` unset (or `self`/`local`) | `QUANTDINGER_DEPLOYMENT_MODE=saas` (also `hosted`/`shared`/`multitenant`) |
+| Selector env var | `ChanQuant_DEPLOYMENT_MODE` unset (or `self`/`local`) | `ChanQuant_DEPLOYMENT_MODE=saas` (also `hosted`/`shared`/`multitenant`) |
 | Tenants per instance | 1 (the operator) | N (one per signup) |
 | Token issuance | Operator decides every field | Server forces `paper_only=true`; **T-scope rejected at issuance with 403** |
 | Live trading (`AGENT_LIVE_TRADING_ENABLED`) | Operator may flip to `true` | **Must stay `false`** — the SaaS guard makes T impossible to obtain anyway |
 | Exchange credentials | Operator may store + use them | Recommended: do not accept; if you do, encrypt-at-rest and never expose via Agent Gateway (class C is admin-only) |
 | Rate limits | `rate_limit_per_min` per token, no global cap | Per-token + a per-tenant + per-IP outer cap (recommended; outside this code) |
 | Audit visibility | Operator | SaaS operator (you) sees everyone; tenant admins see only their own (already enforced by `user_id` filter in `/admin/audit`) |
-| MCP `BASE_URL` | `http://localhost:8888` (or LAN URL) | `https://ai.quantdinger.com` (or your hosted URL) |
+| MCP `BASE_URL` | `http://localhost:8888` (or LAN URL) | `https://ai.ChanQuant.com` (or your hosted URL) |
 
 ### 8.2 The hosted-mode guard (V3.1.0+)
 
-When `QUANTDINGER_DEPLOYMENT_MODE` is one of `saas` / `hosted` / `shared` / `multitenant` / `multi-tenant`, the `POST /admin/tokens` route applies two **belt + suspenders** safeguards (`app/routes/agent_v1/admin.py`):
+When `ChanQuant_DEPLOYMENT_MODE` is one of `saas` / `hosted` / `shared` / `multitenant` / `multi-tenant`, the `POST /admin/tokens` route applies two **belt + suspenders** safeguards (`app/routes/agent_v1/admin.py`):
 
 1. **Loud rejection of T-scope** — any payload that includes `T` in `scopes` returns `403` with a clear message, instead of silently downgrading the scope set. This makes the constraint visible to integrators rather than mysteriously stripping their request.
 2. **Forced `paper_only=true`** — even if T somehow re-entered the scope set later, the token row is written with `paper_only=true`, so `quick-trade` would still record paper orders only.
@@ -249,7 +249,7 @@ Switching a running deployment from self-hosted to SaaS is non-destructive:
 
 ```bash
 # Add to the env file used by docker-compose
-QUANTDINGER_DEPLOYMENT_MODE=saas
+ChanQuant_DEPLOYMENT_MODE=saas
 docker compose up -d backend
 ```
 
@@ -320,12 +320,12 @@ A1–A4 are **safe to ship without trading exposure**. A5/A6 are gated and rever
 | Trading endpoints (T) — paper-only | Shipped | `app/routes/agent_v1/quick_trade.py` (`AGENT_LIVE_TRADING_ENABLED` kill switch) |
 | Admin token CRUD + audit viewer | Shipped | `app/routes/agent_v1/admin.py` |
 | OpenAPI 3.0 spec | Shipped | `docs/agent/agent-openapi.json` |
-| MCP server (Python) | Shipped | `mcp_server/` — `stdio` (default), `sse`, and `streamable-http` transports via `QUANTDINGER_MCP_TRANSPORT` |
+| MCP server (Python) | Shipped | `mcp_server/` — `stdio` (default), `sse`, and `streamable-http` transports via `ChanQuant_MCP_TRANSPORT` |
 | Operator quickstart | Shipped | `docs/agent/AGENT_QUICKSTART.md` |
 | Job progress streaming (SSE) | Shipped | `GET /api/agent/v1/jobs/{id}/stream` — `snapshot` / `progress` / `ping` / `result` frames; resume via `?since=` or `Last-Event-ID` |
 | Token UI (Profile + admin audit) | Shipped | `ProfileAgentTokens.vue` at Profile → My Agent Token (`/api/agent/v1/me/tokens`); admin route `/agent-tokens` retained |
-| Hosted-mode hardening (`QUANTDINGER_DEPLOYMENT_MODE=saas`) | Shipped | `app/routes/agent_v1/admin.py` — issuance-time T-scope rejection + `paper_only` force-pin; covered by `tests/test_agent_v1_saas_guard.py` |
-| Published MCP package on PyPI | Shipped | [`quantdinger-mcp`](https://pypi.org/project/quantdinger-mcp/) — install via `pipx`, `uvx`, or `pip` |
+| Hosted-mode hardening (`ChanQuant_DEPLOYMENT_MODE=saas`) | Shipped | `app/routes/agent_v1/admin.py` — issuance-time T-scope rejection + `paper_only` force-pin; covered by `tests/test_agent_v1_saas_guard.py` |
+| Published MCP package on PyPI | Shipped | [`ChanQuant-mcp`](https://pypi.org/project/ChanQuant-mcp/) — install via `pipx`, `uvx`, or `pip` |
 | Live execution implementation (T, self-host only) | Pending | tracked under roadmap A6 |
 
 ## 13. Revision history
@@ -335,5 +335,5 @@ A1–A4 are **safe to ship without trading exposure**. A5/A6 are gated and rever
 | 0.1 | 2026-05-02 | First draft: personas, capability classes, gateway, MCP, safety, roadmap |
 | 0.2 | 2026-05-02 | A0–A5 implemented (schema, auth, R/W/B + paper-only T, admin, MCP, tests, OpenAPI, quickstart) |
 | 0.3 | 2026-05-02 | Added: SSE progress streaming for jobs, MCP HTTP/SSE transport, Vue admin UI for token & audit management |
-| 0.4 | 2026-05-02 | Added §8 Deployment topologies; shipped hosted-mode guard (`QUANTDINGER_DEPLOYMENT_MODE=saas` → T-scope rejected, `paper_only` pinned); MCP package published to PyPI; README EN/CN now documents the SaaS vs self-host paths side-by-side |
+| 0.4 | 2026-05-02 | Added §8 Deployment topologies; shipped hosted-mode guard (`ChanQuant_DEPLOYMENT_MODE=saas` → T-scope rejected, `paper_only` pinned); MCP package published to PyPI; README EN/CN now documents the SaaS vs self-host paths side-by-side |
 

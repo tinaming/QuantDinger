@@ -26,14 +26,14 @@ def fresh_module(monkeypatch):
     """Reload the server module with the env preset so import-time checks pass."""
     monkeypatch.setenv("QUANTDINGER_BASE_URL", "http://localhost:8888")
     monkeypatch.setenv("QUANTDINGER_AGENT_TOKEN", "qd_agent_test_token")
-    sys.modules.pop("quantdinger_mcp.server", None)
+    sys.modules.pop("chanquant_mcp.server", None)
     # Make the package importable when the project hasn't been pip-installed.
     pkg_root = sys.modules[__name__].__file__
     import os
     src_dir = os.path.normpath(os.path.join(os.path.dirname(pkg_root), "..", "src"))
     if src_dir not in sys.path:
         sys.path.insert(0, src_dir)
-    return importlib.import_module("quantdinger_mcp.server")
+    return importlib.import_module("chanquant_mcp.server")
 
 
 def test_transport_default_is_stdio(monkeypatch, fresh_module):

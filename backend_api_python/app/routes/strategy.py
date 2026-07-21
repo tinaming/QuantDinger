@@ -874,7 +874,7 @@ def ai_generate_strategy():
             template_key = payload.get('template_key') or ''
             current_params = payload.get('params') or {}
             code_snapshot = (payload.get('code') or '')[:8000]
-            system_prompt = """You tune QuantDinger script-code template parameters from the user's request.
+            system_prompt = """You tune ChanQuant script-code template parameters from the user's request.
 Return ONLY a single JSON object: keys are parameter names (strings), values are JSON numbers or booleans.
 You may return a partial object (only keys that should change) or a full object.
 Do not use markdown fences, do not add explanations before or after the JSON.
@@ -927,7 +927,7 @@ Percent parameter convention (IMPORTANT):
                 return jsonify({'code': '', 'params': None, 'msg': _strategy_ai_text('invalid_json_params', lang)})
             return jsonify({'code': '', 'params': updates, 'msg': _strategy_ai_text('success', lang)})
 
-        system_prompt = """You are a QuantDinger script-code generator.
+        system_prompt = """You are a ChanQuant script-code generator.
 Return ONLY Python code. Do not use markdown fences or explanations.
 
 Framework:
@@ -1026,7 +1026,7 @@ Percent / ratio convention:
 
         def _repair_strategy_code_via_llm(bad_code: str, validation: dict) -> str:
             repair_prompt = (
-                "You produced QuantDinger strategy script code that failed automatic validation. "
+                "You produced ChanQuant strategy script code that failed automatic validation. "
                 "Fix the code while preserving the user's trading idea. Return one full replacement script only.\n\n"
                 f"# Original user request\n{prompt.strip()}\n\n"
                 f"# Validation issues to fix\n{_format_strategy_validation_issues(validation)}\n\n"
@@ -1035,7 +1035,7 @@ Percent / ratio convention:
                 + "\n```\n\n"
                 "# Repair requirements\n"
                 "- Must define both on_init(ctx) and on_bar(ctx, bar).\n"
-                "- Must compile and run in QuantDinger strategy runtime.\n"
+                "- Must compile and run in ChanQuant strategy runtime.\n"
                 "- Use ctx.param(...) only for strategy knobs, never for symbol/market/direction/investment/leverage/base_notional.\n"
                 "- Do not use getattr/setattr/delattr or any unsafe file/network/import/introspection API.\n"
                 "- Prefer ctx.basket(side).open_child_order(..., notional=quote_amount, price=price) for entries and adds.\n"

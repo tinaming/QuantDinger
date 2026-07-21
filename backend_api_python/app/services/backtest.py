@@ -11,10 +11,14 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Dict, List, Any, Optional
 
+import os
+
 import pandas as pd
 import numpy as np
 
 from app.data_sources import DataSourceFactory
+from app.markets.cn_stock_limits import get_price_limit as _cn_get_price_limit
+from app.markets.cn_stock_rules import check_t_plus_1 as _cn_check_t_plus_1
 from app.utils.logger import get_logger
 from app.utils.db import get_db_connection
 from app.utils.risk_guard import trailing_exit_locks_net_profit
@@ -22,6 +26,9 @@ from app.services.backtest_cache import KlineCache
 from app.services.indicator_params import IndicatorParamsParser, IndicatorCaller
 
 logger = get_logger(__name__)
+
+# A-share price limit enforcement in backtest (opt-in via env var).
+_ENABLE_CN_PRICE_LIMIT = os.getenv("ENABLE_CN_PRICE_LIMIT", "true").lower() == "true"
 
 
 _kline_cache = KlineCache()
@@ -1942,7 +1949,8 @@ class BacktestService:
         })
         script_logs = signals.pop('logs', [])
         equity_curve, trades, total_commission = self._simulate_trading(
-            df, signals, initial_capital, commission, slippage, leverage, trade_direction, strategy_config
+            df, signals, initial_capital, commission, slippage, leverage, trade_direction, strategy_config,
+            market=market, symbol=symbol,
         )
         metrics = self._calculate_metrics(equity_curve, trades, initial_capital, timeframe, start_date, end_date, total_commission)
         result = self._format_result(metrics, equity_curve, trades)
@@ -2249,7 +2257,8 @@ class BacktestService:
         
         # 3. Simulate trading
         equity_curve, trades, total_commission = self._simulate_trading(
-            df, signals, initial_capital, commission, slippage, leverage, trade_direction, strategy_config
+            df, signals, initial_capital, commission, slippage, leverage, trade_direction, strategy_config,
+            market=market, symbol=symbol,
         )
 
         exec_cfg = (strategy_config or {}).get('execution') or {}
@@ -3040,7 +3049,9 @@ class BacktestService:
         slippage: float,
         leverage: int = 1,
         trade_direction: str = 'long',
-        strategy_config: Optional[Dict[str, Any]] = None
+        strategy_config: Optional[Dict[str, Any]] = None,
+        market: str = '',
+        symbol: str = '',
     ) -> tuple:
         """
         Simulate trading.
@@ -3116,7 +3127,7 @@ class BacktestService:
             f"signals open_long={ol} close_long={cl} open_short={os_} close_short={cs}, "
             f"direction={trade_direction}"
         )
-        return self._simulate_trading_new_format(df, norm, initial_capital, commission, slippage, leverage, trade_direction, strategy_config)
+        return self._simulate_trading_new_format(df, norm, initial_capital, commission, slippage, leverage, trade_direction, strategy_config, market=market, symbol=symbol)
 
     def _simulate_trading_new_format(
         self,
@@ -3127,7 +3138,9 @@ class BacktestService:
         slippage: float,
         leverage: int = 1,
         trade_direction: str = 'both',
-        strategy_config: Optional[Dict[str, Any]] = None
+        strategy_config: Optional[Dict[str, Any]] = None,
+        market: str = '',
+        symbol: str = '',
     ) -> tuple:
         """
         Simulate trading with 4-way signal format (supports position management and scaling).
@@ -3343,9 +3356,25 @@ class BacktestService:
                 return (float(capital_now) * float(leverage or 1)) / float(exec_price)
             return 0.0
         
+        # CN price limit state
+        _cn_limit_active = _ENABLE_CN_PRICE_LIMIT and market == 'CNStock'
+        _prev_close: float = 0.0
+
+        # CN T+1 settlement tracking: record buy date to prevent same-day sells
+        _cn_t1_active = _cn_limit_active  # T+1 applies under same conditions as price limits
+        _cn_buy_date = None  # date when the current long position was opened
+
         for i, (timestamp, row) in enumerate(df.iterrows()):
             if is_liquidated:
                 break
+
+            # Track previous close for CN price limit calculation
+            if i == 0:
+                # First bar: no prior close available, keep _prev_close=0 to skip limit check
+                pass
+            elif i > 0:
+                # prev_close is the prior bar's close
+                _prev_close = float(df.iloc[i - 1].get('close', 0) or 0)
 
             # If no position and balance low, stop trading
             if position == 0 and capital < min_capital_to_trade:
@@ -3530,6 +3559,12 @@ class BacktestService:
             
             # Handle exit signals (priority, SL/TP)
             if position > 0 and close_long_arr[i]:
+                # CN T+1 check: skip sell signal if bought today
+                if _cn_t1_active and _cn_buy_date is not None:
+                    _current_date = timestamp.date() if hasattr(timestamp, 'date') else timestamp
+                    _t1_result = _cn_check_t_plus_1(_cn_buy_date, _current_date)
+                    if not _t1_result['allowed']:
+                        continue  # T+1 lock: cannot sell today, skip this signal
                 # Close long: use indicator price or close
                 if signal_timing in ['next_bar_open', 'next_open', 'nextopen', 'next']:
                     target_price = open_
@@ -3559,6 +3594,7 @@ class BacktestService:
                 position = 0
                 position_type = None
                 liquidation_price = 0
+                _cn_buy_date = None
                 highest_since_entry = None
                 lowest_since_entry = None
                 trend_add_times = dca_add_times = trend_reduce_times = adverse_reduce_times = 0
@@ -4057,6 +4093,15 @@ class BacktestService:
                     else:
                         base_price = open_long_price_arr[i] if open_long_price_arr[i] > 0 else close
                     exec_price = base_price * (1 + slippage)
+
+                    # CN A-share price limit: cap buy price at upper limit (涨停价)
+                    if _cn_limit_active and _prev_close > 0:
+                        _cn_limits = _cn_get_price_limit(symbol, _prev_close)
+                        _cn_upper = _cn_limits['upper']
+                        if exec_price > _cn_upper:
+                            exec_price = _cn_upper
+                            if logger.isEnabledFor(10):  # DEBUG
+                                logger.debug(f"CN price limit: open_long capped to upper limit {_cn_upper} (prev_close={_prev_close})")
                     
                     # Use explicit script sizing first; fallback to pct/full.
                     position_pct = None
@@ -4080,6 +4125,9 @@ class BacktestService:
                     position = shares
                     entry_price = exec_price
                     position_type = 'long'
+                    # Track CN buy date for T+1 settlement
+                    if _cn_t1_active:
+                        _cn_buy_date = timestamp.date() if hasattr(timestamp, 'date') else timestamp
                     capital -= commission_fee
                     total_commission_paid += commission_fee
                     liquidation_price = entry_price * (1 - 1.0 / leverage)
@@ -4186,6 +4234,15 @@ class BacktestService:
                     else:
                         base_price = open_short_price_arr[i] if open_short_price_arr[i] > 0 else close
                     exec_price = base_price * (1 - slippage)
+
+                    # CN A-share price limit: cap sell price at lower limit (跌停价)
+                    if _cn_limit_active and _prev_close > 0:
+                        _cn_limits = _cn_get_price_limit(symbol, _prev_close)
+                        _cn_lower = _cn_limits['lower']
+                        if exec_price < _cn_lower:
+                            exec_price = _cn_lower
+                            if logger.isEnabledFor(10):  # DEBUG
+                                logger.debug(f"CN price limit: open_short capped to lower limit {_cn_lower} (prev_close={_prev_close})")
                     
                     # Use explicit script sizing first; fallback to pct/full.
                     position_pct = None

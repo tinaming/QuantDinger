@@ -90,14 +90,14 @@ CONFIG_SCHEMA = {
                 'key': 'BRAND_APP_NAME',
                 'label': 'App Name',
                 'type': 'text',
-                'default': 'QuantDinger',
+                'default': 'ChanQuant',
                 'description': 'Product name shown in the browser tab title and footer copyright.'
             },
             {
                 'key': 'BRAND_COPYRIGHT',
                 'label': 'Footer Copyright',
                 'type': 'text',
-                'default': '© 2025-2026 QuantDinger. All rights reserved.',
+                'default': '© 2025-2026 ChanQuant. All rights reserved.',
                 'description': 'Plain-text copyright line shown at the bottom of every page.'
             },
             {
@@ -140,28 +140,28 @@ CONFIG_SCHEMA = {
                 'key': 'BRAND_CONTACT_EMAIL',
                 'label': 'Support Email',
                 'type': 'text',
-                'default': 'support@quantdinger.com',
+                'default': '',
                 'description': 'Public support email shown in the sidebar footer (mailto:).'
             },
             {
                 'key': 'BRAND_CONTACT_SUPPORT_URL',
                 'label': 'Support / Help URL',
                 'type': 'text',
-                'default': 'https://t.me/quantdinger',
+                'default': '',
                 'description': 'Link target for the "Support" footer item (Telegram group, ticket portal, etc.).'
             },
             {
                 'key': 'BRAND_CONTACT_LIVE_CHAT_URL',
                 'label': 'Live Chat URL',
                 'type': 'text',
-                'default': 'https://t.me/quantdinger',
+                'default': '',
                 'description': 'Link target for the "Live Chat" footer item.'
             },
             {
                 'key': 'BRAND_CONTACT_FEATURE_REQUEST_URL',
                 'label': 'Feature Request URL',
                 'type': 'text',
-                'default': 'https://github.com/brokermr810/QuantDinger/issues',
+                'default': '',
                 'description': 'Where to send users who want to file an issue or feature request.'
             },
         ]
@@ -269,14 +269,14 @@ CONFIG_SCHEMA = {
                 'key': 'SECRET_KEY',
                 'label': 'Secret Key',
                 'type': 'password',
-                'default': 'quantdinger-secret-key-change-me',
+                'default': 'chanquant-secret-key-change-me',
                 'description': 'JWT signing secret key. MUST change in production for security'
             },
             {
                 'key': 'ADMIN_USER',
                 'label': 'Admin Username',
                 'type': 'text',
-                'default': 'quantdinger',
+                'default': 'chanquant',
                 'description': 'Administrator login username'
             },
             {
@@ -903,7 +903,7 @@ CONFIG_SCHEMA = {
                 'type': 'select',
                 'options': ['tavily', 'searxng', 'gdelt', 'serpapi', 'google', 'bing', 'duckduckgo', 'none'],
                 'default': 'tavily',
-                'description': 'Primary news/web search provider used by AI analysis. QuantDinger falls back to configured providers, then GDELT and DuckDuckGo when available'
+                'description': 'Primary news/web search provider used by AI analysis. ChanQuant falls back to configured providers, then GDELT and DuckDuckGo when available'
             },
             {
                 'key': 'SEARCH_MAX_RESULTS',
@@ -1303,7 +1303,7 @@ CONFIG_SCHEMA = {
                 'label': 'Extra OAuth Redirect Targets',
                 'type': 'text',
                 'required': False,
-                'description': 'Comma-separated scheme+host (+ optional port) of additional frontends allowed as OAuth post-login redirect targets, e.g. https://m.quantdinger.com,https://app.quantdinger.com. FRONTEND_URL is always allowed implicitly.'
+                'description': 'Comma-separated scheme+host (+ optional port) of additional frontends allowed as OAuth post-login redirect targets, e.g. https://m.chanquant.com,https://app.chanquant.com. FRONTEND_URL is always allowed implicitly.'
             },
             {
                 'key': 'OAUTH_STATE_TTL_MINUTES',
@@ -1727,7 +1727,7 @@ def get_brand_config():
     label entirely from backend ENV vars so operators can rebrand a deployment
     by editing ``.env`` (or the Settings page) — no frontend rebuild required.
 
-    Empty ENV values fall back to the bundled QuantDinger defaults so a fresh
+    Empty ENV values fall back to the bundled ChanQuant defaults so a fresh
     install still ships with working links instead of blanks.
     """
     return jsonify({
@@ -1807,9 +1807,9 @@ def save_settings():
                 if not admin_username:
                     try:
                         from app.config.settings import Config
-                        admin_username = str(Config.ADMIN_USER or 'quantdinger')
+                        admin_username = str(Config.ADMIN_USER or 'chanquant')
                     except Exception:
-                        admin_username = 'quantdinger'
+                        admin_username = 'chanquant'
 
                 admin_user = user_service.get_user_by_username(admin_username)
                 if not admin_user:
@@ -1980,6 +1980,35 @@ def test_connection():
     except Exception as e:
         logger.error(f"Connection test failed: {e}")
         return jsonify({'code': 0, 'msg': f'Test failed: {str(e)}'})
+
+@settings_blp.route('/worker-status', methods=['GET'])
+@login_required
+def get_worker_status():
+    """Return the current status of all background worker tasks.
+
+    Useful for monitoring and debugging in multi-worker SaaS deployments.
+    Status values: not_started, running, disabled, error, skipped_other_worker,
+    skipped_reloader_parent.
+    """
+    try:
+        from app.startup import get_worker_status
+        import os as _os
+        status = get_worker_status()
+        pid = status.pop('pid', _os.getpid())
+        return jsonify({
+            'code': 1,
+            'msg': 'success',
+            'data': {
+                'workers': status,
+                'pid': pid,
+                'gunicorn_workers': int(_os.getenv('GUNICORN_WORKERS', '2')),
+                'gunicorn_threads': int(_os.getenv('GUNICORN_THREADS', '8')),
+            }
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch worker status: {e}")
+        return jsonify({'code': 0, 'msg': f'Failed to fetch worker status: {str(e)}'})
+
 
 # openapi-compat: legacy import name
 settings_bp = settings_blp

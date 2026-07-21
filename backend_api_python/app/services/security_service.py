@@ -25,7 +25,7 @@ _TURNSTILE_PLACEHOLDER_VALUES = {
     'placeholder',
     'changeme',
     'change-me',
-    'quantdinger',
+    'chanquant',
     'your-turnstile-site-key',
     'your-turnstile-secret-key',
 }
@@ -84,7 +84,7 @@ class SecurityService:
     def get_security_config(self) -> Dict[str, Any]:
         """Get public security config for frontend"""
         mobile_ver = (os.getenv('MOBILE_APP_LATEST_VERSION') or '').strip()
-        mobile_url = (os.getenv('MOBILE_APP_DOWNLOAD_URL') or '').strip() or 'https://www.quantdinger.com/download/app.apk'
+        mobile_url = (os.getenv('MOBILE_APP_DOWNLOAD_URL') or '').strip() or ''
         return {
             'turnstile_enabled': self.turnstile_enabled,
             'turnstile_site_key': self.turnstile_site_key,

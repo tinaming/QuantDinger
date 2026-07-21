@@ -58,7 +58,7 @@ class PaginationMetaSchema(Schema):
 class ApiInfoSchema(Schema):
     """GET / — API identity payload."""
 
-    name = fields.String(metadata={"example": "QuantDinger Python API"})
+    name = fields.String(metadata={"example": "ChanQuant Python API"})
     version = fields.String(metadata={"example": "3.0.23"})
     status = fields.String(metadata={"example": "running"})
     timestamp = fields.DateTime(format="iso")

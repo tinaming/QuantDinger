@@ -1,0 +1,7 @@
+schema_version: 1
+module_path: frontend_style
+title: 前端样式系统：独立 Vue SPA，本仓库不包含前端源码
+scope: []
+source_files: []
+depends_on: []
+related_to: []

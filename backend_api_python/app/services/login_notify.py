@@ -265,7 +265,7 @@ def _send_login_alerts(
         "both": "new device and region",
     }.get(reason_key, "unusual sign-in")
 
-    title = f"QuantDinger login alert · {reason_key}"
+    title = f"ChanQuant login alert · {reason_key}"
     message = (
         f"Account {nickname} signed in from a new environment.\n"
         f"Method: {method}\n"
@@ -330,7 +330,7 @@ def _send_login_alerts(
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <h2 style="color: #d4380d;">登录安全提醒</h2>
             <p>您好，{nickname}：</p>
-            <p>We detected a sign-in to your QuantDinger account from a <strong>{reason_text}</strong>:</p>
+            <p>We detected a sign-in to your ChanQuant account from a <strong>{reason_text}</strong>:</p>
             <ul>
                 <li>登录方式：{method}</li>
                 <li>设备：{device_label}</li>

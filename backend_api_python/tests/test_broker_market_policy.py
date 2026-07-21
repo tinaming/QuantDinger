@@ -1,7 +1,7 @@
 """Tests for app.services.broker_market_policy.
 
 This is the single source of truth for which broker x market x market_type
-combinations QuantDinger accepts. Every test here is paired against either:
+combinations ChanQuant accepts. Every test here is paired against either:
 
   - a UI control in views/trading-assistant/index.vue or
     views/trading-bot/components/BotCreateWizard.vue, or

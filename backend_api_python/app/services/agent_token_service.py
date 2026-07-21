@@ -55,7 +55,7 @@ class TokenIssueError(Exception):
 
 
 def is_saas_mode() -> bool:
-    raw = (os.environ.get("QUANTDINGER_DEPLOYMENT_MODE") or "").strip().lower()
+    raw = (os.environ.get("CHANQUANT_DEPLOYMENT_MODE") or os.environ.get("QUANTDINGER_DEPLOYMENT_MODE") or "").strip().lower()
     return raw in _SAAS_MODE_VALUES
 
 
@@ -65,7 +65,7 @@ def agent_live_trading_enabled() -> bool:
 
 
 def deployment_mode_label() -> str:
-    raw = (os.environ.get("QUANTDINGER_DEPLOYMENT_MODE") or "").strip().lower()
+    raw = (os.environ.get("CHANQUANT_DEPLOYMENT_MODE") or os.environ.get("QUANTDINGER_DEPLOYMENT_MODE") or "").strip().lower()
     return raw or "self_hosted"
 
 
