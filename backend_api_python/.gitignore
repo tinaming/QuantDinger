@@ -39,6 +39,7 @@ wheels/
 .env.testnet.local
 
 # Local runtime data (do not commit)
+*.db
 quantdinger.db
 /data/
 /logs/
