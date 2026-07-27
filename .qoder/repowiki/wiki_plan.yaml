@@ -1,0 +1,134 @@
+version: 1
+scope:
+  include: []
+  exclude:
+    - "node_modules/**"
+    - "dist/**"
+    - "**/__pycache__/**"
+    - "**/*.pyc"
+    - "logs/**"
+    - ".git/**"
+repowiki:
+  template: architecture
+  notes:
+    - text: "QuantDinger 是自托管 AI 量化交易基础设施，版本 4.0.1。后端 Python 3.12 / Flask / Gunicorn，数据库 PostgreSQL 16 + Redis 7，前端 Vue SPA（独立仓库，GHCR 预构建镜像），MCP Server 为独立 Python 包。"
+    - text: "核心架构原则：两套 API（人类 Web API + Agent Gateway）共享同一套 Service 层，Service 是唯一业务逻辑源。Agent Gateway 不是平行实现，仅是薄认证层。"
+    - text: "所有数据库表以 qd_ 为前缀（如 qd_users, qd_strategies, qd_agent_tokens）。Schema 定义在 migrations/init.sql，启动时幂等执行。"
+    - text: "凭证加密使用 Fernet，密钥由 SECRET_KEY 派生。禁止随意更换 SECRET_KEY，否则所有存储的交易所密钥失效。"
+    - text: "并发模型：Gunicorn 默认 1 worker + 8 threads，preload_app=False。后台线程在 worker 进程中启动，不在 master。"
+    - text: "策略代码通过 app/utils/safe_exec.py 沙箱执行，使用 restricted builtins。IndicatorStrategy 操作 DataFrame，ScriptStrategy 通过事件驱动 ctx 对象。"
+  documents:
+    - title: "项目总览"
+      goal: "QuantDinger 整体架构、技术栈、部署模型和核心设计决策的全局视图"
+      parent: ""
+      template: |
+        ## 项目定位与目标用户
+        ## 技术栈概览
+        ## 系统架构图
+        ## 仓库目录结构
+        ## 部署模型
+    - title: "应用工厂与启动流程"
+      goal: "Flask create_app 工厂模式、路由注册、数据库初始化、启动钩子的完整生命周期"
+      parent: "项目总览"
+      template: |
+        ## create_app 工厂函数
+        ## 路由注册流程
+        ## 数据库自动迁移
+        ## 启动钩子（Background Workers）
+        ## 环境变量控制开关
+    - title: "双 API 表面架构"
+      goal: "人类 Web API 与 Agent Gateway 的设计、认证差异、能力模型和审计机制"
+      parent: ""
+      template: |
+        ## 人类 Web API（JWT 认证）
+        ## Agent Gateway（Token 认证）
+        ## 能力类（R/W/B/N/C/T）
+        ## 审计日志与幂等键
+        ## SaaS 模式守卫
+    - title: "Service 层"
+      goal: "核心业务逻辑层的模块划分、职责边界和调用关系"
+      parent: ""
+      template: |
+        ## Service 层设计原则
+        ## 核心 Service 模块清单
+        ## 双 API 到 Service 的调用路径
+        ## 关键 Service 依赖关系
+    - title: "策略引擎"
+      goal: "双策略运行时（IndicatorStrategy / ScriptStrategy）的架构、执行模型和开发规范"
+      parent: ""
+      template: |
+        ## 双策略运行时概述
+        ## IndicatorStrategy 模型
+        ## ScriptStrategy 模型
+        ## 安全沙箱执行（safe_exec）
+        ## 策略回测与实盘运行
+    - title: "交易所执行层"
+      goal: "多券商执行适配器的架构：CCXT 加密、IBKR、MT5、Alpaca 的统一抽象"
+      parent: ""
+      template: |
+        ## 执行层架构概览
+        ## CCXT 加密交易所执行
+        ## IBKR 集成
+        ## MT5 集成
+        ## Alpaca 集成
+        ## 统一 Broker Accounts 页面
+    - title: "数据源与数据提供者"
+      goal: "数据获取层（data_sources）和数据聚合层（data_providers）的设计、熔断和限流"
+      parent: ""
+      template: |
+        ## Data Sources（市场特定 OHLCV 获取）
+        ## Data Providers（高层聚合：新闻、情绪、日历）
+        ## 工厂模式与熔断器
+        ## 多市场数据覆盖
+    - title: "数据库与状态管理"
+      goal: "PostgreSQL schema 设计、连接池、表结构和迁移策略"
+      parent: ""
+      template: |
+        ## 数据库 Schema 设计
+        ## 连接池（ThreadedConnectionPool）
+        ## 核心表结构（qd_ 前缀）
+        ## 幂等迁移策略
+    - title: "后台 Worker 体系"
+      goal: "启动钩子驱动的后台线程：订单派发、网格轮询、组合监控、AI 校准、反思等"
+      parent: ""
+      template: |
+        ## Worker 架构与设计原则
+        ## Pending Order Worker
+        ## Grid Fill Poller
+        ## Portfolio Monitor
+        ## AI Calibration / Reflection Worker
+        ## Strategy Restore
+    - title: "MCP Server"
+      goal: "quantdinger-mcp 包的架构、传输协议和 Agent Gateway 集成方式"
+      parent: ""
+      template: |
+        ## MCP Server 概述
+        ## 传输协议（stdio / SSE / streamable-http）
+        ## 与 Agent Gateway 的集成
+        ## 配置与部署
+    - title: "测试与质量保障"
+      goal: "测试约定、conftest 配置、质量检查脚本和基线守卫机制"
+      parent: ""
+      template: |
+        ## 测试约定与命名规范
+        ## conftest.py 配置
+        ## 测试分类（单元 / 集成）
+        ## 后端质量检查脚本
+        ## 基线文件与回归守卫
+    - title: "环境配置与部署"
+      goal: "环境变量体系、Docker Compose 部署、多环境配置和云部署"
+      parent: ""
+      template: |
+        ## 环境变量体系（.env 双层结构）
+        ## Docker Compose 部署
+        ## 本地开发部署
+        ## 关键配置区域
+        ## 云部署与反向代理
+knowledgecard:
+  notes:
+    - text: "后端代码在 backend_api_python/ 下，核心入口是 app/__init__.py::create_app()。路由注册在 app/routes/__init__.py::register_routes()。Agent 路由在 app/routes/agent_v1/ 独立蓝图。"
+    - text: "Service 层在 app/services/ 下，是两套 API 共享的唯一业务逻辑源。执行层分四个适配器：exchange_execution.py（CCXT）、ibkr_trading/、mt5_trading/、alpaca_trading/。"
+    - text: "策略运行时：IndicatorStrategy 向量化 DataFrame 信号，回测在 app/services/backtest.py；ScriptStrategy 事件驱动 on_bar，运行时在 app/services/strategy_script_runtime.py。"
+    - text: "数据层：app/data_sources/ 是市场特定 OHLCV 获取器（带熔断），app/data_providers/ 是高层聚合（新闻、情绪、日历）。工厂在 data_sources/factory.py。"
+    - text: "数据库 Schema 在 migrations/init.sql，所有 CREATE TABLE IF NOT EXISTS。连接池在 app/utils/db_postgres.py（psycopg2 ThreadedConnectionPool）。"
+    - text: "安全相关：safe_exec.py 沙箱执行策略代码，Fernet 加密交易所凭证（密钥来自 SECRET_KEY），Agent Token 默认 paper_only=true。"

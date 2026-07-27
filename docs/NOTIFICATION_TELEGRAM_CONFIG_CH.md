@@ -1,6 +1,6 @@
-# 📱 Telegram 通知配置指南
+﻿# 📱 Telegram 通知配置指南
 
-> QuantDinger 支持通过 Telegram Bot 推送策略信号通知，实时获取交易提醒。
+> ChanQuant 支持通过 Telegram Bot 推送策略信号通知，实时获取交易提醒。
 
 ---
 
@@ -20,7 +20,7 @@
 
 - 已安装 Telegram 客户端（手机或桌面版）
 - 拥有 Telegram 账号
-- QuantDinger 后端服务已部署并运行
+- ChanQuant 后端服务已部署并运行
 
 ---
 
@@ -28,8 +28,8 @@
 
 1. 在 Telegram 中搜索 **@BotFather**（官方机器人管理工具）
 2. 发送 `/newbot` 命令开始创建新机器人
-3. 按照提示输入机器人名称（如：`QuantDinger Signal Bot`）
-4. 输入机器人用户名（必须以 `bot` 结尾，如：`quantdinger_signal_bot`）
+3. 按照提示输入机器人名称（如：`ChanQuant Signal Bot`）
+4. 输入机器人用户名（必须以 `bot` 结尾，如：`ChanQuant_signal_bot`）
 
 <img src="./screenshots/notification_telegram_token.png" alt="创建 Telegram Bot" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
 

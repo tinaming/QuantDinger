@@ -30,6 +30,7 @@ _PREFIX_TAGS: list[tuple[str, str]] = [
     ("/api/portfolio", "Portfolio"),
     ("/api/ibkr", "IBKR"),
     ("/api/alpaca", "Alpaca"),
+    ("/api/qmt", "QMT"),
     ("/api/global-market", "GlobalMarket"),
     ("/api/community", "Community"),
     ("/api/fast-analysis", "FastAnalysis"),
@@ -37,6 +38,8 @@ _PREFIX_TAGS: list[tuple[str, str]] = [
     ("/api/quick-trade", "QuickTrade"),
     ("/api/experiment", "Experiment"),
     ("/api/coinos", "CoinOS"),
+    ("/api/chanlun", "ChanLun"),
+    ("/api/chart", "Chart"),
 ]
 
 
@@ -70,6 +73,7 @@ def register_human_blueprints(api: Api) -> None:
     from app.routes.portfolio import portfolio_blp
     from app.routes.ibkr import ibkr_blp
     from app.routes.alpaca import alpaca_blp
+    from app.routes.qmt import qmt_blp
     from app.routes.global_market import global_market_blp
     from app.routes.community import community_blp
     from app.routes.fast_analysis import fast_analysis_blp
@@ -77,6 +81,8 @@ def register_human_blueprints(api: Api) -> None:
     from app.routes.quick_trade import quick_trade_blp
     from app.routes.experiment import experiment_blp
     from app.routes.coinos import coinos_blp
+    from app.routes.chanlun import chanlun_blp
+    from app.routes.chart_routes import chart_blp
 
     registrations: list[tuple] = [
         (health_blp, ""),
@@ -96,6 +102,7 @@ def register_human_blueprints(api: Api) -> None:
         (portfolio_blp, "/api/portfolio"),
         (ibkr_blp, "/api/ibkr"),
         (alpaca_blp, "/api/alpaca"),
+        (qmt_blp, "/api/qmt"),
         (global_market_blp, "/api/global-market"),
         (community_blp, "/api/community"),
         (fast_analysis_blp, "/api/fast-analysis"),
@@ -103,6 +110,8 @@ def register_human_blueprints(api: Api) -> None:
         (quick_trade_blp, "/api/quick-trade"),
         (experiment_blp, "/api/experiment"),
         (coinos_blp, "/api/coinos"),
+        (chanlun_blp, "/api/chanlun"),
+        (chart_blp, "/api"),
     ]
 
     for blp, prefix in registrations:

@@ -39,7 +39,7 @@ def _load_env_files_once() -> None:
     root_dir = backend_dir.parent
     for env_path in (root_dir / ".env", backend_dir / ".env"):
         if env_path.exists():
-            load_dotenv(env_path, override=True)
+            load_dotenv(env_path, override=False)
 
 
 def load_addon_config() -> Dict[str, Any]:

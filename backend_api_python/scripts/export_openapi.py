@@ -76,7 +76,7 @@ def export_spec(output: Path, fmt: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export QuantDinger Web API OpenAPI spec")
+    parser = argparse.ArgumentParser(description="Export ChanQuant Web API OpenAPI spec")
     parser.add_argument(
         "--output",
         "-o",

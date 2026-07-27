@@ -1,6 +1,6 @@
-# MetaTrader 5 (MT5) Trading Guide
+﻿# MetaTrader 5 (MT5) Trading Guide
 
-QuantDinger supports forex live trading via MetaTrader 5 terminal.
+ChanQuant supports forex live trading via MetaTrader 5 terminal.
 
 ## Overview
 
@@ -53,7 +53,7 @@ This repo provides `backend_api_python/requirements-windows.txt` (includes `Meta
 PowerShell:
 
 ```powershell
-cd C:\path\to\QuantDinger\backend_api_python
+cd C:\path\to\ChanQuant\backend_api_python
 
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -71,7 +71,7 @@ pip install -r requirements-windows.txt
 Start the backend (entrypoint: `backend_api_python/run.py`):
 
 ```powershell
-cd C:\path\to\QuantDinger\backend_api_python
+cd C:\path\to\ChanQuant\backend_api_python
 .\.venv\Scripts\Activate.ps1
 python run.py
 ```

@@ -1,6 +1,6 @@
-# QuantDinger Cloud Deployment Guide
+﻿# ChanQuant Cloud Deployment Guide
 
-This guide describes the current production-style Docker deployment for QuantDinger on a cloud server. It covers the recommended GHCR image deployment, optional source deployment, Nginx, HTTPS, upgrades, and common troubleshooting.
+This guide describes the current production-style Docker deployment for ChanQuant on a cloud server. It covers the recommended GHCR image deployment, optional source deployment, Nginx, HTTPS, upgrades, and common troubleshooting.
 
 For first-time Docker pull and Postgres startup issues, also see [Installation Troubleshooting](INSTALL_TROUBLESHOOTING.md).
 
@@ -60,10 +60,10 @@ Use Compose v2 commands: `docker compose ...`.
 Use this mode for normal cloud deployment. It pulls backend, web frontend, and mobile H5 images from GHCR. No local Python or Node build is required.
 
 ```bash
-mkdir -p ~/quantdinger
-cd ~/quantdinger
-curl -O https://raw.githubusercontent.com/brokermr810/QuantDinger/main/docker-compose.ghcr.yml
-curl -o backend.env https://raw.githubusercontent.com/brokermr810/QuantDinger/main/backend_api_python/env.example
+mkdir -p ~/ChanQuant
+cd ~/ChanQuant
+curl -O https://raw.githubusercontent.com/brokermr810/ChanQuant/main/docker-compose.ghcr.yml
+curl -o backend.env https://raw.githubusercontent.com/brokermr810/ChanQuant/main/backend_api_python/env.example
 ```
 
 Edit `backend.env` before first start:
@@ -106,8 +106,8 @@ docker compose -f docker-compose.ghcr.yml ps
 Use this mode only when you need to build the backend from local source.
 
 ```bash
-git clone https://github.com/brokermr810/QuantDinger.git
-cd QuantDinger
+git clone https://github.com/brokermr810/ChanQuant.git
+cd ChanQuant
 cp backend_api_python/env.example backend_api_python/.env
 ./scripts/generate-secret-key.sh
 ```
@@ -152,7 +152,7 @@ sudo apt update
 sudo apt install -y nginx
 ```
 
-Create `/etc/nginx/sites-available/quantdinger.conf`:
+Create `/etc/nginx/sites-available/ChanQuant.conf`:
 
 ```nginx
 server {
@@ -193,7 +193,7 @@ If you do not need a separate mobile domain, omit the second server block. Users
 Enable:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/quantdinger.conf /etc/nginx/sites-enabled/quantdinger.conf
+sudo ln -s /etc/nginx/sites-available/ChanQuant.conf /etc/nginx/sites-enabled/ChanQuant.conf
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -282,7 +282,7 @@ docker compose up -d --build
 Back up Postgres before major upgrades:
 
 ```bash
-docker exec quantdinger-db pg_dump -U quantdinger quantdinger > quantdinger_backup.sql
+docker exec ChanQuant-db pg_dump -U ChanQuant ChanQuant > ChanQuant_backup.sql
 ```
 
 ## 9. Postgres 18 and Existing Data
@@ -332,9 +332,9 @@ docker compose -f docker-compose.ghcr.yml pull
 If GHCR images fail:
 
 ```bash
-docker pull ghcr.io/brokermr810/quantdinger-backend:latest
-docker pull ghcr.io/brokermr810/quantdinger-frontend:latest
-docker pull ghcr.io/brokermr810/quantdinger-mobile:latest
+docker pull ghcr.io/brokermr810/ChanQuant-backend:latest
+docker pull ghcr.io/brokermr810/ChanQuant-frontend:latest
+docker pull ghcr.io/brokermr810/ChanQuant-mobile:latest
 ```
 
 Common causes include network blocks, private package visibility, or a pinned tag that does not exist.

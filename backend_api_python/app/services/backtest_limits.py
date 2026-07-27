@@ -10,6 +10,7 @@ from app.data_sources.factory import DataSourceFactory
 
 
 _TIMEFRAME_SECONDS = {
+    "10s": 10,
     "1m": 60,
     "3m": 180,
     "5m": 300,
@@ -30,6 +31,7 @@ class BacktestRangePolicy:
 
 
 _DEFAULT_LIMITS: Dict[str, BacktestRangePolicy] = {
+    "10s": BacktestRangePolicy(2, "2 days", "engine workload limit"),
     "1m": BacktestRangePolicy(30, "1 month", "engine workload limit"),
     "3m": BacktestRangePolicy(30, "1 month", "engine workload limit"),
     "5m": BacktestRangePolicy(180, "6 months", "engine workload limit"),

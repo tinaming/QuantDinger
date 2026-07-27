@@ -1,10 +1,10 @@
-# QuantDinger — Multi-Agent Runtime Environments (Design)
+﻿# ChanQuant — Multi-Agent Runtime Environments (Design)
 
 | Item | Value |
 |------|--------|
 | Status | Draft (for review and phased rollout) |
 | Audience | Maintainers and developers using Cursor, Claude Code, Codex, or similar coding agents |
-| Repository | [QuantDinger](https://github.com/brokermr810/QuantDinger) — self-hosted quant stack: research, strategies, backtests, live trading |
+| Repository | [ChanQuant](https://github.com/brokermr810/ChanQuant) — self-hosted quant stack: research, strategies, backtests, live trading |
 
 ---
 
@@ -168,7 +168,7 @@ Phases are independently reviewable; **P0 does not depend on P2/P3**.
 ## 8. Document and file checklist (for implementation)
 
 - [x] `docs/agent/AGENT_ENVIRONMENT_DESIGN.md` — this design (English SSOT).
-- [x] `.cursor/skills/quantdinger-agent-workflow/` — project Cursor skill (English) pointing agents here.
+- [x] `.cursor/skills/ChanQuant-agent-workflow/` — project Cursor skill (English) pointing agents here.
 - [x] `docs/agent/README.md` — short Layer 1 index for `docs/agent/`.
 - [ ] Root `README.md` — dedicated “For coding agents” subsection pointing to the index above.
 - [ ] (Optional) Root `AGENTS.md` — industry-style filename; may forward to `docs/agent/`.

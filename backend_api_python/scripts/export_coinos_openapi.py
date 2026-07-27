@@ -85,7 +85,7 @@ def export_coinos_spec(output: Path) -> None:
     spec = {
         "openapi": full_spec.get("openapi", "3.0.3"),
         "info": {
-            "title": "QuantDinger CoinOS Skills API",
+            "title": "ChanQuant CoinOS Skills API",
             "version": "1.0.0",
             "description": (
                 "CoinOS Skills integration — crypto market data (AiCoin 200+ exchanges), "
@@ -95,8 +95,8 @@ def export_coinos_spec(output: Path) -> None:
                 "Powered by [coinos-skills](https://github.com/aicoincom/coinos-skills)."
             ),
             "contact": {
-                "name": "QuantDinger",
-                "url": "https://github.com/brokermr810/quantdinger",
+                "name": "ChanQuant",
+                "url": "https://github.com/brokermr810/chanquant",
             },
             "license": {"name": "See repository LICENSE"},
         },

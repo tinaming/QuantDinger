@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ChanQuant - 策略监控面板</title>
+<style>
+:root {
+  --bg: #0a0e1a;
+  --bg-card: #111827;
+  --bg-card-hover: #1a2332;
+  --bg-header: #0f1629;
+  --border: #1e2d3d;
+  --border-light: #2a3a4d;
+  --text: #e2e8f0;
+  --text-dim: #8b9dc3;
+  --text-muted: #5a6a82;
+  --accent: #3b82f6;
+  --accent-glow: rgba(59,130,246,0.15);
+  --green: #22c55e;
+  --green-bg: rgba(34,197,94,0.1);
+  --red: #ef4444;
+  --red-bg: rgba(239,68,68,0.1);
+  --yellow: #eab308;
+  --yellow-bg: rgba(234,179,8,0.12);
+  --purple: #a78bfa;
+  --purple-bg: rgba(167,139,250,0.1);
+  --radius: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0 }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  height: 64px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 50;
+  backdrop-filter: blur(12px);
+}
+.header-left { display: flex; align-items: center; gap: 14px }
+.header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px }
+.header h1 span { color: var(--accent); }
+.pulse-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4) }
+  50% { box-shadow: 0 0 0 6px rgba(34,197,94,0) }
+}
+.header-right { display: flex; align-items: center; gap: 16px }
+.last-update { font-size: 12px; color: var(--text-muted) }
+.btn-refresh {
+  background: transparent; color: var(--text-dim);
+  border: 1px solid var(--border-light); padding: 7px 14px;
+  border-radius: 8px; cursor: pointer; font-size: 13px;
+  display: flex; align-items: center; gap: 6px;
+  transition: all .2s;
+}
+.btn-refresh:hover { color: var(--text); border-color: var(--accent); background: var(--accent-glow) }
+.btn-refresh.loading svg { animation: spin 1s linear infinite }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+/* ── Tabs ── */
+.tabs-bar {
+  display: flex; gap: 2px; padding: 0 32px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  padding: 12px 18px; cursor: pointer;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted); font-size: 13px; font-weight: 500;
+  transition: all .2s; white-space: nowrap;
+  display: flex; align-items: center; gap: 6px;
+}
+.tab:hover { color: var(--text-dim) }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent) }
+.tab .count {
+  font-size: 11px; padding: 1px 6px; border-radius: 8px;
+  background: var(--border); color: var(--text-muted); font-weight: 600;
+}
+.tab.active .count { background: var(--accent-glow); color: var(--accent) }
+
+/* ── Content ── */
+.content { padding: 28px 32px; max-width: 1440px; margin: 0 auto }
+
+/* ── Summary Row ── */
+.summary-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  transition: border-color .2s;
+}
+.stat-card:hover { border-color: var(--border-light) }
+.stat-label {
+  font-size: 11px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.8px;
+  font-weight: 600; margin-bottom: 8px;
+}
+.stat-value { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.1 }
+.stat-sub { font-size: 12px; color: var(--text-muted); margin-top: 6px }
+
+/* ── Market Cards ── */
+.market-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+.market-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  position: relative;
+  overflow: hidden;
+}
+.market-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+.market-card.crypto::before { background: linear-gradient(90deg, var(--yellow), #f97316) }
+.market-card.cnstock::before { background: linear-gradient(90deg, var(--green), #06b6d4) }
+.market-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+}
+.market-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.crypto .market-icon { background: var(--yellow-bg) }
+.cnstock .market-icon { background: var(--green-bg) }
+.market-title { font-size: 15px; font-weight: 600 }
+.market-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 1px }
+.metrics-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+}
+.metric-item {}
+.metric-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px }
+.metric-value { font-size: 17px; font-weight: 600 }
+
+/* ── Table ── */
+.table-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.table-title {
+  padding: 16px 20px; font-size: 14px; font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.table-title .count-badge {
+  font-size: 12px; color: var(--text-muted); font-weight: 400;
+}
+table { width: 100%; border-collapse: collapse }
+th {
+  text-align: left; padding: 10px 16px;
+  font-size: 11px; color: var(--text-muted);
+  font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.15);
+}
+td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border) }
+tr:last-child td { border-bottom: none }
+tbody tr { transition: background .15s }
+tbody tr:hover { background: var(--bg-card-hover) }
+
+.status-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+}
+.status-pill .dot { width: 6px; height: 6px; border-radius: 50% }
+.pill-running { background: var(--green-bg); color: var(--green) }
+.pill-running .dot { background: var(--green) }
+.pill-stopped { background: rgba(100,116,139,0.12); color: var(--text-muted) }
+.pill-stopped .dot { background: var(--text-muted) }
+
+.mode-tag {
+  font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 600;
+}
+.mode-tag.live { background: var(--yellow-bg); color: var(--yellow) }
+.mode-tag.signal { background: var(--purple-bg); color: var(--purple) }
+
+/* ── Helpers ── */
+.pnl-pos { color: var(--green) }
+.pnl-neg { color: var(--red) }
+.text-dim { color: var(--text-dim) }
+.text-muted { color: var(--text-muted) }
+
+/* ── Login ── */
+.login-wrap {
+  min-height: 100vh; display: flex;
+  align-items: center; justify-content: center;
+  background: var(--bg);
+}
+.login-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 40px;
+  width: 380px;
+}
+.login-box h2 {
+  text-align: center; margin-bottom: 8px; font-size: 22px;
+}
+.login-box .subtitle {
+  text-align: center; color: var(--text-muted);
+  font-size: 13px; margin-bottom: 28px;
+}
+.login-box input {
+  width: 100%; padding: 11px 14px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text); font-size: 14px;
+  margin-bottom: 12px; outline: none;
+  transition: border-color .2s;
+}
+.login-box input:focus { border-color: var(--accent) }
+.login-box button {
+  width: 100%; padding: 12px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 8px;
+  font-size: 14px; cursor: pointer; font-weight: 600;
+  transition: opacity .2s; margin-top: 4px;
+}
+.login-box button:hover { opacity: 0.88 }
+.login-err { color: var(--red); font-size: 13px; margin-bottom: 12px; text-align: center }
+
+.empty-state {
+  text-align: center; padding: 60px 20px;
+  color: var(--text-muted); font-size: 14px;
+}
+.empty-state .icon { font-size: 36px; margin-bottom: 12px; opacity: 0.5 }
+
+/* ── Responsive ── */
+@media (max-width: 1024px) {
+  .summary-row { grid-template-columns: repeat(2, 1fr) }
+  .market-section { grid-template-columns: 1fr }
+}
+@media (max-width: 768px) {
+  .header { padding: 0 16px }
+  .tabs-bar { padding: 0 16px; overflow-x: auto }
+  .content { padding: 20px 16px }
+  .summary-row { grid-template-columns: 1fr 1fr }
+  .metrics-grid { grid-template-columns: 1fr 1fr }
+  .market-section { grid-template-columns: 1fr }
+}
+@media (max-width: 480px) {
+  .summary-row { grid-template-columns: 1fr }
+  .tabs-bar { gap: 0 }
+  .tab { padding: 10px 12px; font-size: 12px }
+}
+
+/* ── Fade-in animation ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px) }
+  to { opacity: 1; transform: translateY(0) }
+}
+.fade-in { animation: fadeUp .35s ease-out both }
+.fade-in:nth-child(2) { animation-delay: .05s }
+.fade-in:nth-child(3) { animation-delay: .1s }
+.fade-in:nth-child(4) { animation-delay: .15s }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const API = '/api';
+let token = '';
+(function(){
+  let t = localStorage.getItem('Access-Token') || '';
+  if (t && typeof t === 'string') token = t;
+  else if (t) { try { const o = JSON.parse(t); token = o.token || o.value || '' } catch {} }
+})();
+let currentTab = 'all';
+let allData = null;
+let lastUpdate = null;
+let isRefreshing = false;
+
+const REFRESH_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>`;
+
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(API + path, { ...opts, headers });
+  if (res.status === 401) { token = ''; localStorage.removeItem('Access-Token'); renderLogin(); throw new Error('Unauthorized') }
+  return res.json();
+}
+
+async function login(username, password) {
+  const res = await fetch(API + '/auth/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const data = await res.json();
+  if (data.code === 1 && data.data?.token) { token = data.data.token; localStorage.setItem('Access-Token', token); loadData(); return true }
+  return data.msg || 'Login failed';
+}
+
+async function loadData() {
+  isRefreshing = true; renderHeader();
+  try {
+    const data = await api('/user/system-strategies?page=1&page_size=100');
+    if (data.code === 1) { allData = data.data; lastUpdate = new Date(); render() }
+    else { renderLogin(data.msg) }
+  } catch (e) { renderLogin() }
+  finally { isRefreshing = false; }
+}
+
+function fmt(n, dec = 2) { if (n == null) return '--'; return Number(n).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }) }
+function pnlCls(n) { return n > 0 ? 'pnl-pos' : n < 0 ? 'pnl-neg' : '' }
+function pnlSign(n) { return n > 0 ? '+' : '' }
+function fmtTime(d) { if (!d) return ''; return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }
+
+function renderLogin(err = '') {
+  document.getElementById('app').innerHTML = `
+  <div class="login-wrap"><div class="login-box">
+    <h2>ChanQuant</h2>
+    <div class="subtitle">策略监控平台</div>
+    ${err ? '<div class="login-err">' + err + '</div>' : ''}
+    <input id="lu" placeholder="用户名" autocomplete="username">
+    <input id="lp" type="password" placeholder="密码" autocomplete="current-password">
+    <button onclick="doLogin()">登 录</button>
+  </div></div>`;
+}
+
+window.doLogin = async function () {
+  const u = document.getElementById('lu').value;
+  const p = document.getElementById('lp').value;
+  if (!u || !p) return;
+  const r = await login(u, p);
+  if (r !== true) renderLogin(r);
+};
+
+function renderHeader() {
+  const el = document.querySelector('.btn-refresh');
+  if (el && isRefreshing) el.classList.add('loading');
+}
+
+function render() {
+  if (!allData) return;
+  const s = allData.summary || {};
+  const items = allData.items || [];
+  const crypto = s.crypto || {};
+  const cnStock = s.cn_stock || {};
+
+  // Tab counts
+  const counts = {
+    all: items.length,
+    'crypto-live': items.filter(i => i.market_category === 'Crypto' && i.execution_mode === 'live').length,
+    'crypto-signal': items.filter(i => i.market_category === 'Crypto' && i.execution_mode === 'signal').length,
+    'cn-live': items.filter(i => i.market_category === 'CNStock' && i.execution_mode === 'live').length,
+    'cn-signal': items.filter(i => i.market_category === 'CNStock' && i.execution_mode === 'signal').length,
+  };
+
+  // Filter by tab
+  let filtered = items;
+  if (currentTab === 'crypto-live') filtered = items.filter(i => i.market_category === 'Crypto' && i.execution_mode === 'live');
+  else if (currentTab === 'crypto-signal') filtered = items.filter(i => i.market_category === 'Crypto' && i.execution_mode === 'signal');
+  else if (currentTab === 'cn-live') filtered = items.filter(i => i.market_category === 'CNStock' && i.execution_mode === 'live');
+  else if (currentTab === 'cn-signal') filtered = items.filter(i => i.market_category === 'CNStock' && i.execution_mode === 'signal');
+
+  // Only show running strategies in non-all tabs (or show all)
+  // filtered already handles the category/mode split
+
+  document.getElementById('app').innerHTML = `
+  <div class="header">
+    <div class="header-left">
+      <h1><span>Chan</span>Quant</h1>
+      <div class="pulse-dot" title="系统运行中"></div>
+    </div>
+    <div class="header-right">
+      <span class="last-update">${lastUpdate ? '更新于 ' + fmtTime(lastUpdate) : ''}</span>
+      <button class="btn-refresh ${isRefreshing ? 'loading' : ''}" onclick="loadData()">${REFRESH_ICON} 刷新</button>
+    </div>
+  </div>
+
+  <div class="tabs-bar">
+    <div class="tab ${currentTab === 'all' ? 'active' : ''}" onclick="switchTab('all')">
+      全部 <span class="count">${counts.all}</span>
+    </div>
+    <div class="tab ${currentTab === 'crypto-live' ? 'active' : ''}" onclick="switchTab('crypto-live')">
+      Crypto 实盘 <span class="count">${counts['crypto-live']}</span>
+    </div>
+    <div class="tab ${currentTab === 'crypto-signal' ? 'active' : ''}" onclick="switchTab('crypto-signal')">
+      Crypto 模拟 <span class="count">${counts['crypto-signal']}</span>
+    </div>
+    <div class="tab ${currentTab === 'cn-live' ? 'active' : ''}" onclick="switchTab('cn-live')">
+      A股 实盘 <span class="count">${counts['cn-live']}</span>
+    </div>
+    <div class="tab ${currentTab === 'cn-signal' ? 'active' : ''}" onclick="switchTab('cn-signal')">
+      A股 模拟 <span class="count">${counts['cn-signal']}</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="summary-row">
+      <div class="stat-card fade-in">
+        <div class="stat-label">运行策略</div>
+        <div class="stat-value">${s.running_strategies || 0}<span style="font-size:14px;color:var(--text-muted);font-weight:400"> / ${s.total_strategies || 0}</span></div>
+        <div class="stat-sub">实盘 ${s.running_live_strategies || 0} · 模拟 ${s.running_signal_strategies || 0}</div>
+      </div>
+      <div class="stat-card fade-in">
+        <div class="stat-label">运行资金</div>
+        <div class="stat-value">$${fmt(s.total_capital)}</div>
+        <div class="stat-sub">全部策略: $${fmt(s.all_capital)}</div>
+      </div>
+      <div class="stat-card fade-in">
+        <div class="stat-label">总盈亏</div>
+        <div class="stat-value ${pnlCls(s.total_pnl)}">${pnlSign(s.total_pnl)}$${fmt(s.total_pnl, 4)}</div>
+        <div class="stat-sub">ROI: ${fmt(s.total_roi)}%</div>
+      </div>
+      <div class="stat-card fade-in">
+        <div class="stat-label">实盘盈亏</div>
+        <div class="stat-value ${pnlCls(s.live_pnl)}">${pnlSign(s.live_pnl)}$${fmt(s.live_pnl, 4)}</div>
+        <div class="stat-sub">模拟: ${pnlSign(s.signal_pnl)}$${fmt(s.signal_pnl, 4)}</div>
+      </div>
+    </div>
+
+    <div class="market-section">
+      <div class="market-card crypto fade-in">
+        <div class="market-header">
+          <div class="market-icon">₿</div>
+          <div>
+            <div class="market-title">Crypto 加密货币</div>
+            <div class="market-subtitle">${crypto.live_count || 0} 实盘 · ${crypto.signal_count || 0} 模拟</div>
+          </div>
+        </div>
+        <div class="metrics-grid">
+          <div class="metric-item">
+            <div class="metric-label">运行资金</div>
+            <div class="metric-value">$${fmt(crypto.capital)}</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">盈亏</div>
+            <div class="metric-value ${pnlCls(crypto.pnl)}">${pnlSign(crypto.pnl)}$${fmt(crypto.pnl, 4)}</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">ROI</div>
+            <div class="metric-value ${pnlCls(crypto.roi)}">${fmt(crypto.roi)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">策略数</div>
+            <div class="metric-value">${(crypto.live_count || 0) + (crypto.signal_count || 0)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="market-card cnstock fade-in">
+        <div class="market-header">
+          <div class="market-icon">🇨🇳</div>
+          <div>
+            <div class="market-title">CNStock A股</div>
+            <div class="market-subtitle">${cnStock.live_count || 0} 实盘 · ${cnStock.signal_count || 0} 模拟</div>
+          </div>
+        </div>
+        <div class="metrics-grid">
+          <div class="metric-item">
+            <div class="metric-label">运行资金</div>
+            <div class="metric-value">¥${fmt(cnStock.capital)}</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">盈亏</div>
+            <div class="metric-value ${pnlCls(cnStock.pnl)}">${pnlSign(cnStock.pnl)}¥${fmt(cnStock.pnl, 4)}</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">ROI</div>
+            <div class="metric-value ${pnlCls(cnStock.roi)}">${fmt(cnStock.roi)}%</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">策略数</div>
+            <div class="metric-value">${(cnStock.live_count || 0) + (cnStock.signal_count || 0)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    ${filtered.length ? `
+    <div class="table-wrap fade-in">
+      <div class="table-title">
+        策略列表
+        <span class="count-badge">${filtered.length} 个策略</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>ID</th><th>策略</th><th>品种</th><th>周期</th><th>模式</th><th>状态</th><th>资金</th><th>杠杆</th><th>盈亏</th><th>持仓</th>
+        </tr></thead>
+        <tbody>
+        ${filtered.map(i => `<tr>
+          <td class="text-muted">#${i.id}</td>
+          <td style="font-weight:500">${(i.strategy_name || i.indicator_name || '-').replace('CZSC v3 - ', '')}</td>
+          <td>${i.symbol || '-'}</td>
+          <td class="text-dim">${i.timeframe || '-'}</td>
+          <td><span class="mode-tag ${i.execution_mode === 'live' ? 'live' : 'signal'}">${i.execution_mode === 'live' ? '实盘' : '模拟'}</span></td>
+          <td><span class="status-pill ${i.status === 'running' ? 'pill-running' : 'pill-stopped'}"><span class="dot"></span>${i.status === 'running' ? '运行中' : '已停止'}</span></td>
+          <td>$${fmt(i.initial_capital)}</td>
+          <td class="text-dim">${i.leverage || 1}x</td>
+          <td class="${pnlCls(i.total_pnl)}">${i.total_pnl != null ? pnlSign(i.total_pnl) + '$' + fmt(i.total_pnl, 4) : '--'}</td>
+          <td>${i.position_count || 0}</td>
+        </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : `
+    <div class="table-wrap fade-in">
+      <div class="empty-state">
+        <div class="icon">📭</div>
+        该分类下暂无策略
+      </div>
+    </div>`}
+  </div>`;
+}
+
+window.switchTab = function (t) { currentTab = t; render() };
+window.loadData = loadData;
+
+setInterval(() => { if (token) loadData() }, 30000);
+
+if (token) { loadData() } else { renderLogin() }
+</script>
+</body>
+</html>

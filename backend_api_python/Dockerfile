@@ -1,4 +1,4 @@
-# QuantDinger Backend API Dockerfile
+# ChanQuant Backend API Dockerfile
 # BASE_IMAGE can be overridden from docker-compose (e.g. IMAGE_PREFIX for mirror pulls).
 ARG BASE_IMAGE=python:3.12-slim-bookworm
 FROM ${BASE_IMAGE}

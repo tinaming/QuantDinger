@@ -40,7 +40,7 @@ def _make_candidate(*, with_oos: bool) -> dict:
     if with_oos:
         base.update({
             "oosScore": {"overallScore": 31.0, "grade": "D"},
-            "oosResult": {
+            "oosSummary": {
                 "totalReturn": -41.7,
                 "maxDrawdown": -28.3,
                 "sharpeRatio": -0.6,

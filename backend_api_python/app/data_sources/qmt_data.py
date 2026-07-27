@@ -50,7 +50,7 @@ def _ensure_xtdata(lib_path: str = ""):
         )
 
 
-# QuantDinger timeframe → xtdata period 映射
+# ChanQuant timeframe → xtdata period 映射
 _TF_TO_PERIOD = {
     '1m': '1m',
     '3m': '3m',
@@ -181,7 +181,7 @@ class QMTDataSource(BaseDataSource):
             if timeframe == '4H':
                 df = self._aggregate_4h(df)
 
-            # 转换为 QuantDinger 格式
+            # 转换为 ChanQuant 格式
             klines = []
             for idx, row in df.iterrows():
                 # xtdata 索引格式: YYYYMMDD (日线) 或 YYYYMMDDHHMMSS (分钟线)

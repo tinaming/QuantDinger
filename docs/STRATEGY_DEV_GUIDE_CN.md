@@ -1,4 +1,4 @@
-# QuantDinger Python v3 策略开发指南
+﻿# ChanQuant Python v3 策略开发指南
 
 > **平台级契约（必读）**：[信号与执行标准 v1](./SIGNAL_EXECUTION_STANDARD_CN.md) — 适用于所有指标策略的回测/实盘对齐、两路/四路选型、退出负责人与上线清单。本指南侧重教程与示例。
 
@@ -6,7 +6,7 @@
 
 **到底应该怎么写一个结构清晰、能回测、能落地成平台策略的指标策略？**
 
-QuantDinger 当前支持两条 Python 开发路径：
+ChanQuant 当前支持两条 Python 开发路径：
 
 - **IndicatorStrategy**：基于 `df` 的指标/信号脚本，用于 Indicator IDE、图表渲染和信号型回测。
 - **ScriptStrategy**：基于 `on_init / on_bar` 的事件驱动脚本，用于策略运行时、策略回测与实盘执行。
@@ -535,7 +535,7 @@ output = {
 
 ### 5.1 一个更贴近平台 UI 的示例
 
-下面这个版本更接近 QuantDinger 当前真实使用方式：
+下面这个版本更接近 ChanQuant 当前真实使用方式：
 
 - 用 `# @param` 暴露常调参数
 - 用 `# @strategy` 暴露默认止损、止盈、仓位和跟踪止损

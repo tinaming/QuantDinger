@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import logging
 import os
+import platform
+import requests
 from typing import Any, Dict, Optional, Union
 
 logger = logging.getLogger(__name__)
@@ -484,9 +486,119 @@ def create_alpaca_client(exchange_config: Dict[str, Any]):
     return client
 
 
+class QMTBridgeRestClient:
+    """
+    Lightweight HTTP wrapper around the QMT Bridge running on the Windows host.
+    Used when the backend runs in Docker and cannot access xtquant directly.
+    Implements the minimum interface needed by pending_order_worker for A-share orders.
+    """
+
+    def __init__(self, bridge_url: str, account_id: str, timeout: float = 15.0):
+        self.bridge_url = bridge_url.rstrip("/")
+        self.account_id = account_id
+        self.timeout = timeout
+        self.exchange_id = "qmt"
+
+    def _get(self, path: str, params: Optional[Dict] = None) -> Dict:
+        r = requests.get(f"{self.bridge_url}{path}", params=params, timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()
+
+    def _post(self, path: str, body: Optional[Dict] = None) -> Dict:
+        r = requests.post(f"{self.bridge_url}{path}", json=body or {}, timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()
+
+    def _delete(self, path: str) -> Dict:
+        r = requests.delete(f"{self.bridge_url}{path}", timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()
+
+    def get_status(self) -> Dict:
+        resp = self._get("/qmt/status")
+        return resp.get("data", {})
+
+    def get_asset(self) -> Dict:
+        resp = self._get("/qmt/asset")
+        return resp.get("data", {})
+
+    def get_positions(self) -> list:
+        resp = self._get("/qmt/positions")
+        return resp.get("data", [])
+
+    def get_quote(self, symbol: str) -> Dict:
+        resp = self._get("/qmt/quote", params={"symbol": symbol})
+        return resp.get("data", {})
+
+    def place_order(self, symbol: str, side: str, volume: int,
+                    order_type: str = "market", price: float = 0.0,
+                    comment: str = "ChanQuant") -> Dict:
+        """
+        Place an order via QMT Bridge.
+        Args:
+            symbol: Stock code (e.g., '600519.SH')
+            side: 'buy' or 'sell'
+            volume: Number of shares (must be positive integer, min 100 for A-share)
+            order_type: 'market' or 'limit'
+            price: Limit price (required for limit orders)
+        Returns:
+            Dict with order_id, filled, price, status
+        """
+        resp = self._post("/qmt/orders", {
+            "symbol": symbol,
+            "side": side,
+            "volume": volume,
+            "order_type": order_type,
+            "price": price,
+            "comment": comment,
+        })
+        if resp.get("code", 0) != 0:
+            raise LiveTradingError(f"QMT Bridge order failed: {resp.get('message', 'unknown error')}")
+        return resp.get("data", {})
+
+    def cancel_order(self, order_id: int) -> Dict:
+        resp = self._delete(f"/qmt/orders/{order_id}")
+        return resp.get("data", {})
+
+    def query_order(self, order_id) -> Optional[Dict]:
+        """Query a single order by ID. Returns None if not found."""
+        try:
+            r = requests.get(
+                f"{self.bridge_url}/qmt/orders/{order_id}",
+                timeout=self.timeout,
+            )
+            if r.status_code == 404:
+                return None
+            r.raise_for_status()
+            resp = r.json()
+            if resp.get("code", 0) != 0:
+                return None
+            return resp.get("data", {})
+        except Exception:
+            return None
+
+    def get_orders(self) -> list:
+        resp = self._get("/qmt/orders")
+        return resp.get("data", [])
+
+    def connect(self) -> bool:
+        """Verify bridge connectivity."""
+        try:
+            status = self.get_status()
+            return bool(status.get("connected"))
+        except Exception:
+            return False
+
+
 def create_qmt_client(exchange_config: Dict[str, Any]):
     """
     Create QMT (miniQMT) client for A-share (China A-Stock) trading.
+
+    On Linux/Docker, returns a QMTBridgeRestClient that proxies to the QMT Bridge
+    running on the Windows host (port 5001). The Docker container cannot access
+    miniQMT directly (xtquant uses Windows IPC).
+
+    On Windows, uses the native xtquant SDK via QMTClient.
 
     exchange_config should contain:
     - qmt_path:        Path to miniQMT ``userdata_mini`` directory
@@ -495,10 +607,41 @@ def create_qmt_client(exchange_config: Dict[str, Any]):
     - qmt_username:    miniQMT login username (for reference)
     - qmt_password:    miniQMT login password (for reference)
     - qmt_lib_path:    Path to site-packages containing the xtquant package
-
-    Like IBKR/MT5, QMT requires a local desktop application (miniQMT) running
-    and logged in on the same machine. It is gated by ALLOW_LOCAL_DESKTOP_BROKERS.
+    - qmt_bridge_url:  Bridge URL override (default: http://host.docker.internal:5001)
     """
+    qmt_account_id = _get(exchange_config, "qmt_account_id", "qmtAccountId", "qmt_account")
+    if not qmt_account_id:
+        raise LiveTradingError(
+            "QMT requires qmt_account_id (funded securities account id / 资金账号)."
+        )
+
+    # On Linux/Docker: use bridge HTTP API
+    _is_linux = platform.system() != "Windows"
+    if _is_linux:
+        bridge_url = _get(exchange_config, "qmt_bridge_url", "qmtBridgeUrl") or \
+            os.getenv("QMT_BRIDGE_URL", "http://host.docker.internal:5001")
+        logger.info(f"[QMT] Using bridge client at {bridge_url} for account {qmt_account_id}")
+        client = QMTBridgeRestClient(
+            bridge_url=bridge_url,
+            account_id=qmt_account_id,
+        )
+        # Verify bridge connectivity
+        try:
+            status = client.get_status()
+            if not status.get("connected"):
+                raise LiveTradingError(
+                    f"QMT Bridge reports not connected at {bridge_url}. "
+                    "Ensure miniQMT is running and logged in on the Windows host."
+                )
+            logger.info(f"[QMT] Bridge connected: {status}")
+        except Exception as e:
+            raise LiveTradingError(
+                f"Cannot reach QMT Bridge at {bridge_url}: {e}. "
+                "Ensure qmt_bridge.py is running on the Windows host (python scripts/qmt_bridge.py)."
+            )
+        return client
+
+    # On Windows: use native xtquant SDK
     global QMTClient, QMTConfig
 
     if QMTClient is None or QMTConfig is None:
@@ -514,27 +657,20 @@ def create_qmt_client(exchange_config: Dict[str, Any]):
             )
 
     qmt_path = _get(exchange_config, "qmt_path", "qmtPath")
-    qmt_account_id = _get(exchange_config, "qmt_account_id", "qmtAccountId", "qmt_account")
     qmt_lib_path = _get(exchange_config, "qmt_lib_path", "qmtLibPath")
 
-    # session_id: default 123456, can be overridden
     session_id_raw = exchange_config.get("qmt_session_id", 123456)
     try:
         session_id = int(session_id_raw)
     except (TypeError, ValueError):
         session_id = 123456
 
-    # username / password are stored for reference (miniQMT must be logged in already)
     qmt_username = _get(exchange_config, "qmt_username", "qmtUsername")
     qmt_password = _get(exchange_config, "qmt_password", "qmtPassword")
 
     if not qmt_path:
         raise LiveTradingError(
             "QMT requires qmt_path (path to miniQMT userdata_mini directory)."
-        )
-    if not qmt_account_id:
-        raise LiveTradingError(
-            "QMT requires qmt_account_id (funded securities account id / 资金账号)."
         )
 
     config = QMTConfig(

@@ -1,12 +1,12 @@
 info:
-  description: 'Human-facing REST API for QuantDinger. Agent integrations use `/api/agent/v1`
+  description: 'Human-facing REST API for ChanQuant. Agent integrations use `/api/agent/v1`
     — see `docs/agent/agent-openapi.json`. Conventions: `docs/API_CONVENTIONS.md`.'
   contact:
-    name: QuantDinger
-    url: https://github.com/brokermr810/quantdinger
+    name: ChanQuant
+    url: ''
   license:
     name: See repository LICENSE
-  title: QuantDinger Web API
+  title: ChanQuant Web API
   version: 1.0.0
 components:
   securitySchemes:
@@ -128,7 +128,7 @@ components:
       properties:
         name:
           type: string
-          example: QuantDinger Python API
+          example: ChanQuant Python API
         version:
           type: string
           example: 3.0.23
@@ -1352,9 +1352,18 @@ paths:
         \ used a slightly different amount than the order\nsuffix demanded, etc.).\
         \ Without this endpoint the admin's only option\nis to ``UPDATE qd_usdt_orders\
         \ ...`` by hand and then somehow trigger\n``purchase_membership``; this surface\
-        \ does both atomically and leaves\nan audit trail.\n\nBody:\n    {\n     \
+        \ does both atomically and leaves
+an audit trail.
+
+Body:
+    {
+     \
         \   \"tx_hash\": \"<on-chain tx hash>\",     # required\n        \"note\"\
-        :    \"<free-form audit note>\"  # optional\n    }\n\nBehavior:\n    - Flips\
+        :    \"<free-form audit note>\"  # optional
+    }
+
+Behavior:
+    - Flips\
         \ the order to 'confirmed'.\n    - Stamps tx_hash + paid_at (if empty) + confirmed_at\
         \ + admin_note\n      + manual_confirmed_by + matched_via='manual_admin'.\n\
         \    - Calls ``purchase_membership`` exactly once per order (idempotent\n\
@@ -1603,7 +1612,7 @@ paths:
       operationId: getApiMarketConfig
       description: 'Public config for frontend (local mode).
 
-        Mirrors the old PHP `/addons/quantdinger/index/getConfig` shape.'
+        Mirrors the old PHP `/addons/chanquant/index/getConfig` shape.'
       x-visibility: public
   /api/market/types:
     get:
@@ -2274,7 +2283,11 @@ paths:
                 $ref: '#/components/schemas/HumanSuccessEnvelope'
       summary: Create or update an indicator for the current user.
       description: "Request (frontend sends many extra fields; we store only the essentials):\n\
-        {\n  id: number (0 for create),\n  name: string,\n  code: string,\n  description?:\
+        {
+  id: number (0 for create),
+  name: string,
+  code: string,
+  description?:\
         \ string,\n  ...\n}"
       tags:
       - Indicator
@@ -2386,7 +2399,12 @@ paths:
                 $ref: '#/components/schemas/HumanSuccessEnvelope'
       summary: Return declared `# @param` fields for an indicator.
       description: "Used by the strategy builder to render a parameter form.\n\nQuery\
-        \ params:\n    indicator_id: Indicator ID\n\nReturns:\n    params: [\n   \
+        \ params:
+    indicator_id: Indicator ID
+
+Returns:
+    params: [
+   \
         \     {\n            \"name\": \"ma_fast\",\n            \"type\": \"int\"\
         ,\n            \"default\": 5,\n            \"description\": \"Fast MA period\"\
         \n        },\n        ...\n    ]"
@@ -3695,7 +3713,7 @@ paths:
         by editing ``.env`` (or the Settings page) — no frontend rebuild required.
 
 
-        Empty ENV values fall back to the bundled QuantDinger defaults so a fresh
+        Empty ENV values fall back to the bundled ChanQuant defaults so a fresh
 
         install still ships with working links instead of blanks.'
       tags:
@@ -4834,7 +4852,11 @@ paths:
                 $ref: '#/components/schemas/HumanSuccessEnvelope'
       summary: Sync latest code for a purchased indicator.
       description: "Use when the publisher updated code after the buyer purchased;\
-        \ the buyer\npulls the newest version into their local copy.\n\nPreconditions:\n\
+        \ the buyer
+pulls the newest version into their local copy.
+
+Preconditions:
+\
         \    - Caller must have purchased the indicator\n    - Original listing must\
         \ still be published"
       tags:

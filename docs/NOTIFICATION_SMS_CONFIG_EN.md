@@ -1,6 +1,6 @@
-# 📲 SMS Notification Configuration Guide
+﻿# 📲 SMS Notification Configuration Guide
 
-> QuantDinger supports SMS notifications via Twilio, ensuring you receive critical trading signals anywhere.
+> ChanQuant supports SMS notifications via Twilio, ensuring you receive critical trading signals anywhere.
 
 ---
 
@@ -23,7 +23,7 @@
 
 - A valid phone number to receive SMS messages
 - A credit/debit card for Twilio billing (trial accounts include free credits)
-- QuantDinger backend service deployed and running
+- ChanQuant backend service deployed and running
 
 ---
 
@@ -184,7 +184,7 @@ Immediately log in to Twilio Console → **Account** → **API Credentials** →
 
 ### Q: Are there alternatives to Twilio?
 
-QuantDinger currently only supports Twilio as the SMS provider. For other services, use the Webhook channel to integrate:
+ChanQuant currently only supports Twilio as the SMS provider. For other services, use the Webhook channel to integrate:
 - Nexmo (Vonage)
 - AWS SNS
 - MessageBird

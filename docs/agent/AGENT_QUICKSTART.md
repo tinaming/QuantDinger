@@ -1,6 +1,6 @@
-# Agent Quickstart — using QuantDinger from an AI agent
+﻿# Agent Quickstart — using ChanQuant from an AI agent
 
-This quickstart shows how to drive the QuantDinger Agent Gateway
+This quickstart shows how to drive the ChanQuant Agent Gateway
 (`/api/agent/v1`) from any AI / automation client. It assumes you already
 have the stack running (see the root `README.md`) and admin credentials.
 
@@ -357,12 +357,12 @@ scoped tokens when you explicitly need those capabilities.
 MCP long-running jobs: use `wait_for_job` or bounded `stream_job_until_done`
 instead of opening raw SSE yourself.
 
-Two transports are supported via `QUANTDINGER_MCP_TRANSPORT`:
+Two transports are supported via `ChanQuant_MCP_TRANSPORT`:
 
 * `stdio` (default) — desktop IDEs that spawn the server as a subprocess.
 * `sse` / `streamable-http` — cloud agents and remote IDEs that connect to a
-  long-running HTTP endpoint. Combine with `QUANTDINGER_MCP_HOST` /
-  `QUANTDINGER_MCP_PORT`.
+  long-running HTTP endpoint. Combine with `ChanQuant_MCP_HOST` /
+  `ChanQuant_MCP_PORT`.
 
 ---
 

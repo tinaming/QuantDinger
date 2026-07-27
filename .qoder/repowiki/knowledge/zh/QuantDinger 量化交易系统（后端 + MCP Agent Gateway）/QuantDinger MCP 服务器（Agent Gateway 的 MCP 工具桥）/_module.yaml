@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: mcp_server
+title: QuantDinger MCP 服务器（Agent Gateway 的 MCP 工具桥）
+scope:
+    - mcp_server/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_api

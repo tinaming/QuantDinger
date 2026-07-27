@@ -3,19 +3,19 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "quantdinger-mcp"
+name = "chanquant-mcp"
 version = "0.3.0"
-description = "Model Context Protocol (MCP) server for the QuantDinger Agent Gateway: market data, runtime overview, explicit quick trading, indicator workspace, strategies, backtests, and experiments for AI agents (Cursor, Claude Code, Codex, OpenClaw, NanoBot, ...)."
+description = "Model Context Protocol (MCP) server for the ChanQuant Agent Gateway: market data, runtime overview, explicit quick trading, indicator workspace, strategies, backtests, and experiments for AI agents (Cursor, Claude Code, Codex, OpenClaw, NanoBot, ...)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [
-  { name = "QuantDinger", email = "quantdinger@gmail.com" }
+  { name = "ChanQuant", email = "chanquant@gmail.com" }
 ]
 keywords = [
   "mcp",
   "model-context-protocol",
-  "quantdinger",
+  "chanquant",
   "ai-agent",
   "trading",
   "backtest",
@@ -53,14 +53,14 @@ dev = [
 ]
 
 [project.urls]
-Homepage      = "https://github.com/brokermr810/QuantDinger"
-Documentation = "https://github.com/brokermr810/QuantDinger/blob/main/docs/agent/AGENT_QUICKSTART.md"
-Repository    = "https://github.com/brokermr810/QuantDinger"
-Issues        = "https://github.com/brokermr810/QuantDinger/issues"
-Changelog     = "https://github.com/brokermr810/QuantDinger/blob/main/docs/CHANGELOG.md"
+Homepage      = "https://github.com/brokermr810/ChanQuant"
+Documentation = "https://github.com/brokermr810/ChanQuant/blob/main/docs/agent/AGENT_QUICKSTART.md"
+Repository    = "https://github.com/brokermr810/ChanQuant"
+Issues        = "https://github.com/brokermr810/ChanQuant/issues"
+Changelog     = "https://github.com/brokermr810/ChanQuant/blob/main/docs/CHANGELOG.md"
 
 [project.scripts]
-quantdinger-mcp = "quantdinger_mcp.server:main"
+chanquant-mcp = "chanquant_mcp.server:main"
 
 [tool.setuptools]
 include-package-data = true

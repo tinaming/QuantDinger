@@ -157,7 +157,7 @@ def validate_indicator_code(code: str, user_params: Dict[str, Any] | None = None
     if not has_four_way:
         return _validation_error(
             "MissingExecutionColumns",
-            "Missing execution columns. New QuantDinger indicator scripts must define "
+            "Missing execution columns. New ChanQuant indicator scripts must define "
             "df['open_long'], df['close_long'], df['open_short'], and df['close_short'] "
             "as boolean columns. output['signals'] is chart-only and cannot place orders.",
             plots,

@@ -1,4 +1,4 @@
-# OAuth Third-Party Login Configuration Guide
+﻿# OAuth Third-Party Login Configuration Guide
 
 This document explains how to configure Google and GitHub OAuth login, as well as Cloudflare Turnstile CAPTCHA verification.
 
@@ -18,7 +18,7 @@ This document explains how to configure Google and GitHub OAuth login, as well a
 
 1. Visit [Google Cloud Console](https://console.cloud.google.com/)
 2. Click the project selector at the top, then click "New Project"
-3. Enter a project name (e.g., `QuantDinger`), click "Create"
+3. Enter a project name (e.g., `ChanQuant`), click "Create"
 
 ### Step 2: Configure OAuth Consent Screen
 
@@ -27,7 +27,7 @@ This document explains how to configure Google and GitHub OAuth login, as well a
    - **External**: Allows any Google account to login (recommended)
    - **Internal**: Only for organization users (requires Google Workspace)
 3. Fill in application information:
-   - App name: `QuantDinger`
+   - App name: `ChanQuant`
    - User support email: Your email
    - Developer contact information: Your email
 4. Click "Save and Continue", skip "Scopes" and "Test users", complete setup
@@ -37,7 +37,7 @@ This document explains how to configure Google and GitHub OAuth login, as well a
 1. In the left menu, select "APIs & Services" → "Credentials"
 2. Click "+ Create Credentials" → "OAuth client ID"
 3. Select application type: **Web application**
-4. Enter name: `QuantDinger Web Client`
+4. Enter name: `ChanQuant Web Client`
 5. Add "Authorized redirect URIs":
    ```
    http://localhost:5000/api/auth/oauth/google/callback
@@ -64,7 +64,7 @@ GOOGLE_REDIRECT_URI=http://localhost:5000/api/auth/oauth/google/callback
 1. Visit [GitHub Developer Settings](https://github.com/settings/developers)
 2. Click "OAuth Apps" → "New OAuth App"
 3. Fill in application information:
-   - **Application name**: `QuantDinger`
+   - **Application name**: `ChanQuant`
    - **Homepage URL**: `http://localhost:8080` (or your domain)
    - **Authorization callback URL**:
      ```
@@ -98,7 +98,7 @@ Turnstile is a free, privacy-friendly CAPTCHA service provided by Cloudflare to 
 1. Visit [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile)
 2. Click "Add site"
 3. Fill in information:
-   - **Site name**: `QuantDinger`
+   - **Site name**: `ChanQuant`
    - **Domain**: Add your domain (for local development, add `localhost`)
    - **Widget Mode**: Select `Managed` (recommended) or `Invisible`
 4. Click "Create"

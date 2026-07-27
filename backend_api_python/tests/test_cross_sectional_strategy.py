@@ -6,9 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.services.strategy import (
-    _apply_cross_sectional_trading_config,
-    _normalize_cross_sectional_symbol_list,
+from app.services.strategy_config import (
+    apply_cross_sectional_trading_config as _apply_cross_sectional_trading_config,
 )
 from app.services.trading_executor import TradingExecutor
 
@@ -33,11 +32,11 @@ def _fake_ohlcv(n: int = 30) -> list:
 
 class TestCrossSectionalConfig:
     def test_normalize_symbol_list_crypto(self):
-        out = _normalize_cross_sectional_symbol_list(
+        out = TradingExecutor._normalize_cs_symbol_list(
             ["Crypto:BTCUSDT", "Crypto:ETH/USDT"],
             "Crypto",
         )
-        assert out == ["Crypto:BTC/USDT", "Crypto:ETH/USDT"]
+        assert out == ["BTC/USDT", "ETH/USDT"]
 
     def test_apply_config_requires_two_symbols(self):
         with pytest.raises(ValueError, match="at least 2"):

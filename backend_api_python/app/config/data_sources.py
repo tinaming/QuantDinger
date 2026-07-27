@@ -325,6 +325,7 @@ class MetaCCXTConfig(type):
     @property
     def TIMEFRAME_MAP(cls):
         return {
+            '10s': '10s',
             '1m': '1m',
             '3m': '3m',
             '5m': '5m',

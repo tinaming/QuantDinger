@@ -21,7 +21,7 @@ def health():
     want to confirm the gateway is reachable before issuing real calls.
     """
     return jsonify({
-        "service": "quantdinger-agent-gateway",
+        "service": "chanquant-agent-gateway",
         "version": "v1",
         "status": "ok",
         # SafeJSONProvider serializes datetimes as UTC ISO (with Z).

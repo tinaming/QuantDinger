@@ -1,12 +1,12 @@
-<div align="center">
-  <a href="https://github.com/brokermr810/QuantDinger">
-    <img src="docs/screenshots/logo.jpg" alt="QuantDinger Logo" width="220" height="220">
+﻿<div align="center">
+  <a href="https://github.com/brokermr810/ChanQuant">
+    <img src="docs/screenshots/logo.jpg" alt="ChanQuant Logo" width="220" height="220">
   </a>
 
-  <h1>QuantDinger</h1>
+  <h1>ChanQuant</h1>
   <h3>Open-source AI Trading OS</h3>
   <p><strong>Turn trading ideas into Python strategies, backtests, paper trading, live execution, and monitoring - all in one self-hosted stack.</strong></p>
-  <p><strong>QuantDinger is a product of Open Byte Inc.</strong></p>
+  <p><strong>ChanQuant is a product of Open Byte Inc.</strong></p>
   <p><em>AI research -> Strategy code -> Backtest -> Paper/Live execution -> Monitoring</em></p>
 
   <div align="center" style="max-width: 680px; margin: 1.25rem auto 0; padding: 20px 22px 22px; border: 1px solid #d1d9e0; border-radius: 16px;">
@@ -16,35 +16,35 @@
       <a href="docs/README_CN.md"><strong>Chinese</strong></a>
     </p>
     <p style="margin: 0 0 18px; padding-bottom: 16px; border-bottom: 1px solid #eaeef2; line-height: 2;">
-      <a href="https://ai.quantdinger.com"><strong>SaaS</strong></a>
+      <a href="https://ai.ChanQuant.com"><strong>SaaS</strong></a>
       <span style="color: #d8dee4;"> &nbsp;·&nbsp; </span>
       <a href="docs/api/README.md"><strong>API Docs</strong></a>
       <span style="color: #d8dee4;"> &nbsp;·&nbsp; </span>
       <a href="https://www.youtube.com/watch?v=tNAZ9uMiUUw"><strong>Video Demo</strong></a>
       <span style="color: #d8dee4;"> &nbsp;·&nbsp; </span>
-      <a href="https://www.quantdinger.com"><strong>Website</strong></a>
+      <a href="https://www.ChanQuant.com"><strong>Website</strong></a>
     </p>
     <p style="margin: 0; line-height: 2;">
-      <a href="https://t.me/quantdinger"><img src="https://img.shields.io/badge/Telegram-Join-26A5E4?style=flat-square&logo=telegram&logoColor=white" alt="Telegram"></a>
+      <a href="https://t.me/ChanQuant"><img src="https://img.shields.io/badge/Telegram-Join-26A5E4?style=flat-square&logo=telegram&logoColor=white" alt="Telegram"></a>
       &nbsp;
       <a href="https://discord.com/invite/tyx5B6TChr"><img src="https://img.shields.io/badge/Discord-Server-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
       &nbsp;
-      <a href="https://youtube.com/@quantdinger"><img src="https://img.shields.io/badge/YouTube-%40quantdinger-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="YouTube"></a>
+      <a href="https://youtube.com/@ChanQuant"><img src="https://img.shields.io/badge/YouTube-%40ChanQuant-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="YouTube"></a>
       &nbsp;
-      <a href="https://x.com/QuantDinger_EN"><img src="https://img.shields.io/badge/X-%40QuantDinger_EN-000000?style=flat-square&logo=x&logoColor=white" alt="X"></a>
+      <a href="https://x.com/ChanQuant_EN"><img src="https://img.shields.io/badge/X-%40ChanQuant_EN-000000?style=flat-square&logo=x&logoColor=white" alt="X"></a>
     </p>
   </div>
 
   <p style="margin-top: 1.45rem; margin-bottom: 10px;">
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square&logo=apache" alt="License"></a>
-    <img src="https://img.shields.io/github/v/release/brokermr810/QuantDinger?style=flat-square&color=orange&label=Version" alt="Version">
+    <img src="https://img.shields.io/github/v/release/brokermr810/ChanQuant?style=flat-square&color=orange&label=Version" alt="Version">
     <img src="https://img.shields.io/badge/Python-3.10%2B%20%7C%20Docker%20image%203.12-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python">
     <img src="https://img.shields.io/badge/Docker-Compose%20Ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker">
     <img src="https://img.shields.io/badge/Frontend-Prebuilt-1f8b4c?style=flat-square" alt="Frontend">
     <img src="https://img.shields.io/badge/Agent%20Gateway-MCP%20Ready-6f42c1?style=flat-square" alt="Agent Gateway">
     <img src="https://img.shields.io/badge/PostgreSQL-18-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL">
-    <img src="https://img.shields.io/github/stars/brokermr810/QuantDinger?style=flat-square&logo=github" alt="Stars">
-    <img src="https://img.shields.io/github/forks/brokermr810/QuantDinger?style=flat-square&logo=github&label=Forks" alt="Forks">
+    <img src="https://img.shields.io/github/stars/brokermr810/ChanQuant?style=flat-square&logo=github" alt="Stars">
+    <img src="https://img.shields.io/github/forks/brokermr810/ChanQuant?style=flat-square&logo=github&label=Forks" alt="Forks">
   </p>
 </div>
 
@@ -52,7 +52,7 @@
 
 ## Contents
 
-[Try in 2 minutes](#try-in-2-minutes) · [Why QuantDinger](#why-quantdinger) · [Safety model](#safety-model) · [Technical highlights](#technical-highlights) · [Repositories](#related-repositories) · [AI agents & MCP](#use-it-from-an-ai-agent-cursor--claude-code--codex--mcp) · [Overview](#product-overview) · [Features](#features-at-a-glance) · [Architecture](#architecture) · [Install](#installation--first-time-setup-docker-compose) · [Docs](#documentation) · [FAQ](#faq) · [License](#license-and-commercial-terms)
+[Try in 2 minutes](#try-in-2-minutes) · [Why ChanQuant](#why-ChanQuant) · [Safety model](#safety-model) · [Technical highlights](#technical-highlights) · [Repositories](#related-repositories) · [AI agents & MCP](#use-it-from-an-ai-agent-cursor--claude-code--codex--mcp) · [Overview](#product-overview) · [Features](#features-at-a-glance) · [Architecture](#architecture) · [Install](#installation--first-time-setup-docker-compose) · [Docs](#documentation) · [FAQ](#faq) · [License](#license-and-commercial-terms)
 
 ---
 
@@ -63,16 +63,16 @@
 **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) with Compose v2 (Docker Desktop on Windows/macOS). **Node.js is not required.**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/brokermr810/QuantDinger/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/brokermr810/ChanQuant/main/install.sh | bash
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/brokermr810/QuantDinger/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/brokermr810/ChanQuant/main/install.ps1 | iex
 ```
 
-Installs to `~/quantdinger` on Linux/macOS and `$HOME\quantdinger` on Windows by default. Override with `... | bash -s -- /opt/quantdinger` or `$env:QUANTDINGER_INSTALL_DIR="C:\QuantDinger"` before the PowerShell one-liner.
+Installs to `~/ChanQuant` on Linux/macOS and `$HOME\ChanQuant` on Windows by default. Override with `... | bash -s -- /opt/ChanQuant` or `$env:ChanQuant_INSTALL_DIR="C:\ChanQuant"` before the PowerShell one-liner.
 
 Then open **`http://localhost:8888`** and sign in with the admin username/password you entered during installation. The same stack also serves the mobile H5 client at **`http://localhost:8889`**.
 
@@ -82,8 +82,8 @@ Then open **`http://localhost:8888`** and sign in with the admin username/passwo
 **Windows (PowerShell)** - manual clone path:
 
 ```powershell
-git clone https://github.com/brokermr810/QuantDinger.git
-Set-Location QuantDinger
+git clone https://github.com/brokermr810/ChanQuant.git
+Set-Location ChanQuant
 Copy-Item backend_api_python\env.example -Destination backend_api_python\.env
 $key = & python -c "import secrets; print(secrets.token_hex(32))" 2>$null
 if (-not $key) { $key = & py -c "import secrets; print(secrets.token_hex(32))" 2>$null }
@@ -98,8 +98,8 @@ docker compose up -d
 **Standard clone (macOS / Linux):**
 
 ```bash
-git clone https://github.com/brokermr810/QuantDinger.git
-cd QuantDinger
+git clone https://github.com/brokermr810/ChanQuant.git
+cd ChanQuant
 cp backend_api_python/env.example backend_api_python/.env
 ./scripts/generate-secret-key.sh
 # Edit backend_api_python/.env before first start:
@@ -117,24 +117,24 @@ For step-by-step detail and troubleshooting, see **[Installation & first-time se
 
 ---
 
-## Why QuantDinger
+## Why ChanQuant
 
-| Traditional workflow | QuantDinger |
+| Traditional workflow | ChanQuant |
 |----------------------|-------------|
 | ChatGPT only generates code | Runs, backtests, executes, and monitors strategies in one stack |
 | TradingView + Jupyter + exchange bots are fragmented | One self-hosted stack from research to execution |
 | SaaS platforms hold API keys | User-owned deployment — your infra, your keys |
 | AI agents without scopes or audit | Scoped Agent Gateway, paper-only default, audit logs |
 
-QuantDinger is a **self-hosted, local-first AI trading OS** — not a chatbot with a buy button. It unifies **multi-LLM research**, **Python-native strategy engines**, **server-side backtesting**, **automated execution**, and **multi-broker live operations** across crypto venues, IBKR, and Alpaca in one production-grade stack you fully control.
+ChanQuant is a **self-hosted, local-first AI trading OS** — not a chatbot with a buy button. It unifies **multi-LLM research**, **Python-native strategy engines**, **server-side backtesting**, **automated execution**, and **multi-broker live operations** across crypto venues, IBKR, and Alpaca in one production-grade stack you fully control.
 
 ## Safety model
 
 - **Agent tokens are paper-only by default** — live trading requires explicit server-side unlock.
 - **Live execution requires explicit permission** — token scope + `AGENT_LIVE_TRADING_ENABLED` on self-hosted stacks.
-- **Exchange keys stay inside the user's own deployment** — not held by QuantDinger SaaS operators on self-hosted installs.
+- **Exchange keys stay inside the user's own deployment** — not held by ChanQuant SaaS operators on self-hosted installs.
 - **Every agent call is audit-logged** — append-only audit trail for automation and compliance review.
-- **QuantDinger does not provide investment advice** — software for lawful research and execution only; you are responsible for compliance and risk.
+- **ChanQuant does not provide investment advice** — software for lawful research and execution only; you are responsible for compliance and risk.
 
 ## API documentation
 
@@ -148,21 +148,21 @@ QuantDinger is a **self-hosted, local-first AI trading OS** — not a chatbot wi
 ---
 
 <div align="center">
-  <img src="docs/screenshots/ezgif.com-animated-gif-maker.gif" alt="QuantDinger quick demo: install, sign in, charting, AI analysis, and strategy workflow" width="920" style="border-radius: 12px; border: 1px solid #eaeef2;">
+  <img src="docs/screenshots/ezgif.com-animated-gif-maker.gif" alt="ChanQuant quick demo: install, sign in, charting, AI analysis, and strategy workflow" width="920" style="border-radius: 12px; border: 1px solid #eaeef2;">
   <p><sub><em>From zero to running stack — charting, AI research, and strategy workflow in minutes.</em></sub></p>
 </div>
 
 <div align="center">
-  <img src="docs/screenshots/architecture.png" alt="QuantDinger system architecture: Data Sources → Indicator / Signal / Strategy / Backtesting / AI Analysis layers → Execution, with the closed-loop quant workflow (Idea → Indicator → Strategy → Backtest → Optimize → Execute → Monitor)" width="960">
+  <img src="docs/screenshots/architecture.png" alt="ChanQuant system architecture: Data Sources → Indicator / Signal / Strategy / Backtesting / AI Analysis layers → Execution, with the closed-loop quant workflow (Idea → Indicator → Strategy → Backtest → Optimize → Execute → Monitor)" width="960">
   <p><em>AI research -> Strategy code -> Backtest -> Paper/Live execution -> Monitoring</em></p>
 </div>
 
 ## Technical highlights
 
-| | What makes QuantDinger different |
+| | What makes ChanQuant different |
 |---|----------------------------------|
 | **Full-stack AI trading OS** | Charting, indicator IDE, AI research, backtests, live bots, quick trade, and broker account management — one product, one Postgres state store. |
-| **Agent-native** | First-class **Agent Gateway** (`/api/agent/v1`) + **[`quantdinger-mcp`](https://pypi.org/project/quantdinger-mcp/)** on PyPI — Cursor, Claude Code, and Codex can read markets, run backtests, and trade (paper by default) with full audit logs. |
+| **Agent-native** | First-class **Agent Gateway** (`/api/agent/v1`) + **[`ChanQuant-mcp`](https://pypi.org/project/ChanQuant-mcp/)** on PyPI — Cursor, Claude Code, and Codex can read markets, run backtests, and trade (paper by default) with full audit logs. |
 | **Dual strategy runtimes** | **`IndicatorStrategy`** (four-way dataframe signals + chart overlays) and **`ScriptStrategy`** (event-driven `on_bar`, explicit orders) — research and production in the same codebase. |
 | **Multi-venue execution** | Direct adapters for Binance, OKX, Bitget, Bybit, Gate, HTX, Coinbase Exchange, Kraken, **IBKR**, and **Alpaca** — unified Broker Accounts page with isolated multi-tenant sessions. |
 | **Production-grade infra** | **PostgreSQL 18** + **Redis 8**, connection pooling, background workers (orders, portfolio monitor, reflection), idempotent schema bootstrap, GHCR multi-arch images (amd64/arm64). |
@@ -175,8 +175,8 @@ QuantDinger is a **self-hosted, local-first AI trading OS** — not a chatbot wi
 **Lightest — two files only (no `git clone`):**
 
 ```bash
-curl -O https://raw.githubusercontent.com/brokermr810/QuantDinger/main/docker-compose.ghcr.yml
-curl -o backend.env https://raw.githubusercontent.com/brokermr810/QuantDinger/main/backend_api_python/env.example
+curl -O https://raw.githubusercontent.com/brokermr810/ChanQuant/main/docker-compose.ghcr.yml
+curl -o backend.env https://raw.githubusercontent.com/brokermr810/ChanQuant/main/backend_api_python/env.example
 # Edit backend.env before first start:
 #   ADMIN_USER=your_admin_user
 #   ADMIN_PASSWORD=your_secure_password
@@ -194,30 +194,30 @@ This repo ships the **backend**, **Docker Compose** stack, and **documentation**
 
 | Repository | What it is |
 |------------|------------|
-| **[QuantDinger](https://github.com/brokermr810/QuantDinger)** (this repo) | Backend (Flask/Python), Compose stack, docs |
-| **[QuantDinger-Vue](https://github.com/brokermr810/QuantDinger-Vue)** | **Web frontend source** (Vue) — tagging `v*` publishes `ghcr.io/brokermr810/quantdinger-frontend` automatically |
-| **[QuantDinger-Mobile](https://github.com/brokermr810/QuantDinger-Mobile)** | **Mobile + H5 client** — Compose serves the H5 image at `http://localhost:8889`; the repo also builds native shells |
+| **[ChanQuant](https://github.com/brokermr810/ChanQuant)** (this repo) | Backend (Flask/Python), Compose stack, docs |
+| **[ChanQuant-Vue](https://github.com/brokermr810/ChanQuant-Vue)** | **Web frontend source** (Vue) — tagging `v*` publishes `ghcr.io/brokermr810/ChanQuant-frontend` automatically |
+| **[ChanQuant-Mobile](https://github.com/brokermr810/ChanQuant-Mobile)** | **Mobile + H5 client** — Compose serves the H5 image at `http://localhost:8889`; the repo also builds native shells |
 
 **Note:** Node.js is only required if you build the web or mobile UI from source; the default Docker quick start pulls the published images and does not need it. For source builds, use **Node 22 LTS** as the shared local version: the mobile H5 repo requires Node **20.19+ or 22.12+** (Vite 7), and the desktop web repo also works on Node 22.
 
 ## Use it from an AI agent (Cursor / Claude Code / Codex / MCP)
 
-QuantDinger ships an **Agent Gateway** at `/api/agent/v1` plus a small **MCP server** ([`quantdinger-mcp`](https://pypi.org/project/quantdinger-mcp/) on PyPI) that wraps it as Model Context Protocol tools. Issue a token once and your AI client can read markets, manage strategies, run backtests, and (paper-only by default) place trades — without ever seeing your exchange keys or your admin JWT.
+ChanQuant ships an **Agent Gateway** at `/api/agent/v1` plus a small **MCP server** ([`ChanQuant-mcp`](https://pypi.org/project/ChanQuant-mcp/) on PyPI) that wraps it as Model Context Protocol tools. Issue a token once and your AI client can read markets, manage strategies, run backtests, and (paper-only by default) place trades — without ever seeing your exchange keys or your admin JWT.
 
 > Every agent call is **audit-logged**, and trading-class tokens are **paper-only by default**. Live execution requires both `paper_only=false` on the token AND `AGENT_LIVE_TRADING_ENABLED=true` on the server.
 
-**Two backends, same client config — only `QUANTDINGER_BASE_URL` differs:**
+**Two backends, same client config — only `ChanQuant_BASE_URL` differs:**
 
-- **Hosted (30 s try-out)** — sign up at [ai.quantdinger.com](https://ai.quantdinger.com) → **Profile → My Agent Token** → Issue Token. T (Trading) scope is available; **paper-only by default**. Live execution still requires `paper_only=false` on the token, explicit risk acknowledgment at issuance, and `AGENT_LIVE_TRADING_ENABLED=true` on the server. On multi-tenant SaaS, opening T scope increases shared infrastructure load and platform operational risk — see the in-app risk disclosure.
+- **Hosted (30 s try-out)** — sign up at [ai.ChanQuant.com](https://ai.ChanQuant.com) → **Profile → My Agent Token** → Issue Token. T (Trading) scope is available; **paper-only by default**. Live execution still requires `paper_only=false` on the token, explicit risk acknowledgment at issuance, and `AGENT_LIVE_TRADING_ENABLED=true` on the server. On multi-tenant SaaS, opening T scope increases shared infrastructure load and platform operational risk — see the in-app risk disclosure.
 - **Self-hosted (this repo)** — after the [Try in 2 minutes](#try-in-2-minutes) Docker bring-up, open **Profile → My Agent Token** (or the admin-only `/agent-tokens` page for cross-tenant audit). You control scopes, allowlists, rate limits, and the live-trading flag.
 
 Then point Cursor / Claude Code / Codex at the MCP server (`.cursor/mcp.json` template: [`docs/agent/cursor-mcp.example.json`](docs/agent/cursor-mcp.example.json)):
 
 ```json
-{ "mcpServers": { "quantdinger": {
-  "command": "uvx", "args": ["quantdinger-mcp"],
-  "env": { "QUANTDINGER_BASE_URL": "http://localhost:8888",
-           "QUANTDINGER_AGENT_TOKEN": "qd_agent_xxxxxxxx" }
+{ "mcpServers": { "ChanQuant": {
+  "command": "uvx", "args": ["ChanQuant-mcp"],
+  "env": { "ChanQuant_BASE_URL": "http://localhost:8888",
+           "ChanQuant_AGENT_TOKEN": "qd_agent_xxxxxxxx" }
 } } }
 ```
 
@@ -241,11 +241,11 @@ Deeper references: [AI Integration design](docs/agent/AI_INTEGRATION_DESIGN.md) 
 
 **Design principle:** separate **market data ingestion**, **strategy/backtest compute**, and **order execution** so research never shares a code path with live capital unless you explicitly promote a strategy.
 
-**Stack:** Nginx serves the prebuilt Vue SPA (`ghcr.io/brokermr810/quantdinger-frontend`); **Flask + Gunicorn** API hosts strategy, AI, billing, and agent services; **PostgreSQL 18** is the system of record; **Redis 8** backs cache and worker coordination. Exchanges, brokers, LLMs, and payment rails plug in through env-driven adapters — swap providers without forking core code.
+**Stack:** Nginx serves the prebuilt Vue SPA (`ghcr.io/brokermr810/ChanQuant-frontend`); **Flask + Gunicorn** API hosts strategy, AI, billing, and agent services; **PostgreSQL 18** is the system of record; **Redis 8** backs cache and worker coordination. Exchanges, brokers, LLMs, and payment rails plug in through env-driven adapters — swap providers without forking core code.
 
 **Runtime flow:** market feeds → indicator/signal layer → strategy engine → backtest or live runtime → venue-specific execution adapters; pending orders dispatched by background workers with health checks and retry semantics.
 
-**Deploy surfaces:** one-line `install.sh`, zero-repo GHCR Compose, full-repo Compose (local backend build), and SaaS at [ai.quantdinger.com](https://ai.quantdinger.com) for trials.
+**Deploy surfaces:** one-line `install.sh`, zero-repo GHCR Compose, full-repo Compose (local backend build), and SaaS at [ai.ChanQuant.com](https://ai.ChanQuant.com) for trials.
 
 ### System diagram
 
@@ -321,8 +321,8 @@ This section mirrors a typical “local deploy” path: **prepare the host → o
 ### 1) Clone the repository
 
 ```bash
-git clone https://github.com/brokermr810/QuantDinger.git
-cd QuantDinger
+git clone https://github.com/brokermr810/ChanQuant.git
+cd ChanQuant
 ```
 
 ### 2) Create backend configuration (mandatory)
@@ -371,10 +371,10 @@ docker compose pull
 docker compose up -d
 ```
 
-- **`frontend`** — pulls `ghcr.io/brokermr810/quantdinger-frontend:latest` (no local Vue tree required).
-- **`mobile`** — pulls `ghcr.io/brokermr810/quantdinger-mobile:latest` (no local mobile source tree required).
+- **`frontend`** — pulls `ghcr.io/brokermr810/ChanQuant-frontend:latest` (no local Vue tree required).
+- **`mobile`** — pulls `ghcr.io/brokermr810/ChanQuant-mobile:latest` (no local mobile source tree required).
 - **`backend`** — built from `./backend_api_python` on first start if no local image exists yet.
-- For UI development from source, clone **QuantDinger-Vue** and/or **QuantDinger-Mobile** into the expected local directories and add `-f docker-compose.build.yml` to the command (see *Build the frontend or mobile H5 from source* below).
+- For UI development from source, clone **ChanQuant-Vue** and/or **ChanQuant-Mobile** into the expected local directories and add `-f docker-compose.build.yml` to the command (see *Build the frontend or mobile H5 from source* below).
 
 Services: **`postgres`**, **`redis`**, **`backend`**, **`frontend`**, **`mobile`** (see `docker-compose.yml`).
 
@@ -403,7 +403,7 @@ Example root `.env` for reusing a PostgreSQL 18 data directory managed by 1Panel
 POSTGRES_IMAGE=postgres:18.3-alpine
 POSTGRES_DATA_SOURCE=/opt/1panel/apps/postgresql/postgresql/data/18/docker
 POSTGRES_PGDATA=/var/lib/postgresql/18/docker
-POSTGRES_DB=quantdinger
+POSTGRES_DB=ChanQuant
 POSTGRES_USER=existing_db_user
 POSTGRES_PASSWORD=existing_db_password
 ```
@@ -423,8 +423,8 @@ Do **not** mount a PostgreSQL 16 data directory into a PostgreSQL 18 image, or t
 Prebuilt multi-arch (amd64/arm64) images for **backend, web frontend, and mobile H5** — no `git clone`:
 
 ```bash
-curl -O https://raw.githubusercontent.com/brokermr810/QuantDinger/main/docker-compose.ghcr.yml
-curl -o backend.env https://raw.githubusercontent.com/brokermr810/QuantDinger/main/backend_api_python/env.example
+curl -O https://raw.githubusercontent.com/brokermr810/ChanQuant/main/docker-compose.ghcr.yml
+curl -o backend.env https://raw.githubusercontent.com/brokermr810/ChanQuant/main/backend_api_python/env.example
 docker compose -f docker-compose.ghcr.yml pull
 docker compose -f docker-compose.ghcr.yml up -d
 ```
@@ -441,12 +441,12 @@ IMAGE_TAG=4.0.4
 # FRONTEND_TAG=4.0.4
 # MOBILE_TAG=4.0.3
 
-# BACKEND_IMAGE=ghcr.io/<your-fork>/quantdinger-backend     # optional, for forks
-# FRONTEND_IMAGE=ghcr.io/<your-fork>/quantdinger-frontend
-# MOBILE_IMAGE=ghcr.io/<your-fork>/quantdinger-mobile
+# BACKEND_IMAGE=ghcr.io/<your-fork>/ChanQuant-backend     # optional, for forks
+# FRONTEND_IMAGE=ghcr.io/<your-fork>/ChanQuant-frontend
+# MOBILE_IMAGE=ghcr.io/<your-fork>/ChanQuant-mobile
 ```
 
-Tag resolution: `BACKEND_TAG` / `FRONTEND_TAG` / `MOBILE_TAG` → `IMAGE_TAG` → compose default (`latest`). Without a root `.env`, compose pulls `ghcr.io/brokermr810/quantdinger-{backend,frontend,mobile}:latest`. Pin a specific release by setting `IMAGE_TAG` (lockstep) or a per-side tag — see [GitHub Releases](https://github.com/brokermr810/QuantDinger/releases) for available tags.
+Tag resolution: `BACKEND_TAG` / `FRONTEND_TAG` / `MOBILE_TAG` → `IMAGE_TAG` → compose default (`latest`). Without a root `.env`, compose pulls `ghcr.io/brokermr810/ChanQuant-{backend,frontend,mobile}:latest`. Pin a specific release by setting `IMAGE_TAG` (lockstep) or a per-side tag — see [GitHub Releases](https://github.com/brokermr810/ChanQuant/releases) for available tags.
 
 #### Version stamping
 
@@ -458,16 +458,16 @@ APP_VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//') docker compose up -
 
 #### Alternative: build the frontend or mobile H5 from source
 
-If you have access to the **QuantDinger-Vue** repo and want to iterate on UI source (theme tweaks, forks, debugging) instead of pulling the published image, clone it into the `./QuantDinger-Vue/` slot at the repo root (gitignored) and let Compose build from there:
+If you have access to the **ChanQuant-Vue** repo and want to iterate on UI source (theme tweaks, forks, debugging) instead of pulling the published image, clone it into the `./ChanQuant-Vue/` slot at the repo root (gitignored) and let Compose build from there:
 
 ```bash
-git clone https://github.com/brokermr810/QuantDinger-Vue.git QuantDinger-Vue
+git clone https://github.com/brokermr810/ChanQuant-Vue.git ChanQuant-Vue
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-The same override can build the mobile H5 client from `./QuantDinger-Mobile/` or `MOBILE_SRC_PATH=/abs/path/to/QuantDinger-Mobile`.
+The same override can build the mobile H5 client from `./ChanQuant-Mobile/` or `MOBILE_SRC_PATH=/abs/path/to/ChanQuant-Mobile`.
 
-The main `docker-compose.yml` builds the backend from this repository and pulls web/mobile UI images from GHCR; the override file `docker-compose.build.yml` adds local UI `build:` blocks. Without the override, `./QuantDinger-Vue/` and `./QuantDinger-Mobile/` do not need to exist. Point `FRONTEND_SRC_PATH` / `MOBILE_SRC_PATH` somewhere else if you keep sources outside this repo, or set `COMPOSE_FILE=docker-compose.yml:docker-compose.build.yml` in a root `.env` to skip the long `-f -f` invocation.
+The main `docker-compose.yml` builds the backend from this repository and pulls web/mobile UI images from GHCR; the override file `docker-compose.build.yml` adds local UI `build:` blocks. Without the override, `./ChanQuant-Vue/` and `./ChanQuant-Mobile/` do not need to exist. Point `FRONTEND_SRC_PATH` / `MOBILE_SRC_PATH` somewhere else if you keep sources outside this repo, or set `COMPOSE_FILE=docker-compose.yml:docker-compose.build.yml` in a root `.env` to skip the long `-f -f` invocation.
 
 ### 5) Verify and sign in
 
@@ -500,8 +500,8 @@ In the normal Docker stack, you usually do **not** need to edit a frontend API U
 | Full `docker compose up -d` stack | Nothing for API routing. Open `http://localhost:8888` or `http://localhost:8889`; both use same-origin `/api/`. |
 | Change exposed ports | Root `.env`: `FRONTEND_PORT=8888`, `MOBILE_PORT=8889`, `BACKEND_PORT=127.0.0.1:5000`. |
 | Run frontend/mobile image without the main Compose stack | Set container env `BACKEND_URL=http://host.docker.internal:5000` or your real backend origin. This controls the Nginx `/api/` proxy inside the UI container. |
-| Desktop web source development | In `QuantDinger-Vue`, set `VITE_DEV_PROXY_TARGET=http://127.0.0.1:5000`, then run `pnpm run serve`. DevTools will show `http://localhost:8000/api/...`; Vite forwards it. |
-| Mobile H5 source development | In `QuantDinger-Mobile`, set `VITE_DEV_API_TARGET=http://127.0.0.1:5000`, then run `npm run dev`. DevTools may show `http://localhost:5173/api/...`; Vite forwards it. |
+| Desktop web source development | In `ChanQuant-Vue`, set `VITE_DEV_PROXY_TARGET=http://127.0.0.1:5000`, then run `pnpm run serve`. DevTools will show `http://localhost:8000/api/...`; Vite forwards it. |
+| Mobile H5 source development | In `ChanQuant-Mobile`, set `VITE_DEV_API_TARGET=http://127.0.0.1:5000`, then run `npm run dev`. DevTools may show `http://localhost:5173/api/...`; Vite forwards it. |
 | Static H5 behind your own domain | Prefer same-origin reverse proxy: serve `https://m.example.com` and proxy `https://m.example.com/api/` to the backend. |
 | Native mobile app | Use the app settings page to set a phone-reachable server URL, for example `http://192.168.1.10:5000` or `https://api.example.com`. |
 
@@ -514,7 +514,7 @@ The Compose backend runs the API with **Gunicorn** and sets `nofile` to `65535`.
 After deployment, quick-check the backend container:
 
 ```bash
-docker exec quantdinger-backend sh -lc 'echo "ulimit -n=$(ulimit -n)"; cat /proc/1/cmdline | tr "\0" " "; echo'
+docker exec ChanQuant-backend sh -lc 'echo "ulimit -n=$(ulimit -n)"; cat /proc/1/cmdline | tr "\0" " "; echo'
 curl -fsS http://127.0.0.1:5000/api/health
 ```
 
@@ -538,8 +538,8 @@ ATLASCLOUD_BASE_URL=https://api.atlascloud.ai/v1
 Use **Docker Desktop** (WSL2 backend recommended). From PowerShell in the repo root:
 
 ```powershell
-git clone https://github.com/brokermr810/QuantDinger.git
-Set-Location QuantDinger
+git clone https://github.com/brokermr810/ChanQuant.git
+Set-Location ChanQuant
 Copy-Item backend_api_python\env.example -Destination backend_api_python\.env
 $key = py -c "import secrets; print(secrets.token_hex(32))"
 (Get-Content backend_api_python\.env) -replace '^SECRET_KEY=.*$', "SECRET_KEY=$key" | Set-Content backend_api_python\.env -Encoding UTF8
@@ -556,15 +556,15 @@ If `py` is not on PATH, use `python` or `python3` in the one-liner that generate
 
 | Symptom | What to check |
 |---------|----------------|
-| `QuantDinger-Vue` / `QuantDinger-Mobile` not found | You added `-f docker-compose.build.yml` without cloning UI source. Drop the override (plain `docker compose up -d`) or clone the needed repo into `./QuantDinger-Vue/` / `./QuantDinger-Mobile/` first. |
+| `ChanQuant-Vue` / `ChanQuant-Mobile` not found | You added `-f docker-compose.build.yml` without cloning UI source. Drop the override (plain `docker compose up -d`) or clone the needed repo into `./ChanQuant-Vue/` / `./ChanQuant-Mobile/` first. |
 | `redis` / `python` / `node` pull fails, `content size of zero` | Docker Hub unreachable from Docker Desktop. Set root `.env` `IMAGE_PREFIX=docker.m.daocloud.io/library/` and/or configure **Docker Desktop → Proxies** (system VPN alone is often not enough). |
 | Backend exits immediately | `SECRET_KEY` still default, or invalid `.env` syntax. Read `docker compose logs backend`. |
 | Blank page or API errors from browser | `FRONTEND_URL` / origins mismatch; API not reachable from the host you opened. |
-| Browser shows `502 Bad Gateway` | The reverse proxy cannot reach the backend. Check `docker compose ps`, `docker compose logs --tail=100 backend`, and make sure Nginx/OpenResty points to `quantdinger-backend:5000` inside Compose or to the exposed host port. |
+| Browser shows `502 Bad Gateway` | The reverse proxy cannot reach the backend. Check `docker compose ps`, `docker compose logs --tail=100 backend`, and make sure Nginx/OpenResty points to `ChanQuant-backend:5000` inside Compose or to the exposed host port. |
 | `database files are incompatible with server` | The Postgres image major version does not match the mounted data directory. Set `POSTGRES_IMAGE` to the existing data major version, or restore through `pg_dump` / `pg_restore`. |
 | `password authentication failed for user ...` | The root `.env` `POSTGRES_USER` / `POSTGRES_PASSWORD` or `DATABASE_URL` does not match the user stored in the existing data directory. Fix the root `.env`, then recreate the backend container. |
 | `Too many open files` or `ulimit -n` is `1024` | Use the bundled Compose backend or configure your custom runtime with `nofile` around `65535`, then recreate the container. Restarting without recreating usually keeps the old limit. |
-| Mobile or web source dev calls the wrong backend | Use `VITE_DEV_PROXY_TARGET` for `QuantDinger-Vue`, `VITE_DEV_API_TARGET` for `QuantDinger-Mobile`, and restart the dev server after changing env vars. |
+| Mobile or web source dev calls the wrong backend | Use `VITE_DEV_PROXY_TARGET` for `ChanQuant-Vue`, `VITE_DEV_API_TARGET` for `ChanQuant-Mobile`, and restart the dev server after changing env vars. |
 | Mobile source dev fails with `crypto.hash is not a function` | Node is too old for Vite 7. Install/switch to Node 22 LTS (or at least Node 20.19+ / 22.12+). |
 | Port already in use | Another Postgres, Redis, or local service on `5432` / `6379` / `5000` / `8888` / `8889`. Adjust variables in root `.env` per `docker-compose.yml`. |
 | Many live strategies, “start denied”| Raise `STRATEGY_MAX_THREADS` in `backend_api_python/.env` and restart API (see comments in `env.example`). |
@@ -596,7 +596,7 @@ IMAGE_PREFIX=docker.m.daocloud.io/library/
 # POSTGRES_IMAGE=postgres:18.3-alpine
 # POSTGRES_DATA_SOURCE=/absolute/path/to/postgres/18/docker
 # POSTGRES_PGDATA=/var/lib/postgresql/18/docker
-# POSTGRES_DB=quantdinger
+# POSTGRES_DB=ChanQuant
 # POSTGRES_USER=existing_db_user
 # POSTGRES_PASSWORD=existing_db_password
 ```
@@ -604,7 +604,7 @@ IMAGE_PREFIX=docker.m.daocloud.io/library/
 When running the desktop or mobile UI containers by themselves, use `BACKEND_URL` on that container instead of the root Compose `.env` port variables:
 
 ```bash
-docker run --rm -p 8889:80 -e BACKEND_URL=http://host.docker.internal:5000 ghcr.io/brokermr810/quantdinger-mobile:4.0.3
+docker run --rm -p 8889:80 -e BACKEND_URL=http://host.docker.internal:5000 ghcr.io/brokermr810/ChanQuant-mobile:4.0.3
 ```
 
 Production-style TLS, domain, and reverse-proxy placement are covered in **[Cloud deployment EN](docs/CLOUD_DEPLOYMENT_EN.md)** / **[CN](docs/CLOUD_DEPLOYMENT_CN.md)**.
@@ -615,7 +615,7 @@ After the stack is healthy: (1) run an **AI asset / market analysis** so LLM and
 
 ## Minimal Example: Python Indicator Strategy
 
-This is the kind of Python-native strategy logic QuantDinger is designed for:
+This is the kind of Python-native strategy logic ChanQuant is designed for:
 
 ```python
 # @param sma_short int 14 Short moving average
@@ -686,7 +686,7 @@ See full examples:
 
 ## Strategy Development Modes
 
-QuantDinger supports two main strategy authoring models:
+ChanQuant supports two main strategy authoring models:
 
 ### IndicatorStrategy
 
@@ -712,7 +712,7 @@ The example scripts live in `docs/examples/` and are kept aligned with the curre
 ## Repository Layout
 
 ```text
-QuantDinger/
+ChanQuant/
 ├── backend_api_python/      # Open backend source code
 │   ├── app/routes/          # REST endpoints
 │   ├── app/services/        # AI, trading, billing, backtest, integrations
@@ -746,7 +746,7 @@ Use `backend_api_python/env.example` as the primary template. Key areas include:
 | Workers | `ENABLE_PENDING_ORDER_WORKER`, `ENABLE_PORTFOLIO_MONITOR`, `ENABLE_REFLECTION_WORKER` |
 | AI tuning | `ENABLE_AI_ENSEMBLE`, `ENABLE_CONFIDENCE_CALIBRATION`, `AI_ENSEMBLE_MODELS` |
 
-Economic calendar data is free-first: QuantDinger uses the no-key AkShare/WallstreetCN calendar fallback by default, can use Trading Economics when credentials are configured, and keeps Finnhub paid-only calendar/social sentiment endpoints disabled unless `FINNHUB_FREE_ONLY=false`.
+Economic calendar data is free-first: ChanQuant uses the no-key AkShare/WallstreetCN calendar fallback by default, can use Trading Economics when credentials are configured, and keeps Finnhub paid-only calendar/social sentiment endpoints disabled unless `FINNHUB_FREE_ONLY=false`.
 
 ## Documentation
 
@@ -762,7 +762,7 @@ Economic calendar data is free-first: QuantDinger uses the no-key AkShare/Wallst
 | [Installation troubleshooting](docs/INSTALL_TROUBLESHOOTING.md) | Bilingual Docker Desktop proxy, image pull, and Postgres startup troubleshooting |
 | [Cloud deployment EN](docs/CLOUD_DEPLOYMENT_EN.md) / [CN](docs/CLOUD_DEPLOYMENT_CN.md) | HTTPS, reverse proxy, production |
 | [Multi-user](docs/multi-user-setup.md) | Postgres multi-tenant patterns |
-| [Agent environment](docs/agent/AGENT_ENVIRONMENT_DESIGN.md) · [AI integration](docs/agent/AI_INTEGRATION_DESIGN.md) · [Quickstart](docs/agent/AGENT_QUICKSTART.md) · [OpenAPI](docs/agent/agent-openapi.json) · [MCP server](mcp_server/README.md) | Coding agents & MCP (`quantdinger-mcp` on PyPI) |
+| [Agent environment](docs/agent/AGENT_ENVIRONMENT_DESIGN.md) · [AI integration](docs/agent/AI_INTEGRATION_DESIGN.md) · [Quickstart](docs/agent/AGENT_QUICKSTART.md) · [OpenAPI](docs/agent/agent-openapi.json) · [MCP server](mcp_server/README.md) | Coding agents & MCP (`ChanQuant-mcp` on PyPI) |
 
 **Strategy:** [EN](docs/STRATEGY_DEV_GUIDE.md) · [CN](docs/STRATEGY_DEV_GUIDE_CN.md) · [Cross-sectional EN](docs/CROSS_SECTIONAL_STRATEGY_GUIDE_EN.md) / [CN](docs/CROSS_SECTIONAL_STRATEGY_GUIDE_CN.md) · [Examples](docs/examples/)
 
@@ -770,29 +770,29 @@ Economic calendar data is free-first: QuantDinger uses the no-key AkShare/Wallst
 
 ## FAQ
 
-### Is QuantDinger really self-hosted?
+### Is ChanQuant really self-hosted?
 
 Yes. The default deployment model is your own Docker Compose stack with your own database, Redis instance, credentials, and environment configuration.
 
-### Is QuantDinger only for crypto trading?
+### Is ChanQuant only for crypto trading?
 
 No. Crypto is a major focus, but the platform also includes IBKR and Alpaca workflows for US stocks / ETFs. Alpaca additionally covers crypto.
 
 ### Can I write strategies directly in Python?
 
-Yes. QuantDinger supports both dataframe-style `IndicatorStrategy` development and event-driven `ScriptStrategy` development. You can also use AI to generate a starting point and then edit it yourself.
+Yes. ChanQuant supports both dataframe-style `IndicatorStrategy` development and event-driven `ScriptStrategy` development. You can also use AI to generate a starting point and then edit it yourself.
 
 ### Is this a research tool or a live trading platform?
 
-It is both. QuantDinger is built to connect AI research, charting, strategy development, backtesting, quick trade flows, and live execution operations in one system.
+It is both. ChanQuant is built to connect AI research, charting, strategy development, backtesting, quick trade flows, and live execution operations in one system.
 
-### Can I use QuantDinger commercially?
+### Can I use ChanQuant commercially?
 
-QuantDinger is a product of **Open Byte Inc**. The backend is licensed under Apache 2.0. The **web** frontend source ([QuantDinger-Vue](https://github.com/brokermr810/QuantDinger-Vue)) and **mobile app repo** ([QuantDinger-Mobile](https://github.com/brokermr810/QuantDinger-Mobile)) use separate source-available licenses — review each repository and contact Open Byte Inc for commercial frontend/mobile authorization if needed.
+ChanQuant is a product of **Open Byte Inc**. The backend is licensed under Apache 2.0. The **web** frontend source ([ChanQuant-Vue](https://github.com/brokermr810/ChanQuant-Vue)) and **mobile app repo** ([ChanQuant-Mobile](https://github.com/brokermr810/ChanQuant-Mobile)) use separate source-available licenses — review each repository and contact Open Byte Inc for commercial frontend/mobile authorization if needed.
 
 ### Is there a mobile app?
 
-Yes — the Docker stack serves the mobile H5 client at **`http://localhost:8889`**. For native Android/iOS shells, see **[QuantDinger-Mobile](https://github.com/brokermr810/QuantDinger-Mobile)**.
+Yes — the Docker stack serves the mobile H5 client at **`http://localhost:8889`**. For native Android/iOS shells, see **[ChanQuant-Mobile](https://github.com/brokermr810/ChanQuant-Mobile)**.
 
 ## Exchange Partner Links
 
@@ -802,10 +802,10 @@ The following links are available in-app under **Profile → Open account** or *
 
 | Exchange | Signup Link |
 |----------|-------------|
-| Binance | [Register](https://www.bsmkweb.cc/register?ref=QUANTDINGER) |
+| Binance | [Register](https://www.bsmkweb.cc/register?ref=ChanQuant) |
 | Bitget | [Register](https://partner.hdmune.cn/bg/7r4xz8kd) |
 | Bybit | [Register](https://partner.bybit.com/b/DINGER) |
-| OKX | [Register](https://www.xqmnobxky.com/join/QUANTDINGER) |
+| OKX | [Register](https://www.xqmnobxky.com/join/ChanQuant) |
 | Gate.io | [Register](https://www.gateport.business/share/DINGER) |
 | HTX | [Register](https://www.htx.com/invite/zh-cn/1f?invite_code=dinger) |
 
@@ -813,34 +813,34 @@ The following links are available in-app under **Profile → Open account** or *
 
 - Backend source code is licensed under **Apache License 2.0**. See `LICENSE`.
 - This repository distributes the frontend UI here as **prebuilt files** for integrated deployment.
-- QuantDinger is a product of **Open Byte Inc**. QuantDinger names, logos, product identity, and commercial licensing are managed by Open Byte Inc.
-- The frontend source code is available separately at [QuantDinger Frontend](https://github.com/brokermr810/QuantDinger-Vue) under the **QuantDinger Frontend Source-Available License v1.0**.
-- The mobile H5/native client source code is available separately at [QuantDinger Mobile](https://github.com/brokermr810/QuantDinger-Mobile) under the same source-available license family.
+- ChanQuant is a product of **Open Byte Inc**. ChanQuant names, logos, product identity, and commercial licensing are managed by Open Byte Inc.
+- The frontend source code is available separately at [ChanQuant Frontend](https://github.com/brokermr810/ChanQuant-Vue) under the **ChanQuant Frontend Source-Available License v1.0**.
+- The mobile H5/native client source code is available separately at [ChanQuant Mobile](https://github.com/brokermr810/ChanQuant-Mobile) under the same source-available license family.
 - Under those frontend/mobile licenses, non-commercial use and eligible qualified non-profit use are permitted free of charge, while commercial use requires a separate commercial license from Open Byte Inc.
 - Trademark, branding, attribution, and watermark usage are governed separately and may not be removed or altered without permission. See `TRADEMARKS.md`.
 
 For commercial licensing, frontend source access, branding authorization, or deployment support:
 
-- Website: [quantdinger.com](https://quantdinger.com)
+- Website: [ChanQuant.com](https://ChanQuant.com)
 - Telegram: [t.me/worldinbroker](https://t.me/worldinbroker)
-- Email: [support@quantdinger.com](mailto:support@quantdinger.com)
+- Email: [support@ChanQuant.com](mailto:support@ChanQuant.com)
 
 ## Legal Notice and Compliance
 
-QuantDinger is intended for **lawful** research, education, and compliant trading only — not for fraud, market manipulation, sanctions evasion, money laundering, or other illegal activity. Operators must follow applicable laws, licensing, and exchange rules in every jurisdiction where they deploy. **This project does not provide legal, tax, investment, or regulatory advice.** You use the software at your own risk; to the extent permitted by law, contributors disclaim liability for trading losses, service interruption, or regulatory enforcement arising from use or misuse.
+ChanQuant is intended for **lawful** research, education, and compliant trading only — not for fraud, market manipulation, sanctions evasion, money laundering, or other illegal activity. Operators must follow applicable laws, licensing, and exchange rules in every jurisdiction where they deploy. **This project does not provide legal, tax, investment, or regulatory advice.** You use the software at your own risk; to the extent permitted by law, contributors disclaim liability for trading losses, service interruption, or regulatory enforcement arising from use or misuse.
 
 ## Community and Support
 
 <p>
-  <a href="https://t.me/quantdinger"><img src="https://img.shields.io/badge/Telegram-Group-26A5E4?style=for-the-badge&logo=telegram" alt="Telegram"></a>
+  <a href="https://t.me/ChanQuant"><img src="https://img.shields.io/badge/Telegram-Group-26A5E4?style=for-the-badge&logo=telegram" alt="Telegram"></a>
   <a href="https://discord.com/invite/tyx5B6TChr"><img src="https://img.shields.io/badge/Discord-Server-5865F2?style=for-the-badge&logo=discord" alt="Discord"></a>
-  <a href="https://youtube.com/@quantdinger"><img src="https://img.shields.io/badge/YouTube-Channel-FF0000?style=for-the-badge&logo=youtube" alt="YouTube"></a>
+  <a href="https://youtube.com/@ChanQuant"><img src="https://img.shields.io/badge/YouTube-Channel-FF0000?style=for-the-badge&logo=youtube" alt="YouTube"></a>
 </p>
 
 - [Contributing Guide](CONTRIBUTING.md)
 - [Contributors](CONTRIBUTORS.md)
-- [Report Bugs / Request Features](https://github.com/brokermr810/QuantDinger/issues)
-- Email: [support@quantdinger.com](mailto:support@quantdinger.com)
+- [Report Bugs / Request Features](https://github.com/brokermr810/ChanQuant/issues)
+- Email: [support@ChanQuant.com](mailto:support@ChanQuant.com)
 
 ## Support the Project
 
@@ -852,11 +852,11 @@ Crypto donations:
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=brokermr810/QuantDinger&type=Date)](https://star-history.com/#brokermr810/QuantDinger&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=brokermr810/ChanQuant&type=Date)](https://star-history.com/#brokermr810/ChanQuant&Date)
 
 ## Acknowledgements
 
-QuantDinger stands on top of a strong open-source ecosystem. Special thanks to projects such as:
+ChanQuant stands on top of a strong open-source ecosystem. Special thanks to projects such as:
 
 - [Flask](https://flask.palletsprojects.com/)
 - [Pandas](https://pandas.pydata.org/)
@@ -871,7 +871,7 @@ QuantDinger stands on top of a strong open-source ecosystem. Special thanks to p
 
 ## P.S. — A Note on the Name
 
-**QuantDinger** is a small tribute to **[Erwin Schrödinger](https://en.wikipedia.org/wiki/Erwin_Schr%C3%B6dinger)** — the "-dinger" in our name is the tail of "Schrödinger". The cat in the box was a thought experiment; every un-fired strategy is its own little version of it — simultaneously winning and losing until the order actually fills. Backtests open the box. Live trading collapses the wavefunction. Trade carefully.
+**ChanQuant** is a small tribute to **[Erwin Schrödinger](https://en.wikipedia.org/wiki/Erwin_Schr%C3%B6dinger)** — the "-dinger" in our name is the tail of "Schrödinger". The cat in the box was a thought experiment; every un-fired strategy is its own little version of it — simultaneously winning and losing until the order actually fills. Backtests open the box. Live trading collapses the wavefunction. Trade carefully.
 
-<p align="center"><sub>If QuantDinger is useful to you, a GitHub star helps the project a lot.</sub></p>
+<p align="center"><sub>If ChanQuant is useful to you, a GitHub star helps the project a lot.</sub></p>
 

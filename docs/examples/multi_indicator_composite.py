@@ -13,7 +13,7 @@
 my_indicator_name = "多指标组合策略"
 my_indicator_description = "均线、RSI、MACD 与成交量过滤共同参与的组合信号示例。"
 
-# --- QuantDinger execution contract (v1) ---
+# --- ChanQuant execution contract (v1) ---
 # signal_form: four_way
 # exit_owner: engine
 # flip_mode: R2

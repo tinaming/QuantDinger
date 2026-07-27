@@ -168,7 +168,7 @@ def test_uri_solana_uses_solana_pay():
     assert "amount=19.991234" in uri
     # Default USDT mint must be there as the spl-token param
     assert f"spl-token={CHAIN_SPECS['SOL'].contract_default}" in uri
-    assert "label=QuantDinger" in uri
+    assert "label=ChanQuant" in uri
     assert "Order" in uri  # message includes "Order #77" url-encoded
 
 

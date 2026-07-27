@@ -1,5 +1,5 @@
 """
-Heuristic quality hints for QuantDinger indicator Python code.
+Heuristic quality hints for ChanQuant indicator Python code.
 
 Read-only analysis: @strategy parsing, structure checks, risk/position sanity.
 Does not execute user code.

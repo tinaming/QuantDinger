@@ -11,10 +11,14 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Dict, List, Any, Optional
 
+import os
+
 import pandas as pd
 import numpy as np
 
 from app.data_sources import DataSourceFactory
+from app.markets.cn_stock_limits import get_price_limit as _cn_get_price_limit
+from app.markets.cn_stock_rules import check_t_plus_1 as _cn_check_t_plus_1
 from app.utils.logger import get_logger
 from app.utils.db import get_db_connection
 from app.utils.risk_guard import trailing_exit_locks_net_profit
@@ -22,6 +26,9 @@ from app.services.backtest_cache import KlineCache
 from app.services.indicator_params import IndicatorParamsParser, IndicatorCaller
 
 logger = get_logger(__name__)
+
+# A-share price limit enforcement in backtest (opt-in via env var).
+_ENABLE_CN_PRICE_LIMIT = os.getenv("ENABLE_CN_PRICE_LIMIT", "true").lower() == "true"
 
 
 _kline_cache = KlineCache()
@@ -32,7 +39,8 @@ class BacktestService:
     
     # Timeframe in seconds
     TIMEFRAME_SECONDS = {
-        '1m': 60, '5m': 300, '15m': 900, '30m': 1800,
+        '10s': 10,
+        '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800,
         '1H': 3600, '4H': 14400, '1D': 86400, '1W': 604800
     }
     
@@ -864,7 +872,7 @@ class BacktestService:
         # 6. Format result
         try:
             logger.info("Formatting backtest result...")
-            result = self._format_result(metrics, equity_curve, trades)
+            result = self._format_result(metrics, equity_curve, trades, candles_df=df_exec)
             result['signalDiagnostics'] = signal_diagnostics
             result['precision_info'] = precision_info
             result['execution_timeframe'] = exec_tf
@@ -1941,10 +1949,11 @@ class BacktestService:
         })
         script_logs = signals.pop('logs', [])
         equity_curve, trades, total_commission = self._simulate_trading(
-            df, signals, initial_capital, commission, slippage, leverage, trade_direction, strategy_config
+            df, signals, initial_capital, commission, slippage, leverage, trade_direction, strategy_config,
+            market=market, symbol=symbol,
         )
         metrics = self._calculate_metrics(equity_curve, trades, initial_capital, timeframe, start_date, end_date, total_commission)
-        result = self._format_result(metrics, equity_curve, trades)
+        result = self._format_result(metrics, equity_curve, trades, candles_df=df)
         result['logs'] = script_logs
         result['precision_info'] = {
             'enabled': False,
@@ -2248,7 +2257,8 @@ class BacktestService:
         
         # 3. Simulate trading
         equity_curve, trades, total_commission = self._simulate_trading(
-            df, signals, initial_capital, commission, slippage, leverage, trade_direction, strategy_config
+            df, signals, initial_capital, commission, slippage, leverage, trade_direction, strategy_config,
+            market=market, symbol=symbol,
         )
 
         exec_cfg = (strategy_config or {}).get('execution') or {}
@@ -2263,7 +2273,7 @@ class BacktestService:
         metrics = self._calculate_metrics(equity_curve, trades, initial_capital, timeframe, start_date, end_date, total_commission)
         
         # 5. Format result
-        result = self._format_result(metrics, equity_curve, trades)
+        result = self._format_result(metrics, equity_curve, trades, candles_df=df)
         result['signalDiagnostics'] = signal_diagnostics
         result['executionAssumptions'] = self._execution_assumptions(
             strategy_config,
@@ -2424,6 +2434,15 @@ class BacktestService:
 
         # Earliest candle we need (backtest may span up to ~2y; align fetch window to real start)
         after_time = int((start_date - timedelta(days=1)).timestamp())
+
+        # Clamp after_time to stay within exchange's maximum lookback from NOW
+        # (e.g. Gate.io caps at 10000 bars from current time: 10s≈27h, 1m≈6.9d).
+        max_lookback_bars = 9500  # safety margin below exchange hard cap
+        max_lookback_seconds = tf_seconds * max_lookback_bars
+        now_ts = int(datetime.now().timestamp())
+        earliest_allowed = now_ts - max_lookback_seconds
+        if after_time < earliest_allowed:
+            after_time = earliest_allowed
 
         # Calculate before_time (end date + 1 day)
         before_time = int((end_date + timedelta(days=1)).timestamp())
@@ -3030,7 +3049,9 @@ class BacktestService:
         slippage: float,
         leverage: int = 1,
         trade_direction: str = 'long',
-        strategy_config: Optional[Dict[str, Any]] = None
+        strategy_config: Optional[Dict[str, Any]] = None,
+        market: str = '',
+        symbol: str = '',
     ) -> tuple:
         """
         Simulate trading.
@@ -3106,7 +3127,7 @@ class BacktestService:
             f"signals open_long={ol} close_long={cl} open_short={os_} close_short={cs}, "
             f"direction={trade_direction}"
         )
-        return self._simulate_trading_new_format(df, norm, initial_capital, commission, slippage, leverage, trade_direction, strategy_config)
+        return self._simulate_trading_new_format(df, norm, initial_capital, commission, slippage, leverage, trade_direction, strategy_config, market=market, symbol=symbol)
 
     def _simulate_trading_new_format(
         self,
@@ -3117,7 +3138,9 @@ class BacktestService:
         slippage: float,
         leverage: int = 1,
         trade_direction: str = 'both',
-        strategy_config: Optional[Dict[str, Any]] = None
+        strategy_config: Optional[Dict[str, Any]] = None,
+        market: str = '',
+        symbol: str = '',
     ) -> tuple:
         """
         Simulate trading with 4-way signal format (supports position management and scaling).
@@ -3333,9 +3356,25 @@ class BacktestService:
                 return (float(capital_now) * float(leverage or 1)) / float(exec_price)
             return 0.0
         
+        # CN price limit state
+        _cn_limit_active = _ENABLE_CN_PRICE_LIMIT and market == 'CNStock'
+        _prev_close: float = 0.0
+
+        # CN T+1 settlement tracking: record buy date to prevent same-day sells
+        _cn_t1_active = _cn_limit_active  # T+1 applies under same conditions as price limits
+        _cn_buy_date = None  # date when the current long position was opened
+
         for i, (timestamp, row) in enumerate(df.iterrows()):
             if is_liquidated:
                 break
+
+            # Track previous close for CN price limit calculation
+            if i == 0:
+                # First bar: no prior close available, keep _prev_close=0 to skip limit check
+                pass
+            elif i > 0:
+                # prev_close is the prior bar's close
+                _prev_close = float(df.iloc[i - 1].get('close', 0) or 0)
 
             # If no position and balance low, stop trading
             if position == 0 and capital < min_capital_to_trade:
@@ -3520,6 +3559,12 @@ class BacktestService:
             
             # Handle exit signals (priority, SL/TP)
             if position > 0 and close_long_arr[i]:
+                # CN T+1 check: skip sell signal if bought today
+                if _cn_t1_active and _cn_buy_date is not None:
+                    _current_date = timestamp.date() if hasattr(timestamp, 'date') else timestamp
+                    _t1_result = _cn_check_t_plus_1(_cn_buy_date, _current_date)
+                    if not _t1_result['allowed']:
+                        continue  # T+1 lock: cannot sell today, skip this signal
                 # Close long: use indicator price or close
                 if signal_timing in ['next_bar_open', 'next_open', 'nextopen', 'next']:
                     target_price = open_
@@ -3549,6 +3594,7 @@ class BacktestService:
                 position = 0
                 position_type = None
                 liquidation_price = 0
+                _cn_buy_date = None
                 highest_since_entry = None
                 lowest_since_entry = None
                 trend_add_times = dca_add_times = trend_reduce_times = adverse_reduce_times = 0
@@ -4047,6 +4093,15 @@ class BacktestService:
                     else:
                         base_price = open_long_price_arr[i] if open_long_price_arr[i] > 0 else close
                     exec_price = base_price * (1 + slippage)
+
+                    # CN A-share price limit: cap buy price at upper limit (涨停价)
+                    if _cn_limit_active and _prev_close > 0:
+                        _cn_limits = _cn_get_price_limit(symbol, _prev_close)
+                        _cn_upper = _cn_limits['upper']
+                        if exec_price > _cn_upper:
+                            exec_price = _cn_upper
+                            if logger.isEnabledFor(10):  # DEBUG
+                                logger.debug(f"CN price limit: open_long capped to upper limit {_cn_upper} (prev_close={_prev_close})")
                     
                     # Use explicit script sizing first; fallback to pct/full.
                     position_pct = None
@@ -4070,6 +4125,9 @@ class BacktestService:
                     position = shares
                     entry_price = exec_price
                     position_type = 'long'
+                    # Track CN buy date for T+1 settlement
+                    if _cn_t1_active:
+                        _cn_buy_date = timestamp.date() if hasattr(timestamp, 'date') else timestamp
                     capital -= commission_fee
                     total_commission_paid += commission_fee
                     liquidation_price = entry_price * (1 - 1.0 / leverage)
@@ -4176,6 +4234,15 @@ class BacktestService:
                     else:
                         base_price = open_short_price_arr[i] if open_short_price_arr[i] > 0 else close
                     exec_price = base_price * (1 - slippage)
+
+                    # CN A-share price limit: cap sell price at lower limit (跌停价)
+                    if _cn_limit_active and _prev_close > 0:
+                        _cn_limits = _cn_get_price_limit(symbol, _prev_close)
+                        _cn_lower = _cn_limits['lower']
+                        if exec_price < _cn_lower:
+                            exec_price = _cn_lower
+                            if logger.isEnabledFor(10):  # DEBUG
+                                logger.debug(f"CN price limit: open_short capped to lower limit {_cn_lower} (prev_close={_prev_close})")
                     
                     # Use explicit script sizing first; fallback to pct/full.
                     position_pct = None
@@ -4692,9 +4759,16 @@ class BacktestService:
         self,
         metrics: Dict,
         equity_curve: List,
-        trades: List
+        trades: List,
+        candles_df: Optional[Any] = None,
     ) -> Dict[str, Any]:
-        """Format backtest result for API responses."""
+        """Format backtest result for API responses.
+
+        Args:
+            candles_df: Optional pandas DataFrame with datetime index and
+                columns open/high/low/close/volume. Sampled to ≤2000 bars
+                and included as ``candles`` in the result for chart rendering.
+        """
         # Simplify equity curve
         max_points = 500
         if len(equity_curve) > max_points:
@@ -4753,10 +4827,54 @@ class BacktestService:
             if inferred_reason and not cleaned_trade.get('close_reason'):
                 cleaned_trade['close_reason'] = inferred_reason
             cleaned_trades.append(cleaned_trade)
-        
-        return {
+
+        result = {
             **cleaned_metrics,
             'equityCurve': cleaned_curve,
             'trades': cleaned_trades
         }
+
+        # Attach candle (OHLCV) data for chart visualization
+        if candles_df is not None:
+            try:
+                result['candles'] = self._df_to_candles(candles_df)
+            except Exception as exc:
+                logger.warning(f"Failed to attach candles to result: {exc}")
+                result['candles'] = []
+
+        return result
+
+    @staticmethod
+    def _df_to_candles(df: Any, max_bars: int = 2000) -> List[Dict[str, Any]]:
+        """Convert a pandas DataFrame (datetime index, OHLCV cols) to a
+        lightweight-charts-compatible candle list, sampling if necessary.
+
+        Returns list of ``{time, open, high, low, close, volume}`` dicts.
+        ``time`` is a Unix timestamp in seconds.
+        """
+        import pandas as _pd
+        if df is None or not hasattr(df, 'empty') or df.empty:
+            return []
+        if len(df) > max_bars:
+            step = max(1, math.ceil(len(df) / max_bars))
+            df = df.iloc[::step]
+        candles = []
+        for idx, row in df.iterrows():
+            try:
+                ts = idx
+                if hasattr(ts, 'timestamp'):
+                    ts = int(ts.timestamp())
+                else:
+                    ts = int(_pd.Timestamp(ts).timestamp())
+                candles.append({
+                    'time': ts,
+                    'open': float(row.get('open', 0)),
+                    'high': float(row.get('high', 0)),
+                    'low': float(row.get('low', 0)),
+                    'close': float(row.get('close', 0)),
+                    'volume': float(row.get('volume', 0)) if 'volume' in row.index else 0,
+                })
+            except Exception:
+                continue
+        return candles
 

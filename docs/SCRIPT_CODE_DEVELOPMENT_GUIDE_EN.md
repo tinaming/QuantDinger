@@ -1,6 +1,6 @@
-# QuantDinger Script Code Development Guide
+﻿# ChanQuant Script Code Development Guide
 
-This guide explains how to write QuantDinger script code that can be backtested, deployed live, and maintained safely. Script code is for stateful strategies such as layered entries, basket average-cost take profit, trailing stops, pyramiding, cooldowns, and duplicate-order protection.
+This guide explains how to write ChanQuant script code that can be backtested, deployed live, and maintained safely. Script code is for stateful strategies such as layered entries, basket average-cost take profit, trailing stops, pyramiding, cooldowns, and duplicate-order protection.
 
 ## 1. Core Boundary
 
@@ -484,7 +484,7 @@ A successful backtest does not mean the script is ready for live trading. Also c
 When asking AI to generate complex script code, state the boundary explicitly:
 
 ```text
-Write a QuantDinger script code:
+Write a ChanQuant script code:
 1. Use on_init/on_bar.
 2. The run panel owns symbol, spot/swap, direction, investment amount, and leverage. Do not create ctx.param for these.
 3. Use ctx.basket(side).open_child_order(..., notional=...) for orders.

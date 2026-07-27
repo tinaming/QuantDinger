@@ -1,0 +1,1 @@
+import{P as t}from"./index-Bv_zhOcS.js";function n(){return t({url:"/api/settings/schema",method:"get"})}function a(){return t({url:"/api/settings/values",method:"get"})}function r(e){return t({url:"/api/settings/save",method:"post",data:e})}function u(){return t({url:"/api/settings/openrouter-balance",method:"get"})}export{n as a,a as b,u as g,r as s};

@@ -48,6 +48,8 @@ def register(app) -> None:
     from . import me_tokens  # noqa: F401
     from . import coinos  # noqa: F401
     from . import czsc  # noqa: F401
+    from . import qmt_trade  # noqa: F401
+    from . import chart  # noqa: F401
 
     app.register_blueprint(agent_v1_bp, url_prefix="/api/agent/v1")
     logger.info("Agent Gateway v1 mounted at /api/agent/v1")

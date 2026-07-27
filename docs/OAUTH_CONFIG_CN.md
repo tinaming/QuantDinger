@@ -1,4 +1,4 @@
-# OAuth 第三方登录配置指南
+﻿# OAuth 第三方登录配置指南
 
 本文档介绍如何配置 Google 和 GitHub 第三方登录，以及 Cloudflare Turnstile 人机验证。
 
@@ -18,7 +18,7 @@
 
 1. 访问 [Google Cloud Console](https://console.cloud.google.com/)
 2. 点击顶部的项目选择器，然后点击「新建项目」
-3. 输入项目名称（如 `QuantDinger`），点击「创建」
+3. 输入项目名称（如 `ChanQuant`），点击「创建」
 
 ### 步骤 2：配置 OAuth 同意屏幕
 
@@ -27,7 +27,7 @@
    - **外部**：允许任何 Google 账户登录（推荐）
    - **内部**：仅限组织内用户（需要 Google Workspace）
 3. 填写应用信息：
-   - 应用名称：`QuantDinger`
+   - 应用名称：`ChanQuant`
    - 用户支持电子邮件：您的邮箱
    - 开发者联系信息：您的邮箱
 4. 点击「保存并继续」，跳过「范围」和「测试用户」，完成配置
@@ -37,7 +37,7 @@
 1. 在左侧菜单中，选择「API 和服务」→「凭据」
 2. 点击「+ 创建凭据」→「OAuth 客户端 ID」
 3. 选择应用类型：**Web 应用**
-4. 填写名称：`QuantDinger Web Client`
+4. 填写名称：`ChanQuant Web Client`
 5. 添加「已授权的重定向 URI」：
    ```
    http://localhost:5000/api/auth/oauth/google/callback
@@ -64,7 +64,7 @@ GOOGLE_REDIRECT_URI=http://localhost:5000/api/auth/oauth/google/callback
 1. 访问 [GitHub Developer Settings](https://github.com/settings/developers)
 2. 点击「OAuth Apps」→「New OAuth App」
 3. 填写应用信息：
-   - **Application name**：`QuantDinger`
+   - **Application name**：`ChanQuant`
    - **Homepage URL**：`http://localhost:8080`（或您的域名）
    - **Authorization callback URL**：
      ```
@@ -98,7 +98,7 @@ Turnstile 是 Cloudflare 提供的免费、隐私友好的人机验证服务，�
 1. 访问 [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile)
 2. 点击「Add site」
 3. 填写信息：
-   - **Site name**：`QuantDinger`
+   - **Site name**：`ChanQuant`
    - **Domain**：添加您的域名（本地开发可添加 `localhost`）
    - **Widget Mode**：选择 `Managed`（推荐）或 `Invisible`
 4. 点击「Create」

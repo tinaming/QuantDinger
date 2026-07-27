@@ -1,8 +1,8 @@
 ﻿name: Basic CI
 
-# Basic CI workflow for backend syntax and lint checks.
-# This workflow ensures the backend codebase has no syntax errors and passes linting.
-# It does NOT run tests, start servers, or require external services.
+# Basic CI workflow for backend syntax, import, and unit-test checks.
+# Runs compileall, critical import validation, and the full pytest suite
+# (excluding integration tests that need live exchange API keys).
 #
 # Note: Frontend source code and CI live in the private QuantDinger-Vue repo.
 # The published `ghcr.io/<owner>/quantdinger-frontend` image is consumed
@@ -75,6 +75,30 @@ jobs:
           # This will PASS if:
           # - Dependencies are available and importable
           # - Core module structure is intact
+
+      - name: Install test dependencies
+        working-directory: ./backend_api_python
+        run: |
+          pip install pytest pytest-timeout
+
+      - name: Run unit tests
+        working-directory: ./backend_api_python
+        env:
+          SECRET_KEY: ci-test-key-not-for-production
+          CACHE_ENABLED: "false"
+          SKIP_STARTUP_HOOKS: "1"
+          TQDM_DISABLE: "1"
+        run: |
+          pytest tests/ -x -q \
+            --timeout=30 \
+            -k "not integration" \
+            --tb=short
+          # This will FAIL if:
+          # - Any unit test fails (logic regression, broken imports)
+          # - A test exceeds 30s timeout (infinite loop, hang)
+          # This will PASS if:
+          # - All unit tests pass
+          # - Integration tests (requiring exchange API keys) are skipped
 
   compose-check:
     name: Docker Compose Validation

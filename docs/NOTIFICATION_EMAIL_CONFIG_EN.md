@@ -1,6 +1,6 @@
-# 📧 Email SMTP Notification Configuration Guide
+﻿# 📧 Email SMTP Notification Configuration Guide
 
-> QuantDinger supports strategy signal notifications via email, ideal for users who need detailed notification records.
+> ChanQuant supports strategy signal notifications via email, ideal for users who need detailed notification records.
 
 ---
 
@@ -22,13 +22,13 @@
 - An email account with SMTP sending capability
 - SMTP service enabled (some providers require manual activation)
 - App password or authorization code (not your login password)
-- QuantDinger backend service deployed and running
+- ChanQuant backend service deployed and running
 
 ---
 
 ## Supported Email Providers
 
-QuantDinger supports any standard SMTP protocol email provider, including:
+ChanQuant supports any standard SMTP protocol email provider, including:
 
 | Provider | SMTP Server | Port | Encryption |
 |----------|-------------|------|------------|
@@ -232,7 +232,7 @@ SMTP_USE_SSL=false
 
 ### Q: Does it support HTML emails?
 
-Yes, QuantDinger automatically sends formatted HTML emails with a plain text fallback for maximum compatibility.
+Yes, ChanQuant automatically sends formatted HTML emails with a plain text fallback for maximum compatibility.
 
 ### Q: Rate limits?
 

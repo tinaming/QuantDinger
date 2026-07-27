@@ -1,13 +1,13 @@
-# QuantDinger MCP server
+﻿# ChanQuant MCP server
 
-[![PyPI](https://img.shields.io/pypi/v/quantdinger-mcp?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/quantdinger-mcp/)
-[![Python](https://img.shields.io/pypi/pyversions/quantdinger-mcp?style=flat-square&logo=python&logoColor=white)](https://pypi.org/project/quantdinger-mcp/)
+[![PyPI](https://img.shields.io/pypi/v/ChanQuant-mcp?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/ChanQuant-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/ChanQuant-mcp?style=flat-square&logo=python&logoColor=white)](https://pypi.org/project/ChanQuant-mcp/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](../LICENSE)
 
 Thin Model Context Protocol server that exposes a curated subset of the
-QuantDinger Agent Gateway (`/api/agent/v1`) as MCP tools, so AI clients
+ChanQuant Agent Gateway (`/api/agent/v1`) as MCP tools, so AI clients
 that support MCP (Cursor, Claude-style desktop apps, OpenClaw, NanoBot, etc.)
-can drive QuantDinger without writing custom HTTP code.
+can drive ChanQuant without writing custom HTTP code.
 
 This package is an **additive** integration. The Agent Gateway REST API
 remains the source of truth.
@@ -74,11 +74,11 @@ Trading-class (T) tools.
 From PyPI (recommended — works on any machine without cloning the repo):
 
 ```bash
-pipx install quantdinger-mcp
+pipx install ChanQuant-mcp
 # or, no install at all (cached on first run):
-uvx quantdinger-mcp
+uvx ChanQuant-mcp
 # or, into a venv:
-pip install quantdinger-mcp
+pip install ChanQuant-mcp
 ```
 
 Editable install for hacking on the server itself:
@@ -94,33 +94,33 @@ Configuration is env-only so the same binary works in desktop and cloud.
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `QUANTDINGER_BASE_URL`     | yes | e.g. `http://localhost:8888` |
-| `QUANTDINGER_AGENT_TOKEN`  | yes | a token issued via `/api/agent/v1/admin/tokens` |
-| `QUANTDINGER_MCP_TRANSPORT`| no  | `stdio` (default), `sse`, or `streamable-http` |
-| `QUANTDINGER_MCP_HOST`     | no  | bind host for HTTP transports (default `127.0.0.1`) |
-| `QUANTDINGER_MCP_PORT`     | no  | bind port for HTTP transports (default `8000`) |
-| `QUANTDINGER_TIMEOUT_S`    | no  | upstream HTTP timeout (default `60`) |
-| `QUANTDINGER_MCP_JOB_STREAM_MAX_EVENTS` | no | SSE cap (default `200`) |
-| `QUANTDINGER_MCP_JOB_STREAM_MAX_SECONDS` | no | SSE time cap (default `300`) |
-| `QUANTDINGER_MCP_JOB_POLL_MAX_SECONDS` | no | `wait_for_job` cap (default `300`) |
+| `ChanQuant_BASE_URL`     | yes | e.g. `http://localhost:8888` |
+| `ChanQuant_AGENT_TOKEN`  | yes | a token issued via `/api/agent/v1/admin/tokens` |
+| `ChanQuant_MCP_TRANSPORT`| no  | `stdio` (default), `sse`, or `streamable-http` |
+| `ChanQuant_MCP_HOST`     | no  | bind host for HTTP transports (default `127.0.0.1`) |
+| `ChanQuant_MCP_PORT`     | no  | bind port for HTTP transports (default `8000`) |
+| `ChanQuant_TIMEOUT_S`    | no  | upstream HTTP timeout (default `60`) |
+| `ChanQuant_MCP_JOB_STREAM_MAX_EVENTS` | no | SSE cap (default `200`) |
+| `ChanQuant_MCP_JOB_STREAM_MAX_SECONDS` | no | SSE time cap (default `300`) |
+| `ChanQuant_MCP_JOB_POLL_MAX_SECONDS` | no | `wait_for_job` cap (default `300`) |
 
 ### stdio (desktop IDEs)
 
 ```bash
-QUANTDINGER_BASE_URL=http://localhost:8888 \
-QUANTDINGER_AGENT_TOKEN=qd_agent_xxxxx \
-quantdinger-mcp
+ChanQuant_BASE_URL=http://localhost:8888 \
+ChanQuant_AGENT_TOKEN=qd_agent_xxxxx \
+ChanQuant-mcp
 ```
 
 ### SSE / Streamable HTTP (cloud agents, remote IDEs)
 
 ```bash
-QUANTDINGER_BASE_URL=http://localhost:8888 \
-QUANTDINGER_AGENT_TOKEN=qd_agent_xxxxx \
-QUANTDINGER_MCP_TRANSPORT=streamable-http \
-QUANTDINGER_MCP_HOST=0.0.0.0 \
-QUANTDINGER_MCP_PORT=7800 \
-quantdinger-mcp
+ChanQuant_BASE_URL=http://localhost:8888 \
+ChanQuant_AGENT_TOKEN=qd_agent_xxxxx \
+ChanQuant_MCP_TRANSPORT=streamable-http \
+ChanQuant_MCP_HOST=0.0.0.0 \
+ChanQuant_MCP_PORT=7800 \
+ChanQuant-mcp
 ```
 
 The server is then reachable at `http://<host>:7800/`. Use `sse` instead of
@@ -133,11 +133,11 @@ The server is then reachable at `http://<host>:7800/`. Use `sse` instead of
 ```json
 {
   "mcpServers": {
-    "quantdinger": {
-      "command": "quantdinger-mcp",
+    "ChanQuant": {
+      "command": "ChanQuant-mcp",
       "env": {
-        "QUANTDINGER_BASE_URL": "http://localhost:8888",
-        "QUANTDINGER_AGENT_TOKEN": "qd_agent_xxxxxxxx"
+        "ChanQuant_BASE_URL": "http://localhost:8888",
+        "ChanQuant_AGENT_TOKEN": "qd_agent_xxxxxxxx"
       }
     }
   }
@@ -172,7 +172,7 @@ show the exact tool names and required confirmation flags.
 Ask your MCP client:
 
 ```text
-Use the QuantDinger MCP tool `whoami` and tell me the token scopes, paper_only
+Use the ChanQuant MCP tool `whoami` and tell me the token scopes, paper_only
 status, and allowed markets.
 ```
 

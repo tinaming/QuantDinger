@@ -27,7 +27,7 @@ _LEGACY_BUILTIN_SAMPLE_NAMES = (
 )
 
 
-# QuantDinger Indicator IDE contract (the sandbox injects df / pd / np / params):
+# ChanQuant Indicator IDE contract (the sandbox injects df / pd / np / params):
 #   * top of file declares my_indicator_name / my_indicator_description
 #   * df = df.copy()  -> work on a private copy
 #   * execution: four-way open_long/close_long/open_short/close_short
@@ -37,7 +37,7 @@ _LEGACY_BUILTIN_SAMPLE_NAMES = (
 #   * # @param ... range=a:b:s  auto-detected by the structured parameter tuner
 _SUPERTREND_CODE = r'''# ============================================================
 # [Sample] SuperTrend Trend-Following -- classic ATR channel flip
-# --- QuantDinger execution contract (v1) ---
+# --- ChanQuant execution contract (v1) ---
 # signal_form: four_way    exit_owner: engine    flip_mode: R2
 # ------------------------------------------------------------
 # Idea: build an adaptive band pair (HL2 +/- mult * ATR). The bands

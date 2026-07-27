@@ -22,6 +22,7 @@ AI_CHAT = "AIChat"
 QUICK_TRADE = "QuickTrade"
 IBKR = "IBKR"
 ALPACA = "Alpaca"
+QMT = "QMT"
 COINOS = "CoinOS"
 COINOS_MARKET = "CoinOS-Market"
 COINOS_HYPERLIQUID = "CoinOS-Hyperliquid"
@@ -29,6 +30,7 @@ COINOS_TRADING = "CoinOS-Trading"
 COINOS_FREQTRADE = "CoinOS-Freqtrade"
 COINOS_ACCOUNT = "CoinOS-Account"
 COINOS_ONCHAIN = "CoinOS-Onchain"
+CHANLUN = "ChanLun"
 
 ALL_TAGS = [
     {"name": HEALTH, "description": "Liveness and API metadata (Public)"},
@@ -53,6 +55,7 @@ ALL_TAGS = [
     {"name": QUICK_TRADE, "description": "Manual quick trade (Internal)"},
     {"name": IBKR, "description": "Interactive Brokers adapter (Internal)"},
     {"name": ALPACA, "description": "Alpaca adapter (Internal)"},
+    {"name": QMT, "description": "QMT/miniQMT A-share broker via local bridge (Internal)"},
     {"name": COINOS, "description": "CoinOS Skills integration — crypto market data, trading, analytics (Internal)"},
     {"name": COINOS_MARKET, "description": "AiCoin market data — 200+ exchanges, 183 endpoints (Public)"},
     {"name": COINOS_HYPERLIQUID, "description": "Hyperliquid whale analytics and on-chain perp data (Public)"},
@@ -60,4 +63,5 @@ ALL_TAGS = [
     {"name": COINOS_FREQTRADE, "description": "Freqtrade strategy create/backtest/deploy/control (Internal)"},
     {"name": COINOS_ACCOUNT, "description": "Exchange account management and API key info (Internal)"},
     {"name": COINOS_ONCHAIN, "description": "On-chain DEX via OKX Web3 — swap, wallet, gas (Internal)"},
+    {"name": CHANLUN, "description": "ChanLun (缠论) aggregated analysis — fractals, strokes, centers, buy/sell points (Public)"},
 ]

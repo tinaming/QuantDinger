@@ -104,7 +104,7 @@ MARKET_MODULES: Dict[str, MarketModule] = {
         asset_class="equity",
         symbol_hint="300750",
         base_currency="CNY",
-        features=["research", "backtest", "paper"],
+        features=["research", "backtest", "paper", "live"],
         data_requirements=[
             DataRequirement(
                 key="akshare",
@@ -119,7 +119,16 @@ MARKET_MODULES: Dict[str, MarketModule] = {
                 purpose="optional K-line enrichment",
             ),
         ],
-        supports={"spot": True, "swap": False, "short": False, "session": "exchange-hours"},
+        supports={
+            "spot": True,
+            "swap": False,
+            "short": False,
+            "session": "exchange-hours",
+            "trading_hours": True,
+            "price_limits": True,
+            "t_plus_1": True,
+            "tz": "Asia/Shanghai",
+        },
     ),
     "HKStock": MarketModule(
         key="HKStock",

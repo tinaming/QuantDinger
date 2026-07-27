@@ -160,7 +160,7 @@ class OAuthService:
         #
         # FRONTEND_URL accepts a comma-separated list of origins (the same
         # convention used by CORS in `app/__init__.py`). This lets one backend
-        # serve e.g. ai.quantdinger.com + m.quantdinger.com without forcing the
+        # serve e.g. ai.chanquant.com + m.chanquant.com without forcing the
         # operator to also fill OAUTH_ALLOWED_REDIRECTS.
         #
         # The FIRST entry is the default post-login redirect target. Every

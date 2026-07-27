@@ -145,7 +145,7 @@ def fetch_adanos_market_sentiment(
     """Fetch optional Adanos Market Sentiment snapshots.
 
     This provider is intentionally fail-open: if no API key is configured, it
-    returns ``enabled=false`` instead of raising. That keeps QuantDinger fully
+    returns ``enabled=false`` instead of raising. That keeps ChanQuant fully
     usable without Adanos.
     """
     parsed_tickers = parse_tickers(tickers)

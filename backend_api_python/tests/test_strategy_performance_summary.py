@@ -1,5 +1,5 @@
 """Strategy performance KPI must use initial capital as baseline."""
-from app.routes.strategy import _strategy_performance_summary
+from app.routes.strategy_ledger_routes import _strategy_performance_summary
 
 
 def test_total_return_pct_uses_initial_capital_not_first_trade_point():

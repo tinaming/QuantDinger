@@ -136,9 +136,9 @@ class UserService:
         """Return the configured bootstrap admin username."""
         try:
             from app.config.settings import Config
-            return str(Config.ADMIN_USER or os.getenv('ADMIN_USER', 'quantdinger') or 'quantdinger').strip()
+            return str(Config.ADMIN_USER or os.getenv('ADMIN_USER', 'chanquant') or 'chanquant').strip()
         except Exception:
-            return str(os.getenv('ADMIN_USER', 'quantdinger') or 'quantdinger').strip()
+            return str(os.getenv('ADMIN_USER', 'chanquant') or 'chanquant').strip()
 
     @classmethod
     def _configured_admin_email(cls) -> str:

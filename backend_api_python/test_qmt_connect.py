@@ -66,50 +66,54 @@ print()
 # Wait a moment for the connection to stabilize
 time.sleep(1)
 
-# Try to discover account IDs
-print("4. Attempting to discover account IDs...")
-
-# Method 1: Check if trader has get_stock_account_ids or similar
-for method_name in dir(trader):
-    if 'account' in method_name.lower():
-        print(f"   Found method: {method_name}")
-
-# Method 2: Try common account ID patterns
-print()
-print("5. Trying common account ID patterns...")
-test_accounts = ["", "0", "1", "模拟"]
-
+# Discover account IDs via query_account_infos()
+print("4. Discovering account IDs via query_account_infos()...")
 found_account = False
-for acc_id in test_accounts:
-    try:
-        acc = StockAccount(acc_id)
-        asset = trader.query_stock_asset(acc)
-        if asset is not None:
-            print(f"   Account '{acc_id}': FOUND!")
-            print(f"     account_id: {asset.account_id}")
-            print(f"     cash: {asset.cash}")
-            print(f"     total_value: {asset.total_value}")
-            found_account = True
-            break
-    except Exception as e:
-        print(f"   Account '{acc_id}': {e}")
 
-# Method 3: Check trader attributes for connection info
-print()
-print("6. Checking trader attributes...")
-for attr in dir(trader):
-    if not attr.startswith('_'):
-        val = getattr(trader, attr, None)
-        if not callable(val):
-            print(f"   {attr}: {val}")
+try:
+    account_infos = trader.query_account_infos()
+    if account_infos:
+        for ai in account_infos:
+            acc_id = getattr(ai, 'account_id', '')
+            acc_type = getattr(ai, 'account_type', '')
+            print(f"   Found account: id={acc_id}, type={acc_type}")
+
+            # Subscribe and query asset
+            acc = StockAccount(acc_id)
+            sub_result = trader.subscribe(acc)
+            if sub_result == 0:
+                asset = trader.query_stock_asset(acc)
+                if asset:
+                    print(f"     cash: {asset.cash:.2f}")
+                    print(f"     frozen_cash: {asset.frozen_cash:.2f}")
+                    print(f"     market_value: {asset.market_value:.2f}")
+                    print(f"     total_asset: {asset.total_asset:.2f}")
+                    found_account = True
+
+                    # Query positions
+                    positions = trader.query_stock_positions(acc)
+                    if positions:
+                        print(f"     positions ({len(positions)}):")
+                        for p in positions:
+                            print(f"       {p.stock_code}: vol={p.volume}, "
+                                  f"can_use={p.can_use_volume}, "
+                                  f"avg_price={p.avg_price:.4f}, "
+                                  f"last_price={p.last_price}, "
+                                  f"float_profit={p.float_profit:.2f}")
+                    else:
+                        print("     positions: (empty)")
+            else:
+                print(f"     subscribe failed: {sub_result}")
+    else:
+        print("   No account infos returned")
+except Exception as e:
+    print(f"   Error discovering accounts: {e}")
 
 print()
 print("=== Connection test complete ===")
 if not found_account:
     print()
-    print("No account found automatically. Please check the miniQMT terminal")
-    print("for your account ID (资金账号). It's usually displayed in the top bar")
-    print("or in the account list panel.")
+    print("No account found. Please check the miniQMT terminal is logged in.")
 
 # Keep connection alive
 time.sleep(2)

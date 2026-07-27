@@ -11,17 +11,17 @@ pytest.importorskip("mcp")
 
 @pytest.fixture
 def fresh_module(monkeypatch):
-    monkeypatch.setenv("QUANTDINGER_BASE_URL", "http://localhost:8888")
-    monkeypatch.setenv("QUANTDINGER_AGENT_TOKEN", "qd_agent_test_token")
-    sys.modules.pop("quantdinger_mcp.server", None)
-    sys.modules.pop("quantdinger_mcp.security", None)
+    monkeypatch.setenv("CHANQUANT_BASE_URL", "http://localhost:8888")
+    monkeypatch.setenv("CHANQUANT_AGENT_TOKEN", "qd_agent_test_token")
+    sys.modules.pop("chanquant_mcp.server", None)
+    sys.modules.pop("chanquant_mcp.security", None)
     import os
     src_dir = os.path.normpath(
         os.path.join(os.path.dirname(__file__), "..", "src")
     )
     if src_dir not in sys.path:
         sys.path.insert(0, src_dir)
-    return importlib.import_module("quantdinger_mcp.server")
+    return importlib.import_module("chanquant_mcp.server")
 
 
 def test_mcp_tool_registry_complete(fresh_module):
@@ -56,7 +56,7 @@ def test_place_quick_order_requires_confirmation(fresh_module):
 
 
 def test_indicator_code_size_rejected_in_mcp(monkeypatch, fresh_module):
-    from quantdinger_mcp import security as sec
+    from chanquant_mcp import security as sec
 
     huge = "x" * (sec.MAX_INDICATOR_CODE_BYTES + 1)
     with pytest.raises(ValueError, match="KiB"):
@@ -86,7 +86,7 @@ def test_mcp_tool_names_contains_new_tools(fresh_module):
 
 
 def test_parse_sse_chunk():
-    from quantdinger_mcp.security import parse_sse_chunk
+    from chanquant_mcp.security import parse_sse_chunk
 
     text = (
         'event: snapshot\n'

@@ -116,7 +116,7 @@ class TestCzscColumnsSchema:
 
     def test_column_count(self):
         # Plan specifies 12 columns
-        assert len(CZSC_COLUMNS) == 12
+        assert len(CZSC_COLUMNS) == 15
 
     def test_column_names_are_unique(self):
         names = [col["name"] for col in CZSC_COLUMNS]

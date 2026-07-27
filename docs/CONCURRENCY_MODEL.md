@@ -1,4 +1,4 @@
-# QuantDinger Backend Concurrency Model
+﻿# ChanQuant Backend Concurrency Model
 
 This document defines how the backend should behave under concurrent users,
 strategies, workers, API calls, and external providers.

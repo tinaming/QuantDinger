@@ -1,0 +1,20 @@
+schema_version: 1
+module_path: build_system
+title: 构建与制品管理 — Docker + GitHub Actions 多模态发布体系
+scope: []
+source_files:
+    - backend_api_python/Dockerfile
+    - mcp_server/Dockerfile
+    - docker-compose.yml
+    - docker-compose.build.yml
+    - docker-compose.ghcr.yml
+    - backend_api_python/gunicorn_config.py
+    - backend_api_python/docker-entrypoint.sh
+    - backend_api_python/requirements.txt
+    - mcp_server/pyproject.toml
+    - scripts/bump_version.py
+    - .github/workflows/basic-ci.yml
+    - .github/workflows/docker-publish.yml
+    - .github/workflows/openapi-ci.yml
+depends_on: []
+related_to: []

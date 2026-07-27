@@ -11,6 +11,9 @@
 
 from __future__ import annotations
 
+import threading
+import time as _time
+
 from typing import Dict, List, Any, Optional
 
 from app.data_sources.base import BaseDataSource
@@ -25,6 +28,67 @@ from app.data_sources.asia_stock_kline import (
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class _CircuitBreaker:
+    """Simple circuit breaker for a single data source.
+
+    States:
+      closed    – normal operation, requests pass through.
+      open      – tripped (consecutive failures >= threshold), requests blocked.
+      half-open – recovery timeout elapsed, one probe request is allowed.
+    """
+
+    def __init__(self, name: str, failure_threshold: int = 5, recovery_timeout: int = 60):
+        self.name = name
+        self._threshold = failure_threshold
+        self._timeout = recovery_timeout
+        self._failures = 0
+        self._state = "closed"          # closed | open | half-open
+        self._last_failure_time: float = 0
+        self._lock = threading.Lock()
+
+    # -- public API --------------------------------------------------------
+
+    def is_open(self) -> bool:
+        """Return True when the breaker is blocking requests."""
+        with self._lock:
+            if self._state == "open":
+                if _time.time() - self._last_failure_time > self._timeout:
+                    # Recovery timeout elapsed → allow one probe request.
+                    self._state = "half-open"
+                    return False
+                return True
+            return False
+
+    def record_success(self) -> None:
+        """Reset breaker on successful call (closes from any state)."""
+        with self._lock:
+            self._failures = 0
+            self._state = "closed"
+
+    def record_failure(self) -> None:
+        """Record a failure; trip the breaker when threshold is reached."""
+        with self._lock:
+            self._failures += 1
+            self._last_failure_time = _time.time()
+            if self._failures >= self._threshold:
+                self._state = "open"
+
+    @property
+    def state(self) -> str:
+        """Current state string (for diagnostics / status endpoint)."""
+        # Trigger implicit open→half-open transition so status is accurate.
+        if self._state == "open":
+            self.is_open()
+        return self._state
+
+
+# Create one breaker per data source
+_twelve_data_breaker = _CircuitBreaker("twelve_data")
+_tencent_breaker = _CircuitBreaker("tencent")
+_yfinance_breaker = _CircuitBreaker("yfinance")
+_akshare_breaker = _CircuitBreaker("akshare")
 
 
 def _check_akshare_available() -> bool:
@@ -72,57 +136,92 @@ class CNStockDataSource(BaseDataSource):
         lim = max(int(limit or 300), 1)
 
         # Tier 1: Twelve Data (paid, most reliable)
-        rows = fetch_twelvedata_klines(
-            is_hk=False, tencent_code=code, timeframe=tf, limit=lim, before_time=before_time
-        )
-        if rows:
-            return self.filter_and_limit(
-                rows,
-                limit=lim,
-                before_time=before_time,
-                after_time=after_time,
-                truncate=(after_time is None),
-            )
+        if _twelve_data_breaker.is_open():
+            logger.debug("Circuit breaker OPEN for twelve_data, skipping")
+        else:
+            try:
+                rows = fetch_twelvedata_klines(
+                    is_hk=False, tencent_code=code, timeframe=tf, limit=lim, before_time=before_time
+                )
+                if rows:
+                    _twelve_data_breaker.record_success()
+                    return self.filter_and_limit(
+                        rows,
+                        limit=lim,
+                        before_time=before_time,
+                        after_time=after_time,
+                        truncate=(after_time is None),
+                    )
+            except Exception as e:
+                _twelve_data_breaker.record_failure()
+                logger.warning("twelve_data kline fetch failed: %s", e)
 
         # Tier 2: Tencent for daily/weekly (fast, free)
         if tf in ("1D", "1W"):
-            tf_map = {"1D": "day", "1W": "week"}
-            period = tf_map.get(tf, "day")
-            raw_rows = fetch_kline(code, period=period, count=lim, adj="qfq")
-            out = tencent_kline_rows_to_dicts(raw_rows)
-            if out:
-                return self.filter_and_limit(
-                    out,
-                    limit=lim,
-                    before_time=before_time,
-                    after_time=after_time,
-                    truncate=(after_time is None),
-                )
+            if _tencent_breaker.is_open():
+                logger.debug("Circuit breaker OPEN for tencent, skipping")
+            else:
+                try:
+                    tf_map = {"1D": "day", "1W": "week"}
+                    period = tf_map.get(tf, "day")
+                    raw_rows = fetch_kline(code, period=period, count=lim, adj="qfq")
+                    out = tencent_kline_rows_to_dicts(raw_rows)
+                    if out:
+                        _tencent_breaker.record_success()
+                        return self.filter_and_limit(
+                            out,
+                            limit=lim,
+                            before_time=before_time,
+                            after_time=after_time,
+                            truncate=(after_time is None),
+                        )
+                except Exception as e:
+                    _tencent_breaker.record_failure()
+                    logger.warning("tencent kline fetch failed: %s", e)
 
         # Tier 3: yfinance (works when Yahoo not rate-limited)
-        rows = fetch_yfinance_klines(
-            is_hk=False, tencent_code=code, timeframe=tf, limit=lim, before_time=before_time
-        )
-        if rows:
-            return self.filter_and_limit(
-                rows,
-                limit=lim,
-                before_time=before_time,
-                after_time=after_time,
-                truncate=(after_time is None),
-            )
+        if _yfinance_breaker.is_open():
+            logger.debug("Circuit breaker OPEN for yfinance, skipping")
+        else:
+            try:
+                rows = fetch_yfinance_klines(
+                    is_hk=False, tencent_code=code, timeframe=tf, limit=lim, before_time=before_time
+                )
+                if rows:
+                    _yfinance_breaker.record_success()
+                    return self.filter_and_limit(
+                        rows,
+                        limit=lim,
+                        before_time=before_time,
+                        after_time=after_time,
+                        truncate=(after_time is None),
+                    )
+            except Exception as e:
+                _yfinance_breaker.record_failure()
+                logger.warning("yfinance kline fetch failed: %s", e)
 
         # Tier 4: AkShare (fragile overseas, last resort)
-        if tf in ("1m", "5m", "15m", "30m", "1H", "4H"):
-            rows = fetch_akshare_minute_klines(
-                is_hk=False, tencent_code=code, timeframe=tf, limit=lim, before_time=before_time
-            )
-        elif tf == "1W":
-            rows = fetch_akshare_weekly_klines(
-                is_hk=False, tencent_code=code, limit=lim, before_time=before_time
-            )
-        else:
+        if _akshare_breaker.is_open():
+            logger.debug("Circuit breaker OPEN for akshare, skipping")
             rows = []
+        else:
+            try:
+                if tf in ("1m", "5m", "15m", "30m", "1H", "4H"):
+                    rows = fetch_akshare_minute_klines(
+                        is_hk=False, tencent_code=code, timeframe=tf, limit=lim, before_time=before_time
+                    )
+                elif tf == "1W":
+                    rows = fetch_akshare_weekly_klines(
+                        is_hk=False, tencent_code=code, limit=lim, before_time=before_time
+                    )
+                else:
+                    rows = []
+                if rows:
+                    _akshare_breaker.record_success()
+            except Exception as e:
+                _akshare_breaker.record_failure()
+                logger.warning("akshare kline fetch failed: %s", e)
+                rows = []
 
         return self.filter_and_limit(
             rows,

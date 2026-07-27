@@ -10,6 +10,7 @@ from app.services.grid.engine import GridEngine
 from app.services.grid.validator import validate_grid_config
 from app.services.bot_scripts.grid_runtime import prepare_bot_market_guards
 from app.utils.logger import get_logger
+from app.utils.risk_guard import DEFAULT_TAKER_FEE_RATE
 from app.utils.strategy_runtime_logs import append_strategy_log
 
 logger = get_logger(__name__)
@@ -132,7 +133,7 @@ class GridRestingRunner:
         except Exception:
             fee_rate = 0.0
         if fee_rate <= 0:
-            fee_rate = 0.001
+            fee_rate = DEFAULT_TAKER_FEE_RATE
         ok, msg, warnings = validate_grid_config(
             cfg,
             initial_capital=float(self.trading_config.get("initial_capital") or 0),

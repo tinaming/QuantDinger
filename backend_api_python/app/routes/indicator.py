@@ -3,7 +3,7 @@ Indicator APIs (local-first).
 
 These endpoints are used by the frontend `/indicator-analysis` page.
 In the original architecture, the frontend called PHP endpoints like:
-`/addons/quantdinger/indicator/getIndicators`.
+`/addons/chanquant/indicator/getIndicators`.
 
 For local mode, we expose Python equivalents under `/api/indicator/*`.
 """
@@ -670,13 +670,64 @@ def _czsc_prompt_section() -> str:
     """Build the CZSC (缠论) section for the AI indicator generation system prompt.
 
     Returns an empty string if czsc is not installed, so the prompt is unchanged.
+    Includes both pre-computed column docs and signal function reference.
     """
     try:
         from app.services.czsc_bridge import get_czsc_column_docs, is_czsc_enabled
 
         if not is_czsc_enabled():
             return ''
-        return '\n' + get_czsc_column_docs() + '\n'
+
+        parts = [
+            '\n## CZSC (缠论/Chan Theory) — 默认推荐分析工具\n',
+            'ChanQuant 平台默认推荐使用缠论（CZSC）分析。所有 K 线数据已预计算缠论特征列',
+            '（czsc_* 前缀），您可以直接使用这些列构建策略，无需额外导入 czsc 库。\n',
+            '\n' + get_czsc_column_docs(),
+        ]
+
+        # Add guidance for using czsc_signal_ columns from signal functions
+        parts.append(
+            "\n## Using czsc_signal_ columns\n\n"
+            "If `czsc_signal_*` columns are present in df, they contain signal function "
+            "values (0/1 or continuous). Use them as additional features for entry/exit "
+            "conditions. Example: `df['czsc_signal_cxt_bi_end_V240526'] == 1` detects "
+            "bi endpoint. Combine multiple signal columns for stronger confirmation."
+        )
+
+        # Best practices for CZSC timeframe selection
+        parts.append(
+            "\n## 缠论分析最佳实践\n\n"
+            "- **30 分钟及以上级别**：推荐使用中枢（czsc_zs_*）分析，识别中枢位置、"
+            "趋势方向、买卖点类型，适合波段交易策略。\n"
+            "- **5 分钟级别**：推荐使用分型（czsc_fx_*）和笔（czsc_bi_*）分析，"
+            "捕捉快速反转和短线入场点。\n"
+            "- **多级别共振**：结合大级别趋势方向（czsc_trend）和小级别买点"
+            "（czsc_bs_type），可获得更高胜率信号。\n"
+            "- **A 股场景**：30 分钟级别中枢分析效果最佳，可配合 czsc_trend "
+            "过滤趋势行情，避免盘整中的假信号。\n"
+        )
+
+        # A-stock + CZSC example snippet
+        parts.append(
+            "\n## A 股 + 缠论示例代码片段\n\n"
+            "```python\n"
+            "# 缠论买点 + 趋势过滤示例\n"
+            "df = df.copy()\n"
+            "bs_type = df['czsc_bs_type'].astype(str).str.strip()\n"
+            "is_buy = bs_type.isin(['1buy', '2buy', '3buy'])\n"
+            "trend_up = df['czsc_trend'] >= 0\n"
+            "long_entry = is_buy & trend_up\n"
+            "def edge(s):\n"
+            "    return s & ~s.shift(1).fillna(False)\n"
+            "df['open_long'] = edge(long_entry).astype(bool)\n"
+            "df['close_short'] = edge(long_entry).astype(bool)\n"
+            "is_sell = bs_type.isin(['1sell', '2sell', '3sell'])\n"
+            "df['open_short'] = edge(is_sell & (df['czsc_trend'] <= 0)).astype(bool)\n"
+            "df['close_long'] = edge(is_sell).astype(bool)\n"
+            "```\n"
+        )
+
+        return '\n'.join(parts) + '\n'
     except Exception:
         return ''
 
@@ -711,10 +762,12 @@ def ai_generate():
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    # QuantDinger indicator IDE: chart render + backtest; must pass server verify-code + safe_exec rules.
+    # ChanQuant indicator IDE: chart render + backtest; must pass server verify-code + safe_exec rules.
     SYSTEM_PROMPT = """# Role
 
-You write production-ready **QuantDinger** indicator scripts: Python that runs in the Indicator IDE, renders on the K-line chart, and drives **backtest entries/exits** via boolean signals. Code must be syntactically valid, safe for the host sandbox, and match the exact I/O contract below.
+You write production-ready **ChanQuant** indicator scripts: Python that runs in the Indicator IDE, renders on the K-line chart, and drives **backtest entries/exits** via boolean signals. Code must be syntactically valid, safe for the host sandbox, and match the exact I/O contract below.
+
+**ChanQuant 平台默认推荐使用缠论（CZSC）分析。** 所有 K 线数据已预计算缠论特征列（czsc_* 前缀），您可以直接使用这些列构建策略。当用户请求缠论/chanlun/缠论相关策略时，优先使用预计算的 czsc_* 列。
 
 # Runtime (strict)
 
@@ -928,11 +981,11 @@ Return **only** valid Python source: **no** markdown fences, **no** ` ``` `, **n
         user_prompt = prompt
         if existing:
             user_prompt = (
-                "# Existing QuantDinger indicator code (migrate it to the four-way execution contract):\n\n```python\n"
+                "# Existing ChanQuant indicator code (migrate it to the four-way execution contract):\n\n```python\n"
                 + existing.strip()
                 + "\n```\n\n# Change request:\n\n"
                 + prompt
-                + "\n\nReturn one full replacement script: same QuantDinger rules (my_indicator_name/description, df = df.copy(), declared @param values must be read via params.get(...), four-way execution columns, output dict with optional layers, list lengths == len(df)). "
+                + "\n\nReturn one full replacement script: same ChanQuant rules (my_indicator_name/description, df = df.copy(), declared @param values must be read via params.get(...), four-way execution columns, output dict with optional layers, list lengths == len(df)). "
                 "For every declared @param, the params.get fallback default must exactly match the declared default. "
                 "Python only - no markdown, no prose outside the code."
             )
@@ -1008,7 +1061,7 @@ Return **only** valid Python source: **no** markdown fences, **no** ` ``` `, **n
 
         issues_text = _format_validation_issues(validation)
         repair_prompt = (
-            "You produced QuantDinger indicator code that failed automatic validation. "
+            "You produced ChanQuant indicator code that failed automatic validation. "
             "Fix the code while preserving the user's trading idea and parameters. "
             "Return one full replacement script only.\n\n"
             f"# Original user request\n{prompt}\n\n"
@@ -1017,7 +1070,7 @@ Return **only** valid Python source: **no** markdown fences, **no** ` ``` `, **n
             + bad_code.strip()
             + "\n```\n\n"
             "# Repair requirements\n"
-            "- Keep QuantDinger indicator contract intact.\n"
+            "- Keep ChanQuant indicator contract intact.\n"
             "- If code declares # @param, read each declared param via params.get(...), and the fallback default must exactly match the declared # @param default.\n"
             "- Ensure df['open_long'], df['close_long'], df['open_short'], and df['close_short'] are boolean Series.\n"
             "- Ensure output exists and all plot/signal data lengths equal len(df).\n"

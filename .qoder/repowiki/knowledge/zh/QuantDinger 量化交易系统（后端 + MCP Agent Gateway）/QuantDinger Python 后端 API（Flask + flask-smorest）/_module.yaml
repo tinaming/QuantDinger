@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend_api
+title: QuantDinger Python 后端 API（Flask + flask-smorest）
+scope:
+    - backend_api_python/
+source_files: []
+depends_on: []
+related_to:
+    - path: mcp_server

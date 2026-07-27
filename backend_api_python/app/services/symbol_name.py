@@ -94,7 +94,7 @@ def normalize_crypto_symbol(symbol: str) -> str:
     """Canonicalise a crypto symbol to ``BASE/QUOTE`` form, defaulting to
     ``BASE/USDT`` when no quote is supplied.
 
-    This is the single source of truth for the rule "in QuantDinger, a Crypto
+    This is the single source of truth for the rule "in ChanQuant, a Crypto
     symbol is always stored as ``BASE/QUOTE``". We deliberately keep it pure
     (no ccxt / network calls) so it can be invoked from any layer — route
     handlers, services, migrations — without dragging in heavy dependencies.

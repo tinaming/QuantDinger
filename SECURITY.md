@@ -1,6 +1,6 @@
 # Security Policy
 
-QuantDinger is a **local-first, self-hosted quantitative trading system**.
+ChanQuant is a **local-first, self-hosted quantitative trading system**.
 
 Security is a core design principle of the project, but it is important to
 understand the **responsibility boundaries** that come with self-hosted software.
@@ -12,26 +12,26 @@ and what to expect from the process.
 
 ## 🔒 Supported Versions
 
-QuantDinger is under active development.
+ChanQuant is under active development.
 
 At this stage:
 - The **`main` branch** is the only supported version for security updates.
 - Older commits, forks, or modified deployments are **not actively supported**.
 
 Users are strongly encouraged to stay up to date with the latest release
-or commit when running QuantDinger in production environments.
+or commit when running ChanQuant in production environments.
 
 ---
 
 ## 🧠 Security Model & Scope
 
-QuantDinger is designed to run **entirely under the user’s control**.
+ChanQuant is designed to run **entirely under the user's control**.
 
 ### In Scope
 We consider the following areas in scope for security review:
 
 - Source code vulnerabilities in this repository
-- Authentication and authorization logic within QuantDinger
+- Authentication and authorization logic within ChanQuant
 - Handling of API keys, secrets, and credentials by the application
 - Strategy execution logic and isolation boundaries
 - Default configuration security issues
@@ -42,13 +42,13 @@ The following are outside the scope of this security policy:
 - Misconfigured user environments (OS, Docker, firewall, cloud host)
 - Compromised user machines or infrastructure
 - Third-party services, exchanges, or APIs
-- Modified or unofficial builds of QuantDinger
+- Modified or unofficial builds of ChanQuant
 
 ---
 
 ## 📣 Reporting a Vulnerability
 
-If you believe you have found a security vulnerability in QuantDinger,
+If you believe you have found a security vulnerability in ChanQuant,
 we appreciate responsible disclosure.
 
 ### How to Report
@@ -95,7 +95,7 @@ in release notes or documentation, if desired.
 
 ## ⚠️ Disclaimer
 
-QuantDinger is provided **as-is**, without warranty.
+ChanQuant is provided **as-is**, without warranty.
 
 As a self-hosted system, users are responsible for:
 - securing their own environments
@@ -106,4 +106,4 @@ As a self-hosted system, users are responsible for:
 
 Security is not a feature — it is a shared responsibility.
 
-Thank you for helping keep QuantDinger safe.
+Thank you for helping keep ChanQuant safe.

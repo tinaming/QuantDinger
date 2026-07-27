@@ -10,7 +10,7 @@ Indicator Translator - 指标多语言翻译服务
 
 支持的语言列表来源
 ==================
-QuantDinger-Vue-src/src/locales/lang/ 下的所有 .js — 10 种：
+ChanQuant-Vue-src/src/locales/lang/ 下的所有 .js — 10 种：
 zh-CN, en-US, zh-TW, ar-SA, de-DE, fr-FR, ja-JP, ko-KR, th-TH, vi-VN。
 
 容错策略

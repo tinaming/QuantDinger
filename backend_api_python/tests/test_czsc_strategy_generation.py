@@ -38,7 +38,7 @@ CZSC_TREND_INDICATOR_CODE = '''
 # @param trend_filter int 1 Trend filter: 1=only trend direction, 0=allow all
 
 my_indicator_name = "CZSC Trend Reversal"
-my_indicator_description = "缠论趋势反转策略：基于笔方向翻转 + 买卖点 + 趋势过滤"
+my_indicator_description = "缠论因果反转：笔确认结束处反手（见底做多 / 见顶做空）"
 
 df = df.copy()
 trend_filter = int(params.get('trend_filter', 1))
@@ -50,18 +50,15 @@ bs_type = df['czsc_bs_type'].fillna('')
 trend = df['czsc_trend'].fillna(0)
 zs_position = df['czsc_zs_position'].fillna('')
 
-# ── Raw signal conditions ──
-# Long entry: upward stroke begins (bi_dir flips from -1/0 to +1)
-# AND either trend is up OR a buy point appeared
+# Causal: bi_flip_* means the stroke just completed (confirmed), not "began".
+# bi_flip_up = upward stroke completed = top  → SHORT
+# bi_flip_dn = downward stroke completed = bottom → LONG
 bi_flip_up = (bi_dir == 1) & (bi_dir_prev != 1)
-has_buy_point = bs_type.str.contains('buy', case=False, na=False) & (bs_type != '')
-long_cond = bi_flip_up & (has_buy_point | (trend >= 0))
-
-# Short entry: downward stroke begins (bi_dir flips from 1/0 to -1)
-# AND either trend is down OR a sell point appeared
 bi_flip_dn = (bi_dir == -1) & (bi_dir_prev != -1)
+has_buy_point = bs_type.str.contains('buy', case=False, na=False) & (bs_type != '')
 has_sell_point = bs_type.str.contains('sell', case=False, na=False) & (bs_type != '')
-short_cond = bi_flip_dn & (has_sell_point | (trend <= 0))
+long_cond = bi_flip_dn & (has_buy_point | (trend >= 0))
+short_cond = bi_flip_up & (has_sell_point | (trend <= 0))
 
 # Apply trend filter: only trade in the dominant trend direction
 if trend_filter == 1:
@@ -77,15 +74,15 @@ def edge(s):
 long_edge = edge(long_cond)
 short_edge = edge(short_cond)
 
-# ── Four-way execution columns ──
-# open_long: flip-up edge (closes short if any, opens long)
-# close_long: flip-down edge (exits long)
-# open_short: flip-down edge (closes long if any, opens short)
-# close_short: flip-up edge (exits short)
+# ── Four-way execution columns (causal-reversal) ──
+# open_long: flip-down edge (bottom confirmed)
+# close_long: flip-up edge (top confirmed → exit long)
+# open_short: flip-up edge (top confirmed)
+# close_short: flip-down edge (bottom confirmed → exit short)
 df['open_long'] = long_edge
-df['close_long'] = edge(bi_flip_dn)
+df['close_long'] = edge(bi_flip_up)
 df['open_short'] = short_edge
-df['close_short'] = edge(bi_flip_up)
+df['close_short'] = edge(bi_flip_dn)
 
 # ── Signal markers for chart ──
 buy_marks = [
@@ -375,6 +372,16 @@ class TestBacktestCzscInjection:
         for col in ("open_long", "close_long", "open_short", "close_short"):
             assert col in result_df.columns, f"Missing four-way column: {col}"
             assert result_df[col].dtype == bool, f"Column {col} should be bool, got {result_df[col].dtype}"
+
+    def test_causal_reversal_flip_mapping(self):
+        """Causal-reversal: completed down stroke → long; completed up stroke → short."""
+        assert "long_cond = bi_flip_dn" in CZSC_TREND_INDICATOR_CODE
+        assert "short_cond = bi_flip_up" in CZSC_TREND_INDICATOR_CODE
+        # Must NOT use pre-causal / trend-follow mapping (flip_up→long).
+        assert "long_cond = bi_flip_up" not in CZSC_TREND_INDICATOR_CODE
+        assert "short_cond = bi_flip_dn" not in CZSC_TREND_INDICATOR_CODE
+        assert 'df[\'close_long\'] = edge(bi_flip_up)' in CZSC_TREND_INDICATOR_CODE
+        assert 'df[\'close_short\'] = edge(bi_flip_dn)' in CZSC_TREND_INDICATOR_CODE
 
 
 # ---------------------------------------------------------------------------
