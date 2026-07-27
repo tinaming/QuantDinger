@@ -1,4 +1,4 @@
----
+﻿---
 name: test-writer
 description: >-
   为 ChanQuant 后端自动生成符合项目规范的 pytest 测试代码。
@@ -95,7 +95,7 @@ def test_order_placement(mock_exchange_cls):
 
 ```powershell
 # 运行刚写的测试
-cd d:\aaron\miniso\QuantDinger\backend_api_python
+cd d:\aaron\miniso\ChanQuant\backend_api_python
 pytest tests/test_xxx.py -v
 ```
 

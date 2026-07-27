@@ -22,6 +22,7 @@ AI_CHAT = "AIChat"
 QUICK_TRADE = "QuickTrade"
 IBKR = "IBKR"
 ALPACA = "Alpaca"
+QMT = "QMT"
 COINOS = "CoinOS"
 COINOS_MARKET = "CoinOS-Market"
 COINOS_HYPERLIQUID = "CoinOS-Hyperliquid"
@@ -54,6 +55,7 @@ ALL_TAGS = [
     {"name": QUICK_TRADE, "description": "Manual quick trade (Internal)"},
     {"name": IBKR, "description": "Interactive Brokers adapter (Internal)"},
     {"name": ALPACA, "description": "Alpaca adapter (Internal)"},
+    {"name": QMT, "description": "QMT/miniQMT A-share broker via local bridge (Internal)"},
     {"name": COINOS, "description": "CoinOS Skills integration — crypto market data, trading, analytics (Internal)"},
     {"name": COINOS_MARKET, "description": "AiCoin market data — 200+ exchanges, 183 endpoints (Public)"},
     {"name": COINOS_HYPERLIQUID, "description": "Hyperliquid whale analytics and on-chain perp data (Public)"},

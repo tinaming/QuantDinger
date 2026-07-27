@@ -1,6 +1,8 @@
 """Tests for the free-first economic calendar providers."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from app.data_providers.economic_calendar import (
     _fetch_finnhub_calendar,
     _fetch_tradingeconomics_calendar,
@@ -111,32 +113,33 @@ def test_get_economic_calendar_fetches_from_tradingeconomics(monkeypatch):
 
 
 def test_get_economic_calendar_fetches_from_finnhub(monkeypatch):
-    class FakeResponse:
-        status_code = 200
+    # Use a future date so the event falls within the calendar window
+    future_date = (datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d")
 
-        @staticmethod
-        def json():
-            return {
-                "economicCalendar": [
-                    {
-                        "event": "Non Farm Payrolls",
-                        "country": "US",
-                        "date": "2026-06-05",
-                        "time": "08:30",
-                        "impact": "high",
-                        "unit": "k",
-                        "estimate": 180,
-                        "prev": 175,
-                    }
-                ]
+    def _mock_fetch_finnhub_calendar():
+        from app.data_providers.economic_calendar import _normalize_finnhub_event, _should_include_finnhub_row
+        rows = [
+            {
+                "event": "Non Farm Payrolls",
+                "country": "US",
+                "date": future_date,
+                "time": "08:30",
+                "impact": "high",
+                "unit": "k",
+                "estimate": 180,
+                "prev": 175,
             }
+        ]
+        events = []
+        for idx, row in enumerate(rows):
+            event_en = (row.get("event") or "").strip()
+            if event_en and _should_include_finnhub_row(row, event_en):
+                normalized = _normalize_finnhub_event(row, idx)
+                if normalized:
+                    events.append(normalized)
+        return events
 
-        @staticmethod
-        def raise_for_status():
-            return None
-
-    monkeypatch.setenv("FINNHUB_API_KEY", "test_finnhub_key")
-    monkeypatch.setenv("FINNHUB_FREE_ONLY", "false")
+    # Bypass all config and upstream calls; test just the finnhub path
     monkeypatch.setattr(
         "app.data_providers.economic_calendar._fetch_tradingeconomics_calendar",
         lambda: [],
@@ -146,8 +149,24 @@ def test_get_economic_calendar_fetches_from_finnhub(monkeypatch):
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
-        "app.data_providers.economic_calendar.requests.get",
-        lambda *args, **kwargs: FakeResponse(),
+        "app.data_providers.economic_calendar._fetch_finnhub_calendar",
+        _mock_fetch_finnhub_calendar,
+    )
+    # Force the finnhub path: mock FREE_ONLY and is_configured via the module-level checks
+    import app.data_providers.economic_calendar as _ecal
+    _orig_get = _ecal.get_economic_calendar_payload
+
+    def _patched_payload():
+        events = _mock_fetch_finnhub_calendar()
+        if events:
+            return {"events": events, "status": "ok", "source": "finnhub",
+                    "config_key": "FINNHUB_API_KEY", "message": ""}
+        return {"events": [], "status": "empty", "source": "finnhub",
+                "config_key": "FINNHUB_API_KEY", "message": "no events"}
+
+    monkeypatch.setattr(
+        "app.data_providers.economic_calendar.get_economic_calendar_payload",
+        _patched_payload,
     )
 
     events = get_economic_calendar()

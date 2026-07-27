@@ -299,6 +299,8 @@ def get_signal_docs_for_prompt(
         for sig in shown:
             name = sig.get("name", "")
             params = sig.get("param_template", {})
+            if not isinstance(params, dict):
+                params = {}
             params_str = ", ".join(f"{k}={v}" for k, v in params.items()) if params else ""
             lines.append(f"- `{name}`" + (f" ({params_str})" if params_str else ""))
 

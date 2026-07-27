@@ -1,4 +1,4 @@
----
+﻿---
 name: aicoin-freqtrade
 description: "Use when user asks about Freqtrade — strategy creation, backtest, hyperopt, switching strategies / pairs / dry-run mode, querying live bot status / balance / open positions / 盈亏. Trigger words: 'write strategy', 'create strategy', 'backtest', 'switch strategy', 'switch to live', 'open positions', 'P&L', '写策略', '创建策略', '回测', '部署策略', '切策略', '切实盘', '当前持仓', '今天赚多少', '盈亏'. In CoinClaw containers (OpenClaw / Hermes / Claude Code) freqtrade is a supervisord-managed daemon on :8080 — this skill auto-detects engine + paths via lib/coinclaw-env.mjs and never spawns competing freqtrade processes. Outside CoinClaw it falls back to host mode (clone freqtrade + nohup). For prices/charts use aicoin-market. For exchange trading use aicoin-trading. For Hyperliquid use aicoin-hyperliquid."
 metadata: { "openclaw": { "primaryEnv": "AICOIN_ACCESS_KEY_ID", "requires": { "bins": ["node"] }, "homepage": "https://www.aicoin.com/opendata", "source": "https://github.com/aicoincom/coinos-skills", "license": "MIT" } }
@@ -15,8 +15,8 @@ required_environment_variables:
 
 # AiCoin Freqtrade
 
-> **SKILL 目录**: `d:\aaron\miniso\QuantDinger\.qoder\skills\coinos-skills\skills\aicoin-freqtrade`
-> 所有脚本命令先 `cd d:\aaron\miniso\QuantDinger\.qoder\skills\coinos-skills\skills\aicoin-freqtrade` 再执行。
+> **SKILL 目录**: `d:\aaron\miniso\ChanQuant\.qoder\skills\coinos-skills\skills\aicoin-freqtrade`
+> 所有脚本命令先 `cd d:\aaron\miniso\ChanQuant\.qoder\skills\coinos-skills\skills\aicoin-freqtrade` 再执行。
 
 Freqtrade 策略 / 回测 / 部署 / 实时控制 — 跨 CoinClaw 三引擎自动适配。
 

@@ -1,7 +1,7 @@
----
+﻿---
 name: chat-diagnosis
 description: >-
-  诊断 QuantDinger AI Copilot 聊天性能与准确性问题。追踪从用户消息到 LLM 响应的完整管线，
+  诊断 ChanQuant AI Copilot 聊天性能与准确性问题。追踪从用户消息到 LLM 响应的完整管线，
   识别 intent 分类、enrich、LLM 调用各环节的耗时与准确性问题。
   Trigger: '聊天慢', '第二条消息不准', 'chat slow', 'chat diagnosis', 'AI聊天诊断'
 ---

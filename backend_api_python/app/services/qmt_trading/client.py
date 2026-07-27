@@ -145,7 +145,7 @@ class QMTConfig:
     qmt_username: str = ""         # miniQMT 登录用户名 (for reference/logging)
     qmt_password: str = ""         # miniQMT 登录密码 (for reference/logging)
     qmt_lib_path: str = ""         # xtquant 所在 site-packages 路径
-    strategy_name: str = "QuantDinger"  # 策略名称 (下单时传入)
+    strategy_name: str = "ChanQuant"  # 策略名称 (下单时传入)
 
 
 @dataclass
@@ -339,7 +339,7 @@ class QMTClient:
         symbol: str,
         side: str,
         volume: float,
-        comment: str = "QuantDinger",
+        comment: str = "ChanQuant",
     ) -> OrderResult:
         """
         Place a market order at the latest price (最新价).
@@ -368,7 +368,7 @@ class QMTClient:
         side: str,
         volume: float,
         price: float,
-        comment: str = "QuantDinger",
+        comment: str = "ChanQuant",
     ) -> OrderResult:
         """
         Place a limit order at the specified price (限价).
@@ -399,7 +399,7 @@ class QMTClient:
         volume: float,
         price: float,
         price_type: str,   # "latest" or "fix"
-        comment: str = "QuantDinger",
+        comment: str = "ChanQuant",
     ) -> OrderResult:
         """Internal: place an order via xtquant order_stock."""
         try:
@@ -442,16 +442,18 @@ class QMTClient:
                     message=f"Invalid volume: {volume}. Must be a positive integer (shares).",
                 )
 
-            # Warn if not a multiple of 100 (1 lot)
-            if order_volume % 100 != 0:
-                logger.warning(
-                    "QMT order volume %d is not a multiple of 100 (1 lot). "
-                    "Most A-share brokers require 100-share lots.",
-                    order_volume,
+            # Board-lot gate (matches /api/qmt/order + qmt_bridge)
+            code = (qmt_symbol or "").split(".")[0]
+            lot = 1 if code.startswith(("688", "689", "300", "301", "8", "4", "9")) else 100
+            if order_volume < lot or (lot > 1 and order_volume % lot != 0):
+                return OrderResult(
+                    success=False,
+                    message=f"qmt_volume_below_lot:{order_volume} (board lot is {lot} shares)",
+                    raw={"symbol": qmt_symbol, "volume": order_volume, "lot": lot},
                 )
 
-            strategy_name = self.config.strategy_name or "QuantDinger"
-            remark = comment or "QuantDinger"
+            strategy_name = self.config.strategy_name or "ChanQuant"
+            remark = comment or "ChanQuant"
 
             logger.info(
                 "QMT placing order: symbol=%s side=%s volume=%d price=%.4f price_type=%s",

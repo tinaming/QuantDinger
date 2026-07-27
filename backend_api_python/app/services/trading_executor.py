@@ -469,6 +469,31 @@ class TradingExecutor:
             sym = sym.split(":", 1)[0]
         return f"{int(strategy_id)}|{sym}|{(signal_type or '').strip().lower()}|{int(signal_ts or 0)}"
 
+    def _count_outstanding_pending_orders(
+        self, strategy_id: int, symbol: str, side: str
+    ) -> int:
+        """Count pending orders with status in ('sent', 'pending') for a given strategy/symbol/side.
+
+        Used to prevent order spam when ghost positions keep clearing but the exchange
+        order hasn't filled yet (e.g. limit order at stale price).
+        """
+        try:
+            from app.utils.db import get_db_connection
+            sig_type = 'open_long' if side == 'buy' else 'open_short'
+            with get_db_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT COUNT(*) FROM pending_orders "
+                    "WHERE strategy_id = %s AND symbol = %s AND signal_type = %s "
+                    "AND status IN ('sent', 'pending')",
+                    (strategy_id, symbol, sig_type),
+                )
+                count = cur.fetchone()[0]
+                return int(count or 0)
+        except Exception:
+            return 0
+
+
     def _should_skip_signal_once_per_candle(
         self,
         strategy_id: int,
@@ -2102,12 +2127,28 @@ class TradingExecutor:
             _default_history = _tf_history.get(timeframe, 500)
             _env_val = int(os.getenv('K_LINE_HISTORY_GET_NUMBER', '0'))
             history_limit = max(_default_history, _env_val) if _env_val > 0 else _default_history
+
+            # Log the actual data source that will be used for this market
+            from app.data_sources.factory import DataSourceFactory as _DSF
+            _ds_name = _DSF.get_source_name(market_category) if market_category else 'unknown'
+            if kline_exchange_id:
+                _ds_label = f"{kline_exchange_id}/{kline_market_type or 'swap'}"
+            else:
+                _ds_label = _ds_name
+            logger.info(
+                "Strategy %d fetching K-lines: market=%s symbol=%s tf=%s limit=%d source=%s",
+                strategy_id, market_category, symbol, timeframe, history_limit, _ds_label,
+            )
+
             klines = self._fetch_latest_kline(
                 symbol, timeframe, limit=history_limit, market_category=market_category,
                 exchange_id=kline_exchange_id, market_type=kline_market_type,
             )
             if not klines or len(klines) < 2:
-                _abort_loop(f"failed to fetch K-lines for {market_category}:{symbol} {timeframe} via {kline_exchange_id or 'default'}/{kline_market_type or 'default'} (need at least 2 bars)")
+                _abort_loop(
+                    f"failed to fetch K-lines for {market_category}:{symbol} {timeframe} "
+                    f"via source={_ds_label} (need at least 2 bars, got {len(klines) if klines else 0})"
+                )
                 return
             logger.info(rf'Strategy {strategy_id} history kline number: {len(klines)}')
             
@@ -2480,6 +2521,9 @@ class TradingExecutor:
                                             for _ns in _new_signals:
                                                 if _ns.get('type') not in _exit_types and _ns.get('timestamp', 0) > 0 and (_now_ts - _ns.get('timestamp', 0)) > _exp_thresh:
                                                     _ns['timestamp'] = _now_ts
+                                                    # Also refresh trigger_price to current market price
+                                                    # to avoid placing limit orders at stale historical prices
+                                                    _ns['trigger_price'] = current_price
                                             _new_signal_types = {s.get('type') for s in _new_signals}
                                             _merged = [
                                                 s for s in (pending_signals or [])
@@ -2504,6 +2548,8 @@ class TradingExecutor:
                                             for _s in pending_signals:
                                                 if _s.get('type') not in _exit_types and _s.get('timestamp', 0) > 0 and (_now_ts - _s.get('timestamp', 0)) > _exp_thresh:
                                                     _s['timestamp'] = _now_ts
+                                                    # Also refresh trigger_price to current market price
+                                                    _s['trigger_price'] = current_price
                                             # Resolve conflicting signals: exit takes priority over entry in same direction
                                             _types = {s.get('type') for s in pending_signals}
                                             if 'close_long' in _types and 'open_long' in _types:
@@ -2908,6 +2954,23 @@ class TradingExecutor:
 
                         logger.info(f"Strategy {strategy_id} triggered signals: {triggered_signals}")
 
+                        # A-share market hours guard: skip signal execution outside trading hours
+                        if market_category and 'cnstock' in market_category.lower():
+                            try:
+                                from app.markets.cn_stock_hours import is_cn_market_open
+                                if not is_cn_market_open():
+                                    logger.info(
+                                        f"Strategy {strategy_id}: CN market closed, dropping "
+                                        f"{len(triggered_signals)} signal(s) — orders only execute "
+                                        f"09:30-11:30 / 13:00-15:00 CST"
+                                    )
+                                    triggered_signals = []
+                            except Exception:
+                                pass  # non-critical, proceed
+
+                        if not triggered_signals:
+                            continue  # nothing to execute, advance to next tick
+
                         current_positions = self._get_current_positions(strategy_id, symbol)
                         state = self._effective_position_state(strategy_id, symbol, current_positions)
 
@@ -2977,6 +3040,24 @@ class TradingExecutor:
                             execute_price = trigger_price if trigger_price > 0 else current_price
                             signal_ts = int(selected.get("timestamp") or 0)
                             current_positions = self._get_current_positions(strategy_id, symbol)
+
+                            # Guard: skip if there's already an outstanding (sent/pending) entry order
+                            # for this symbol, to prevent order spam loop when ghost position keeps
+                            # clearing while the exchange order hasn't filled yet.
+                            if signal_type in ('open_long', 'open_short'):
+                                try:
+                                    _pending_side = 'buy' if signal_type == 'open_long' else 'sell'
+                                    _dup_count = self._count_outstanding_pending_orders(
+                                        strategy_id, symbol, _pending_side
+                                    )
+                                    if _dup_count > 0:
+                                        logger.info(
+                                            f"Strategy {strategy_id}: skipping {signal_type} — "
+                                            f"{_dup_count} outstanding pending {_pending_side} order(s) already exist"
+                                        )
+                                        continue
+                                except Exception:
+                                    pass  # non-critical, proceed to execute
 
                             if not self._is_signal_allowed(
                                 self._effective_position_state(strategy_id, symbol, current_positions),
@@ -4049,7 +4130,7 @@ class TradingExecutor:
                 # 扩展检测窗口：扫描最近 signal_lookback_bars 根已确认 bar，捕获 edge trigger 信号
                 # CZSC 10s 信号间隔 ~30-80 bar，需要大窗口确保捕获
                 _tf = str(trading_config.get('timeframe', ''))
-                _default_lookback = 100 if _tf in ('10s',) else (40 if _tf in ('1m', '3m', '5m') else 20)
+                _default_lookback = 100 if _tf in ('10s',) else (80 if _tf in ('5m',) else (40 if _tf in ('1m', '3m') else 20))
                 signal_lookback_bars = min(int(trading_config.get('signal_lookback_bars', _default_lookback)), 200)
 
                 entry_check_set = set()
@@ -4203,14 +4284,22 @@ class TradingExecutor:
                             })
 
             # ---- CZSC short-timeframe signal synthesis ----
-            # For 10s data, bi_dir flips are very sparse (every 30-160 bars).
-            # The edge-triggered indicator may not produce signals in the lookback window.
+            # For 10s/1m/3m/5m data, bi_dir flips are sparse and the edge-triggered
+            # indicator may not produce signals in the lookback window.
             # Synthesize entry/close signals based on the current CZSC stroke direction,
             # with full position awareness to avoid duplicate entries.
+            #
+            # Causal-reversal semantics (MUST match indicator):
+            #   bi_dir==1  = upward stroke confirmed = top   → prefer SHORT
+            #   bi_dir==-1 = downward stroke confirmed = bottom → prefer LONG
+            # Do NOT trend-follow bi_dir (that conflicts with causal-reversal strategies).
+            #
+            # IMPORTANT: This block now also runs when entry signals already exist,
+            # so that zhongshu-breakout stop-loss can fire independently.
             _has_entry = any(s.get('type') in ('open_long', 'open_short') for s in pending_signals)
             _czsc_tf = str((trading_config or {}).get('timeframe', ''))
-            if (not _has_entry and 'czsc_bi_dir' in executed_df.columns
-                    and _czsc_tf in ('10s', '1m', '3m')):
+            if ('czsc_bi_dir' in executed_df.columns
+                    and _czsc_tf in ('10s', '1m', '3m', '5m')):
                 _n = len(executed_df)
                 _bi = executed_df['czsc_bi_dir']
                 # Current bi_dir value at the last bar
@@ -4228,67 +4317,224 @@ class TradingExecutor:
                 except Exception:
                     _synth_ts = int(time.time())
 
-                # 1) If flat: generate entry signal based on current bi_dir
-                if _pos == 0 and _curr_bi != 0:
-                    if _curr_bi == 1 and _trade_dir in ('long', 'both'):
-                        if not any(s['type'] == 'open_long' for s in pending_signals):
-                            pending_signals.append({
-                                'type': 'open_long',
-                                'trigger_price': _last_close,
-                                'position_size': 0.0,
-                                'timestamp': _synth_ts
-                            })
-                    elif _curr_bi == -1 and _trade_dir in ('short', 'both'):
-                        if not any(s['type'] == 'open_short' for s in pending_signals):
-                            pending_signals.append({
-                                'type': 'open_short',
-                                'trigger_price': _last_close,
-                                'position_size': 0.0,
-                                'timestamp': _synth_ts
-                            })
+                # ---- CZSC structural context: center (中枢) + bi_length ----
+                _has_zs = ('czsc_zs_zd' in executed_df.columns
+                           and 'czsc_zs_zg' in executed_df.columns
+                           and 'czsc_zs_position' in executed_df.columns)
+                if _has_zs and _n > 0:
+                    _raw_zd = executed_df['czsc_zs_zd'].iloc[-1]
+                    _raw_zg = executed_df['czsc_zs_zg'].iloc[-1]
+                    _zs_zd = float(_raw_zd) if (_raw_zd is not None and not pd.isna(_raw_zd) and float(_raw_zd) > 0) else 0.0
+                    _zs_zg = float(_raw_zg) if (_raw_zg is not None and not pd.isna(_raw_zg) and float(_raw_zg) > 0) else 0.0
+                    _zs_pos = str(executed_df['czsc_zs_position'].iloc[-1] or '')
+                else:
+                    _zs_zd = 0.0
+                    _zs_zg = 0.0
+                    _zs_pos = ''
 
-                # 2) If position opposes bi_dir: generate close + reverse
-                elif _pos == 1 and _curr_bi == -1:
-                    # Long position but bi_dir turned down → close long
-                    if not any(s['type'] == 'close_long' for s in pending_signals):
-                        pending_signals.append({
-                            'type': 'close_long',
-                            'trigger_price': _last_close,
-                            'position_size': 0.0,
-                            'timestamp': _synth_ts
-                        })
-                    # Also open short if allowed
-                    if _trade_dir in ('short', 'both') and not any(s['type'] == 'open_short' for s in pending_signals):
-                        pending_signals.append({
-                            'type': 'open_short',
-                            'trigger_price': _last_close,
-                            'position_size': 0.0,
-                            'timestamp': _synth_ts
-                        })
-                elif _pos == -1 and _curr_bi == 1:
-                    # Short position but bi_dir turned up → close short
-                    if not any(s['type'] == 'close_short' for s in pending_signals):
-                        pending_signals.append({
-                            'type': 'close_short',
-                            'trigger_price': _last_close,
-                            'position_size': 0.0,
-                            'timestamp': _synth_ts
-                        })
-                    # Also open long if allowed
-                    if _trade_dir in ('long', 'both') and not any(s['type'] == 'open_long' for s in pending_signals):
-                        pending_signals.append({
-                            'type': 'open_long',
-                            'trigger_price': _last_close,
-                            'position_size': 0.0,
-                            'timestamp': _synth_ts
-                        })
-                # 3) Position aligned with bi_dir: no entry needed (already in the right direction)
+                _bi_len = 0
+                if 'czsc_bi_length' in executed_df.columns and _n > 0:
+                    try:
+                        _bi_len = int(executed_df['czsc_bi_length'].iloc[-1] or 0)
+                    except Exception:
+                        _bi_len = 0
+
+                # Minimum bi_length filter: skip entries on very short strokes (noise)
+                _min_bi_len = 3  # Require at least 3 bars in the current stroke
+                _bi_long_enough = _bi_len >= _min_bi_len
+
+                # ============================================
+                # Part A: Zhongshu breakout stop-loss exit
+                # ============================================
+                # When price breaks through the center boundary against the
+                # position, generate a close signal immediately — even if bi_dir
+                # hasn't flipped yet. This prevents holding a losing position
+                # through a structural breakdown (中枢破位).
+                #
+                # IMPORTANT: After stop-loss fires, we MUST block immediate
+                # re-entry in the same direction. Without this, Part B entry
+                # synthesis sees pos=0 + bi_dir unchanged → instantly re-opens
+                # → hits stop-loss again → whipsaw loop losing commission+slippage
+                # every ~10s tick.  This was the primary cause of rapid losses
+                # in causal-mode live trading.
+                if _has_zs and _zs_zd > 0 and _zs_zg > 0:
+                    if _pos == 1 and _last_close < _zs_zd:
+                        # Long position, price broke below center ZD → stop loss
+                        if not any(s['type'] == 'close_long' for s in pending_signals):
+                            pending_signals.append({
+                                'type': 'close_long',
+                                'trigger_price': _last_close,
+                                'position_size': 0.0,
+                                'timestamp': _synth_ts
+                            })
+                            logger.info(
+                                f"[CZSC_SYNTH] zhongshu breakout stop-loss: close_long "
+                                f"(price={_last_close:.4f} < zs_zd={_zs_zd:.4f})"
+                            )
+                    elif _pos == -1 and _last_close > _zs_zg:
+                        # Short position, price broke above center ZG → stop loss
+                        if not any(s['type'] == 'close_short' for s in pending_signals):
+                            pending_signals.append({
+                                'type': 'close_short',
+                                'trigger_price': _last_close,
+                                'position_size': 0.0,
+                                'timestamp': _synth_ts
+                            })
+                            logger.info(
+                                f"[CZSC_SYNTH] zhongshu breakout stop-loss: close_short "
+                                f"(price={_last_close:.4f} > zs_zg={_zs_zg:.4f})"
+                            )
+
+                # ============================================
+                # Part B: Entry synthesis (only when no indicator entry)
+                # ============================================
+                if not _has_entry:
+                    # 1) If flat: generate entry signal based on current bi_dir
+                    #    Skip if price is inside a center (consolidation = whipsaw risk)
+                    #    Skip if bi is too short (noise)
+                    #    Skip if zhongshu stop-loss just fired (anti-whipsaw: wait for
+                    #      bi_dir flip before re-entry — otherwise we'd close+reopen
+                    #      every tick, bleeding commission and slippage)
+                    if _pos == 0 and _curr_bi != 0:
+                        _skip_entry = False
+                        if _has_zs and _zs_pos == 'inside':
+                            _skip_entry = True
+                            logger.info(
+                                f"[CZSC_SYNTH] skip entry: price inside zhongshu "
+                                f"(zs_zd={_zs_zd:.4f}, zs_zg={_zs_zg:.4f})"
+                            )
+                        # Anti-whipsaw: if price has broken out of zhongshu
+                        # (zs_pos != 'inside' and zs is valid), don't enter in
+                        # the direction that the stop-loss would immediately
+                        # kill. Causal-reversal: bi==1→short, bi==-1→long.
+                        #   price > zs_zg → don't open_short (Part A would kill)
+                        #   price < zs_zd → don't open_long  (Part A would kill)
+                        if (_has_zs and _zs_pos != '' and _zs_pos != 'inside'
+                                and _zs_zd > 0 and _zs_zg > 0):
+                            if _last_close > _zs_zg and _curr_bi == 1:
+                                _skip_entry = True
+                                logger.info(
+                                    f"[CZSC_SYNTH] skip entry: price {_last_close:.4f} "
+                                    f"above zs_zg={_zs_zg:.4f}, short would be stop-lossed"
+                                )
+                            elif _last_close < _zs_zd and _curr_bi == -1:
+                                _skip_entry = True
+                                logger.info(
+                                    f"[CZSC_SYNTH] skip entry: price {_last_close:.4f} "
+                                    f"below zs_zd={_zs_zd:.4f}, long would be stop-lossed"
+                                )
+                        if not _bi_long_enough:
+                            _skip_entry = True
+                            logger.info(
+                                f"[CZSC_SYNTH] skip entry: bi too short "
+                                f"(bi_length={_bi_len} < {_min_bi_len})"
+                            )
+
+                        if not _skip_entry:
+                            # Causal-reversal: confirmed up stroke → SHORT; down → LONG
+                            if _curr_bi == 1 and _trade_dir in ('short', 'both'):
+                                if not any(s['type'] == 'open_short' for s in pending_signals):
+                                    pending_signals.append({
+                                        'type': 'open_short',
+                                        'trigger_price': _last_close,
+                                        'position_size': 0.0,
+                                        'timestamp': _synth_ts
+                                    })
+                            elif _curr_bi == -1 and _trade_dir in ('long', 'both'):
+                                if not any(s['type'] == 'open_long' for s in pending_signals):
+                                    pending_signals.append({
+                                        'type': 'open_long',
+                                        'trigger_price': _last_close,
+                                        'position_size': 0.0,
+                                        'timestamp': _synth_ts
+                                    })
+
+                    # 2) Position opposes causal-reversal target: close + reverse
+                    #    Target: bi==1 → short; bi==-1 → long
+                    #    Skip reverse entry if inside zhongshu or bi too short
+                    elif _pos == 1 and _curr_bi == 1:
+                        # Long but upward stroke confirmed (top) → close long, open short
+                        if not any(s['type'] == 'close_long' for s in pending_signals):
+                            pending_signals.append({
+                                'type': 'close_long',
+                                'trigger_price': _last_close,
+                                'position_size': 0.0,
+                                'timestamp': _synth_ts
+                            })
+                        if (_trade_dir in ('short', 'both')
+                                and not any(s['type'] == 'open_short' for s in pending_signals)):
+                            _skip_reverse = False
+                            if _has_zs and _zs_pos == 'inside':
+                                _skip_reverse = True
+                                logger.info(
+                                    f"[CZSC_SYNTH] skip reverse entry (short): price inside zhongshu"
+                                )
+                            # Anti-whipsaw: if price > zs_zg, short would be
+                            # immediately stop-lossed by Part A next tick.
+                            if (_has_zs and _zs_zg > 0
+                                    and _last_close > _zs_zg):
+                                _skip_reverse = True
+                                logger.info(
+                                    f"[CZSC_SYNTH] skip reverse entry (short): "
+                                    f"price {_last_close:.4f} > zs_zg={_zs_zg:.4f}"
+                                )
+                            if not _bi_long_enough:
+                                _skip_reverse = True
+                                logger.info(
+                                    f"[CZSC_SYNTH] skip reverse entry (short): bi too short"
+                                )
+                            if not _skip_reverse:
+                                pending_signals.append({
+                                    'type': 'open_short',
+                                    'trigger_price': _last_close,
+                                    'position_size': 0.0,
+                                    'timestamp': _synth_ts
+                                })
+                    elif _pos == -1 and _curr_bi == -1:
+                        # Short but downward stroke confirmed (bottom) → close short, open long
+                        if not any(s['type'] == 'close_short' for s in pending_signals):
+                            pending_signals.append({
+                                'type': 'close_short',
+                                'trigger_price': _last_close,
+                                'position_size': 0.0,
+                                'timestamp': _synth_ts
+                            })
+                        if (_trade_dir in ('long', 'both')
+                                and not any(s['type'] == 'open_long' for s in pending_signals)):
+                            _skip_reverse = False
+                            if _has_zs and _zs_pos == 'inside':
+                                _skip_reverse = True
+                                logger.info(
+                                    f"[CZSC_SYNTH] skip reverse entry (long): price inside zhongshu"
+                                )
+                            # Anti-whipsaw: if price < zs_zd, long would be
+                            # immediately stop-lossed by Part A next tick.
+                            if (_has_zs and _zs_zd > 0
+                                    and _last_close < _zs_zd):
+                                _skip_reverse = True
+                                logger.info(
+                                    f"[CZSC_SYNTH] skip reverse entry (long): "
+                                    f"price {_last_close:.4f} < zs_zd={_zs_zd:.4f}"
+                                )
+                            if not _bi_long_enough:
+                                _skip_reverse = True
+                                logger.info(
+                                    f"[CZSC_SYNTH] skip reverse entry (long): bi too short"
+                                )
+                            if not _skip_reverse:
+                                pending_signals.append({
+                                    'type': 'open_long',
+                                    'trigger_price': _last_close,
+                                    'position_size': 0.0,
+                                    'timestamp': _synth_ts
+                                })
+                    # 3) Position aligned with causal-reversal target: no entry needed
 
                 # Diagnostic log for CZSC synthesis
                 logger.info(
                     f"[CZSC_SYNTH] tf={_czsc_tf}, curr_bi={_curr_bi}, pos={_pos}, "
-                    f"trade_dir={_trade_dir}, pending_types="
-                    f"{[s['type'] for s in pending_signals]}"
+                    f"trade_dir={_trade_dir}, zs_pos={_zs_pos}, bi_len={_bi_len}, "
+                    f"pending_types={[s['type'] for s in pending_signals]}"
                 )
             # 去重：每种 signal type 只保留最新的（timestamp 最大的），防止 lookback 窗口内同类型信号导致重复执行
             _deduped_signals = {}
@@ -4298,15 +4544,62 @@ class TradingExecutor:
                     _deduped_signals[stype] = sig
             # Conflict resolution: when both close_X and open_X exist simultaneously
             # (e.g. close_long + open_long from rapid bi_dir flips in lookback window),
-            # drop the entry signal — close first, re-enter on the next confirmed candle.
+            # drop the entry signal ONLY IF the close is at the same time or later than the open.
+            # If the open is more recent (close already happened, new entry signal appeared),
+            # keep the entry — it represents the current market direction.
             _types_set = set(_deduped_signals.keys())
             if 'close_long' in _types_set and 'open_long' in _types_set:
-                del _deduped_signals['open_long']
-                logger.info("[CZSC_SYNTH] conflict resolved: dropped open_long (close_long present)")
+                _cl_ts = _deduped_signals['close_long'].get('timestamp', 0)
+                _ol_ts = _deduped_signals['open_long'].get('timestamp', 0)
+                if _cl_ts >= _ol_ts:
+                    del _deduped_signals['open_long']
+                    logger.info(f"[CZSC_SYNTH] conflict resolved: dropped open_long (close_long ts={_cl_ts} >= open_long ts={_ol_ts})")
+                else:
+                    del _deduped_signals['close_long']
+                    logger.info(f"[CZSC_SYNTH] conflict resolved: dropped close_long (open_long ts={_ol_ts} > close_long ts={_cl_ts}, keeping entry)")
             if 'close_short' in _types_set and 'open_short' in _types_set:
-                del _deduped_signals['open_short']
-                logger.info("[CZSC_SYNTH] conflict resolved: dropped open_short (close_short present)")
+                _cs_ts = _deduped_signals['close_short'].get('timestamp', 0)
+                _os_ts = _deduped_signals['open_short'].get('timestamp', 0)
+                if _cs_ts >= _os_ts:
+                    del _deduped_signals['open_short']
+                    logger.info(f"[CZSC_SYNTH] conflict resolved: dropped open_short (close_short ts={_cs_ts} >= open_short ts={_os_ts})")
+                else:
+                    del _deduped_signals['close_short']
+                    logger.info(f"[CZSC_SYNTH] conflict resolved: dropped close_short (open_short ts={_os_ts} > close_short ts={_cs_ts}, keeping entry)")
             pending_signals = list(_deduped_signals.values())
+
+            # ============================================
+            # Part C: Universal anti-whipsaw filter
+            # ============================================
+            # Applies to ALL entry signals (from indicator code OR CZSC_SYNTH).
+            # When price would trigger zhongshu breakout stop-loss, remove
+            # entry signals in the same direction to prevent open→close loops.
+            if _has_zs and _zs_zd > 0 and _zs_zg > 0:
+                _aw_types = set(s['type'] for s in pending_signals)
+                # If close_long already pending (from stop-loss or bi flip),
+                # remove any open_long to prevent immediate re-entry loop.
+                if 'close_long' in _aw_types and 'open_long' in _aw_types:
+                    pending_signals = [s for s in pending_signals if s['type'] != 'open_long']
+                    logger.info("[CZSC_SYNTH] anti-whipsaw: removed indicator open_long (close_long pending)")
+                if 'close_short' in _aw_types and 'open_short' in _aw_types:
+                    pending_signals = [s for s in pending_signals if s['type'] != 'open_short']
+                    logger.info("[CZSC_SYNTH] anti-whipsaw: removed indicator open_short (close_short pending)")
+                # If no position (pos=0) and price in stop-loss zone,
+                # block entry signals that would be immediately killed.
+                if _pos == 0:
+                    _aw_types = set(s['type'] for s in pending_signals)
+                    if _last_close < _zs_zd and 'open_long' in _aw_types:
+                        pending_signals = [s for s in pending_signals if s['type'] != 'open_long']
+                        logger.info(
+                            f"[CZSC_SYNTH] anti-whipsaw: blocked open_long "
+                            f"(price={_last_close:.4f} < zs_zd={_zs_zd:.4f}, would be stop-lossed)"
+                        )
+                    if _last_close > _zs_zg and 'open_short' in _aw_types:
+                        pending_signals = [s for s in pending_signals if s['type'] != 'open_short']
+                        logger.info(
+                            f"[CZSC_SYNTH] anti-whipsaw: blocked open_short "
+                            f"(price={_last_close:.4f} > zs_zg={_zs_zg:.4f}, would be stop-lossed)"
+                        )
 
             # CZSC 诊断日志：记录信号检测窗口内的状态，帮助排查实盘信号捕获问题
             if any(c.startswith('czsc_') for c in executed_df.columns):
@@ -4407,7 +4700,7 @@ class TradingExecutor:
                 'call_indicator': indicator_caller.call_indicator,
                 'leverage': float(trading_config.get('leverage', 1)),
                 'initial_capital': float(trading_config.get('initial_capital', 1000)),
-                'commission': 0.001,
+                'commission': DEFAULT_TAKER_FEE_RATE,
                 'trade_direction': str(trading_config.get('trade_direction', 'long')),
                 'initial_highest_price': float(initial_highest_price),
                 'initial_position': int(initial_position),

@@ -69,7 +69,7 @@ def _get_qmt_config():
         qmt_account_id=os.getenv("QMT_ACCOUNT_ID", ""),
         qmt_session_id=int(os.getenv("QMT_SESSION_ID", "123456")),
         qmt_lib_path=os.getenv("QMT_LIB_PATH", ""),
-        strategy_name=os.getenv("QMT_STRATEGY_NAME", "QuantDinger"),
+        strategy_name=os.getenv("QMT_STRATEGY_NAME", "ChanQuant"),
     )
 
 
@@ -266,7 +266,7 @@ def qmt_place_order():
     order_type = (body.get("order_type") or body.get("orderType") or "market").strip().lower()
     volume = body.get("volume") or body.get("qty") or body.get("quantity") or 0
     price = body.get("price") or body.get("limit_price") or body.get("limitPrice")
-    comment = (body.get("comment") or body.get("remark") or "QuantDinger").strip()
+    comment = (body.get("comment") or body.get("remark") or "ChanQuant").strip()
 
     if not symbol:
         return error(400, "symbol is required (e.g. '600036' or '600036.SH')")

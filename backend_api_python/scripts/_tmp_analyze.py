@@ -1,8 +1,8 @@
 import os, sys, json
 
-f1 = r'C:\Users\aaron\.qoder\cache\projects\QuantDinger-345186c9\agent-tools\62ae1e21\6abe55ad.txt'
-f2 = r'C:\Users\aaron\.qoder\cache\projects\QuantDinger-345186c9\agent-tools\62ae1e21\88cc0582.txt'
-out = r'd:\aaron\miniso\QuantDinger\_analysis_output.txt'
+f1 = r'C:\Users\aaron\.qoder\cache\projects\ChanQuant-345186c9\agent-tools\62ae1e21\6abe55ad.txt'
+f2 = r'C:\Users\aaron\.qoder\cache\projects\ChanQuant-345186c9\agent-tools\62ae1e21\88cc0582.txt'
+out = r'd:\aaron\miniso\ChanQuant\_analysis_output.txt'
 
 # Debug
 sys.stderr.write(f"f1 exists: {os.path.exists(f1)}\n")

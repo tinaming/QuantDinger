@@ -109,7 +109,7 @@ Skills 是比 Rule 更细粒度的指导。每个 Skill 是一个"任务剧本"�
 | Skill | 位置 | 用途 |
 |-------|------|------|
 | `chat-diagnosis` | `.qoder/skills/chat-diagnosis/` | 诊断 AI 聊天性能问题 |
-| `quantdinger-agent-workflow` | `.cursor/skills/quantdinger-agent-workflow/` | 代码编辑工作流 |
+| `quantdinger-agent-workflow` | `.cursor/skills/quantdinger-agent-workflow/` | 代码编辑工作流（skill 目录名保留原名） |
 | `aicoin-market` | `.qoder/skills/coinos-skills/` | 查行情、K线、资金费率 |
 | `aicoin-trading` | `.qoder/skills/coinos-skills/` | CEX 下单交易 |
 | `aicoin-freqtrade` | `.qoder/skills/coinos-skills/` | Freqtrade 策略/回测 |
@@ -140,8 +140,8 @@ MCP (Model Context Protocol) 让 AI 直接调用后端 API，无需你手动操�
     "quantdinger": {
       "command": "quantdinger-mcp",
       "env": {
-        "QUANTDINGER_BASE_URL": "http://localhost:5000",
-        "QUANTDINGER_AGENT_TOKEN": "你的agent_token"
+        "CHANQUANT_BASE_URL": "http://localhost:5000",
+        "CHANQUANT_AGENT_TOKEN": "你的agent_token"
       }
     }
   }

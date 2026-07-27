@@ -165,6 +165,16 @@ class StrategyReviewService:
                 language=language,
             )
 
+        # Attach chart URLs for K-line trade visualization.
+        # The frontend can render these as:
+        #   - An iframe pointing to `chart_url`
+        #   - Or fetch `chart_data_url` for JSON (candles + markers + summary)
+        base_report["chart"] = {
+            "chart_url": f"/api/chart/review?strategyId={strategy_id}&lookbackDays={lookback_days}",
+            "chart_data_url": f"/api/chart/trades/data?strategyId={strategy_id}",
+            "trades_chart_url": f"/api/chart/trades?strategyId={strategy_id}",
+        }
+
         base_report["history_id"] = None
         base_report["history_saved"] = False
         history_id = self._save_report(
@@ -356,7 +366,7 @@ class StrategyReviewService:
                 cur.execute(
                     """
                     SELECT id, strategy_id, symbol, side, size, entry_price,
-                           current_price, unrealized_pnl, created_at, updated_at
+                           current_price, unrealized_pnl, updated_at
                     FROM qd_strategy_positions
                     WHERE strategy_id = ?
                     ORDER BY id ASC
@@ -1244,9 +1254,22 @@ class StrategyReviewService:
             return default
 
     def _fallback_summary_zh(self, metrics: Dict[str, Any], diagnostics: List[Dict[str, Any]]) -> str:
+        _total = int(metrics.get('trade_events', 0) or 0)
+        _opening = int(metrics.get('opening_events', 0) or 0)
+        _closing = int(metrics.get('closed_trades_with_pnl', 0) or 0)
+        if _opening > 0 and _closing == 0:
+            return (
+                f"近{metrics.get('lookback_days', 30)}天复盘窗口内共有{_total}笔交易"
+                f"（其中开仓{_opening}笔、平仓{_closing}笔），"
+                f"目前持仓未平仓，暂无已实现盈亏；"
+                f"绩效页同口径收益率{metrics.get('performance_total_return_pct', metrics.get('total_return_pct', 0))}%，"
+                f"最大回撤{metrics.get('performance_max_drawdown_pct', metrics.get('max_drawdown_pct', 0))}%。"
+                f"窗口胜率{metrics.get('win_rate', 0)}%，盈亏比{metrics.get('profit_factor', 0)}。"
+                f"规则引擎识别到{len(diagnostics)}个复盘要点。"
+            )
         return (
-            f"近{metrics.get('lookback_days', 30)}天复盘窗口内共有"
-            f"{metrics.get('closed_trades_with_pnl', 0)}笔已实现盈亏交易，"
+            f"近{metrics.get('lookback_days', 30)}天复盘窗口内共有{_total}笔交易"
+            f"（其中开仓{_opening}笔、平仓{_closing}笔已实现盈亏），"
             f"窗口已实现净盈亏{metrics.get('window_net_pnl', metrics.get('total_net_pnl', 0))}；"
             f"绩效页同口径收益率{metrics.get('performance_total_return_pct', metrics.get('total_return_pct', 0))}%，"
             f"最大回撤{metrics.get('performance_max_drawdown_pct', metrics.get('max_drawdown_pct', 0))}%。"
@@ -1255,9 +1278,12 @@ class StrategyReviewService:
         )
 
     def _fallback_summary_en(self, metrics: Dict[str, Any], diagnostics: List[Dict[str, Any]]) -> str:
+        _total = int(metrics.get('trade_events', 0) or 0)
+        _opening = int(metrics.get('opening_events', 0) or 0)
+        _closing = int(metrics.get('closed_trades_with_pnl', 0) or 0)
         return (
             f"Over the last {metrics.get('lookback_days', 30)} days, the selected review window has "
-            f"{metrics.get('closed_trades_with_pnl', 0)} closed PnL trades and realised net PnL "
+            f"{_total} trade event(s) ({_opening} opening, {_closing} closed with PnL) and realised net PnL "
             f"{metrics.get('window_net_pnl', metrics.get('total_net_pnl', 0))}. "
             f"The performance-page aligned return is "
             f"{metrics.get('performance_total_return_pct', metrics.get('total_return_pct', 0))}%, "

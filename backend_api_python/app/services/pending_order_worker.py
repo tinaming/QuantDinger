@@ -102,6 +102,78 @@ ALPACA_FILL_DELTA_EPSILON = 1e-8
 _POSITION_SYNC_FD_BACKOFF_UNTIL = 0.0
 
 
+def _is_empty_position_error(error_msg: str) -> bool:
+    """Detect exchange errors that mean 'no position exists on exchange'.
+
+    Gate.io:  INCREASE_POSITION / empty position
+    Binance:  ReduceOnly Order is rejected
+    OKX:      close orders not allowed / no close position available
+    Bybit:    reduce only / position idx not match
+    """
+    if not error_msg:
+        return False
+    msg = str(error_msg).lower()
+    patterns = (
+        "increase_position", "empty position", "empty_position",
+        "reduceonly order is rejected", "reduce only order is rejected",
+        "close orders not allowed", "no close position available",
+        "no position to close", "position not found",
+    )
+    return any(p in msg for p in patterns)
+
+
+def _clear_ghost_position(strategy_id: int, symbol: str, side: str, reason: str) -> None:
+    """Delete ghost position from qd_strategy_positions when exchange confirms no position.
+
+    This prevents infinite close-order retry loops when the exchange position was already
+    closed (e.g. by a previous filled close order that wasn't properly recorded locally).
+    """
+    try:
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                "DELETE FROM qd_strategy_positions "
+                "WHERE strategy_id = %s AND symbol = %s AND side = %s",
+                (int(strategy_id), str(symbol), str(side)),
+            )
+            deleted = cur.rowcount
+            db.commit()
+            cur.close()
+        if deleted > 0:
+            logger.warning(
+                "[GhostPosition] Cleared ghost position: strategy=%s symbol=%s side=%s reason='%s' deleted=%s",
+                strategy_id, symbol, side, reason, deleted,
+            )
+            append_strategy_log(
+                int(strategy_id), "warning",
+                f"Ghost position cleared: {symbol} {side} - {reason}",
+            )
+    except Exception as e:
+        logger.error("[GhostPosition] Failed to clear: strategy=%s err=%s", strategy_id, e)
+
+
+def _clear_all_ghost_positions_for_strategy(strategy_id: int, symbol: str, reason: str) -> None:
+    """Delete ALL positions (long+short) for a strategy/symbol when exchange confirms flat."""
+    try:
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                "DELETE FROM qd_strategy_positions "
+                "WHERE strategy_id = %s AND symbol = %s",
+                (int(strategy_id), str(symbol)),
+            )
+            deleted = cur.rowcount
+            db.commit()
+            cur.close()
+        if deleted > 0:
+            logger.warning(
+                "[GhostPosition] Cleared ALL ghost positions: strategy=%s symbol=%s reason='%s' deleted=%s",
+                strategy_id, symbol, reason, deleted,
+            )
+    except Exception as e:
+        logger.error("[GhostPosition] Failed to clear all: strategy=%s err=%s", strategy_id, e)
+
+
 def _position_sync_fd_backoff_sec() -> float:
     try:
         return max(30.0, float(os.getenv("POSITION_SYNC_FD_BACKOFF_SEC", "90")))
@@ -304,6 +376,65 @@ class PendingOrderWorker:
                     or ""
                 ).strip().lower()
                 if strategy_uses_fill_ledger(sc):
+                    # [GhostPosition Fix] Even for fill-ledger strategies, do a lightweight
+                    # ghost check: if local DB has a position but exchange is FLAT, clear it.
+                    # This is a safety net for cases where the close-order ghost recovery in
+                    # _execute_live_order didn't fire (e.g. worker crash mid-execution).
+                    #
+                    # [market_category Guard] Skip A-stock strategies — their positions
+                    # are managed by QMT bridge, not by crypto exchanges.
+                    _fl_mc = str(
+                        sc.get("market_category")
+                        or (sc.get("trading_config") or {}).get("market_category")
+                        or ""
+                    ).strip().lower()
+                    if _fl_mc in ("cnstock", "cn_stock", "a_stock", "astock"):
+                        logger.debug(
+                            "[PositionSync] Strategy %s fill-ledger ghost check skipped: market_category=%s (A-stock)",
+                            sid, _fl_mc,
+                        )
+                        continue
+                    if plist:  # only check if we have local positions
+                        from app.services.live_trading.position_query import query_exchange_position_size as _qeps
+                        try:
+                            sync_user_id_fl = int(sc.get("user_id") or 1)
+                            ex_cfg_fl = resolve_exchange_config(sc.get("exchange_config") or {}, user_id=sync_user_id_fl)
+                            ex_id_fl = str(ex_cfg_fl.get("exchange_id") or "").strip().lower()
+                            mt_fl = str(sc.get("market_type") or ex_cfg_fl.get("market_type") or "swap").strip().lower()
+                            if mt_fl in ("futures", "future", "perp", "perpetual"):
+                                mt_fl = "swap"
+                            if ex_id_fl:
+                                fl_client = create_client(ex_cfg_fl, market_type=mt_fl)
+                                fl_allowed = strategy_allowed_symbols(sc)
+                                for _prow in plist:
+                                    _p_sym = str(_prow.get("symbol") or "").strip()
+                                    _p_side = str(_prow.get("side") or "").strip().lower()
+                                    _p_size = 0.0
+                                    try:
+                                        _p_size = float(_prow.get("size") or 0.0)
+                                    except Exception:
+                                        _p_size = 0.0
+                                    if not _p_sym or _p_size <= 0 or _p_side not in ("long", "short"):
+                                        continue
+                                    if fl_allowed and _p_sym not in fl_allowed:
+                                        continue
+                                    try:
+                                        _exch_qty = float(
+                                            _qeps(
+                                                client=fl_client, symbol=_p_sym,
+                                                pos_side=_p_side, market_type=mt_fl,
+                                                exchange_config=ex_cfg_fl if isinstance(ex_cfg_fl, dict) else {},
+                                            ) or 0.0
+                                        )
+                                        if _exch_qty <= 0:
+                                            _clear_ghost_position(
+                                                int(sid), _p_sym, _p_side,
+                                                "fill_ledger_sync: exchange flat",
+                                            )
+                                    except Exception as _fle:
+                                        logger.debug("[PositionSync] fill-ledger ghost check failed: sid=%s sym=%s err=%s", sid, _p_sym, _fle)
+                        except Exception as _flc:
+                            logger.debug("[PositionSync] fill-ledger ghost check setup failed: sid=%s err=%s", sid, _flc)
                     logger.debug(
                         "[PositionSync] Strategy %s skipped: fill-ledger strategy (L3)",
                         sid,
@@ -328,6 +459,22 @@ class PendingOrderWorker:
                 market_type = str(market_type or "swap").strip().lower()
                 if market_type in ("futures", "future", "perp", "perpetual"):
                     market_type = "swap"
+                
+                # [GhostPosition Fix] Skip A-stock (cnstock) strategies — their positions
+                # are managed by QMT bridge, not by crypto exchanges like Gate/Binance.
+                # Without this guard, crypto exchange sync sees "no positions" for A-stock
+                # symbols (e.g. 600519.SH) and incorrectly clears local DB rows every cycle.
+                _market_category = str(
+                    sc.get("market_category")
+                    or (sc.get("trading_config") or {}).get("market_category")
+                    or ""
+                ).strip().lower()
+                if _market_category in ("cnstock", "cn_stock", "a_stock", "astock"):
+                    logger.debug(
+                        "[PositionSync] Strategy %s skipped: market_category=%s (A-stock, not managed by crypto exchange)",
+                        sid, _market_category,
+                    )
+                    continue
                 
                 # Get strategy's trading symbol(s) to filter positions
                 # Only sync positions for symbols that this strategy actually trades
@@ -354,12 +501,14 @@ class PendingOrderWorker:
 
                 cache_key = position_sync_cache_key(sync_user_id, exchange_id, market_type, exchange_config)
                 cached_snap = get_position_sync_snapshot(cache_key)
+                _exch_api_ok = False  # Track whether exchange API call succeeded this cycle
                 exch_size: Dict[str, Dict[str, float]] = {}
                 exch_entry_price: Dict[str, Dict[str, float]] = {}
                 exch_inst_id: Dict[str, Dict[str, str]] = {}
 
                 if cached_snap is not None:
                     exch_size, exch_entry_price, exch_inst_id = cached_snap
+                    _exch_api_ok = True  # Cached snapshot was from a previous successful API call
                 else:
                     if is_exchange_sync_backoff(cache_key):
                         logger.warning(
@@ -391,6 +540,7 @@ class PendingOrderWorker:
                     if isinstance(client, BinanceFuturesClient) and market_type == "swap":
                         try:
                             all_pos = client.get_positions() or []
+                            _exch_api_ok = True
                         except Exception as e:
                             msg = str(e)
                             if is_file_descriptor_exhausted(e):
@@ -437,6 +587,7 @@ class PendingOrderWorker:
                     elif isinstance(client, OkxClient) and market_type == "swap":
                         try:
                             resp = client.get_positions()
+                            _exch_api_ok = True
                         except Exception as e:
                             # Fatal auth/config errors should auto-stop the strategy to avoid endless spam.
                             # Typical OKX response: HTTP 401 {"msg":"Invalid OK-ACCESS-KEY","code":"50111"}
@@ -514,8 +665,29 @@ class PendingOrderWorker:
                                     # Don't set entry_price, will remain 0.0
 
                     elif isinstance(client, BitgetMixClient) and market_type == "swap":
-                        product_type = str(exchange_config.get("product_type") or exchange_config.get("productType") or "USDT-FUTURES")
-                        resp = client.get_positions(product_type=product_type)
+                        try:
+                            product_type = str(exchange_config.get("product_type") or exchange_config.get("productType") or "USDT-FUTURES")
+                            resp = client.get_positions(product_type=product_type)
+                            _exch_api_ok = True
+                        except Exception as e:
+                            msg = str(e)
+                            if is_file_descriptor_exhausted(e):
+                                set_exchange_sync_backoff(cache_key, seconds=_position_sync_fd_backoff_sec())
+                                _activate_position_sync_fd_backoff(msg)
+                                return
+                            if is_fatal_exchange_error(msg):
+                                logger.error(f"[PositionSync] Strategy {sid} Bitget fatal auth error; auto-stopping. error={msg}")
+                                auto_stop_live_strategy(int(sid), msg, source="position_sync_bitget")
+                                continue
+                            if is_exchange_rate_limit_error(msg):
+                                set_exchange_sync_backoff(cache_key)
+                                logger.error(
+                                    "[PositionSync] Bitget rate limit for key=%s; backing off %ss. error=%s",
+                                    cache_key, int(exchange_sync_backoff_sec()), msg,
+                                )
+                                continue
+                            logger.error(f"[PositionSync] Strategy {sid} Bitget get_positions failed: {msg}", exc_info=True)
+                            continue
                         data = resp.get("data") if isinstance(resp, dict) else None
                         if isinstance(data, list):
                             for p in data:
@@ -540,8 +712,29 @@ class PendingOrderWorker:
                                     pass
 
                     elif isinstance(client, BybitClient) and market_type == "swap":
+                        try:
+                            resp = client.get_positions(settle_coin="USDT")
+                            _exch_api_ok = True
+                        except Exception as e:
+                            msg = str(e)
+                            if is_file_descriptor_exhausted(e):
+                                set_exchange_sync_backoff(cache_key, seconds=_position_sync_fd_backoff_sec())
+                                _activate_position_sync_fd_backoff(msg)
+                                return
+                            if is_fatal_exchange_error(msg):
+                                logger.error(f"[PositionSync] Strategy {sid} Bybit fatal auth error; auto-stopping. error={msg}")
+                                auto_stop_live_strategy(int(sid), msg, source="position_sync_bybit")
+                                continue
+                            if is_exchange_rate_limit_error(msg):
+                                set_exchange_sync_backoff(cache_key)
+                                logger.error(
+                                    "[PositionSync] Bybit rate limit for key=%s; backing off %ss. error=%s",
+                                    cache_key, int(exchange_sync_backoff_sec()), msg,
+                                )
+                                continue
+                            logger.error(f"[PositionSync] Strategy {sid} Bybit get_positions failed: {msg}", exc_info=True)
+                            continue
                         # Bybit v5 requires symbol or settleCoin; use USDT for full linear book.
-                        resp = client.get_positions(settle_coin="USDT")
                         lst = (((resp.get("result") or {}).get("list")) if isinstance(resp, dict) else None) or []
                         if isinstance(lst, list):
                             for p in lst:
@@ -568,7 +761,28 @@ class PendingOrderWorker:
                                     pass
 
                     elif isinstance(client, GateUsdtFuturesClient) and market_type == "swap":
-                        resp = client.get_positions()
+                        try:
+                            resp = client.get_positions()
+                            _exch_api_ok = True
+                        except Exception as e:
+                            msg = str(e)
+                            if is_file_descriptor_exhausted(e):
+                                set_exchange_sync_backoff(cache_key, seconds=_position_sync_fd_backoff_sec())
+                                _activate_position_sync_fd_backoff(msg)
+                                return
+                            if is_fatal_exchange_error(msg):
+                                logger.error(f"[PositionSync] Strategy {sid} Gate fatal auth error; auto-stopping. error={msg}")
+                                auto_stop_live_strategy(int(sid), msg, source="position_sync_gate")
+                                continue
+                            if is_exchange_rate_limit_error(msg):
+                                set_exchange_sync_backoff(cache_key)
+                                logger.error(
+                                    "[PositionSync] Gate rate limit for key=%s; backing off %ss. error=%s",
+                                    cache_key, int(exchange_sync_backoff_sec()), msg,
+                                )
+                                continue
+                            logger.error(f"[PositionSync] Strategy {sid} Gate get_positions failed: {msg}", exc_info=True)
+                            continue
                         items = resp if isinstance(resp, list) else []
                         if isinstance(items, list):
                             for p in items:
@@ -601,7 +815,28 @@ class PendingOrderWorker:
                                     pass
 
                     elif isinstance(client, KrakenFuturesClient) and market_type == "swap":
-                        resp = client.get_open_positions()
+                        try:
+                            resp = client.get_open_positions()
+                            _exch_api_ok = True
+                        except Exception as e:
+                            msg = str(e)
+                            if is_file_descriptor_exhausted(e):
+                                set_exchange_sync_backoff(cache_key, seconds=_position_sync_fd_backoff_sec())
+                                _activate_position_sync_fd_backoff(msg)
+                                return
+                            if is_fatal_exchange_error(msg):
+                                logger.error(f"[PositionSync] Strategy {sid} Kraken fatal auth error; auto-stopping. error={msg}")
+                                auto_stop_live_strategy(int(sid), msg, source="position_sync_kraken")
+                                continue
+                            if is_exchange_rate_limit_error(msg):
+                                set_exchange_sync_backoff(cache_key)
+                                logger.error(
+                                    "[PositionSync] Kraken rate limit for key=%s; backing off %ss. error=%s",
+                                    cache_key, int(exchange_sync_backoff_sec()), msg,
+                                )
+                                continue
+                            logger.error(f"[PositionSync] Strategy {sid} Kraken get_open_positions failed: {msg}", exc_info=True)
+                            continue
                         positions = (resp.get("openPositions") if isinstance(resp, dict) else None) or (resp.get("open_positions") if isinstance(resp, dict) else None) or []
                         if isinstance(positions, list):
                             for p in positions:
@@ -630,6 +865,7 @@ class PendingOrderWorker:
                         # if the user had pre-existing inventory in TWS.
                         try:
                             positions = client.get_positions() or []
+                            _exch_api_ok = True
                         except Exception as e:
                             msg = str(e)
                             if is_file_descriptor_exhausted(e):
@@ -675,6 +911,7 @@ class PendingOrderWorker:
                         # normalization is needed here.
                         try:
                             positions = client.get_positions() or []
+                            _exch_api_ok = True
                         except Exception as e:
                             if is_file_descriptor_exhausted(e):
                                 set_exchange_sync_backoff(cache_key, seconds=_position_sync_fd_backoff_sec())
@@ -710,6 +947,7 @@ class PendingOrderWorker:
 
                         try:
                             spot_rows = list_spot_wallet_positions(client) or []
+                            _exch_api_ok = True
                         except Exception as e:
                             if is_file_descriptor_exhausted(e):
                                 set_exchange_sync_backoff(cache_key, seconds=_position_sync_fd_backoff_sec())
@@ -777,10 +1015,30 @@ class PendingOrderWorker:
                 else:
                     logger.debug(f"[PositionSync] Strategy {sid} ({safe_cfg.get('exchange_id', 'unknown')}) has NO positions on exchange.")
 
-                # Keep exchange truth in L1 only. Strategy positions (L3) must be
-                # produced by that strategy's own fills, otherwise two live
-                # strategies sharing ETH/USDT would both inherit the same
-                # exchange account position.
+                # [GhostPosition Fix] Reconcile L3 strategy positions:
+                # When exchange reports FLAT but local DB has a position, clear the ghost.
+                # This catches cases where a close order filled on exchange but wasn't
+                # recorded locally (e.g. fill_recovery missed it, or first close filled=0).
+                #
+                # SAFETY GUARD: _exch_api_ok must be True (API succeeded) before clearing.
+                # If the API call failed (DNS error, timeout, rate limit), exch_size will
+                # be empty and we must NOT interpret that as "exchange flat".
+                for _prow in plist:
+                    if not _exch_api_ok:
+                        break  # API failed this cycle, skip ghost clearing
+                    _p_sym = str(_prow.get("symbol") or "").strip()
+                    _p_side = str(_prow.get("side") or "").strip().lower()
+                    _p_size = 0.0
+                    try:
+                        _p_size = float(_prow.get("size") or 0.0)
+                    except Exception:
+                        _p_size = 0.0
+                    if not _p_sym or _p_size <= 0:
+                        continue
+                    if _p_sym in allowed_symbols or not allowed_symbols:
+                        _exch_side = exch_size.get(_p_sym, {}).get(_p_side, 0.0)
+                        if _exch_side <= 0:
+                            _clear_ghost_position(int(sid), _p_sym, _p_side, "position_sync: exchange flat")
             except Exception as e:
                 msg = str(e)
                 if is_file_descriptor_exhausted(e):
@@ -1517,6 +1775,21 @@ class PendingOrderWorker:
             )
             return
 
+        # QMT Bridge client (A-share via miniQMT bridge on Windows host)
+        from app.services.live_trading.factory import QMTBridgeRestClient
+        if isinstance(client, QMTBridgeRestClient):
+            self._execute_qmt_order(
+                order_id=order_id,
+                order_row=order_row,
+                payload=payload,
+                client=client,
+                strategy_id=strategy_id,
+                exchange_config=exchange_config,
+                _notify_live_best_effort=_notify_live_best_effort,
+                _console_print=_console_print,
+            )
+            return
+
         client_oid = make_client_order_id(exchange_id=exchange_id, strategy_id=strategy_id, order_id=order_id)
         sig = str(signal_type or "").strip().lower()
         # Spot does not support short signals in this system.
@@ -1746,6 +2019,13 @@ class PendingOrderWorker:
                 price=ref_price,
                 payload=payload,
             )
+            # [GhostPosition Fix] Close order with no position - clear any stale local position.
+            if reduce_only:
+                _close_side = "long" if "long" in str(signal_type).lower() else "short"
+                _clear_ghost_position(
+                    int(strategy_id), str(symbol), _close_side,
+                    f"close_zero_remaining: {friendly_error[:80]}",
+                )
             self._mark_failed(order_id=order_id, error=friendly_error)
             _notify_live_best_effort(status="failed", error=friendly_error, amount_hint=amount)
             if reduce_only:
@@ -1909,6 +2189,15 @@ class PendingOrderWorker:
                     remaining = 0.0
                     append_strategy_log(strategy_id, "error", f"Exchange market order partially failed ({symbol} {signal_type}): {friendly_error} (partial filled={fills.total_base})")
                 else:
+                    # [GhostPosition Fix] Detect empty-position errors and clear ghost positions.
+                    # When exchange says "no position" for a close order, the local DB position
+                    # is stale - clear it to prevent infinite close retry loops.
+                    if reduce_only and _is_empty_position_error(friendly_error):
+                        _close_side = "long" if "long" in str(signal_type).lower() else "short"
+                        _clear_ghost_position(
+                            int(strategy_id), str(symbol), _close_side,
+                            f"close_failed_empty_position: {friendly_error[:100]}",
+                        )
                     self._mark_failed(order_id=order_id, error=friendly_error)
                     _console_print(f"[worker] order failed: strategy_id={strategy_id} pending_id={order_id} err={friendly_error}")
                     _notify_live_best_effort(status="failed", error=friendly_error, amount_hint=amount, price_hint=ref_price)
@@ -1916,6 +2205,13 @@ class PendingOrderWorker:
                     return
             except Exception as e:
                 logger.warning(f"live market phase unexpected error: pending_id={order_id}, strategy_id={strategy_id}, cfg={safe_cfg}, err={e}")
+                # [GhostPosition Fix] Clear ghost position on unexpected close errors too.
+                if reduce_only and _is_empty_position_error(str(e)):
+                    _close_side = "long" if "long" in str(signal_type).lower() else "short"
+                    _clear_ghost_position(
+                        int(strategy_id), str(symbol), _close_side,
+                        f"unexpected_error_empty_position: {str(e)[:80]}",
+                    )
                 self._mark_failed(order_id=order_id, error=str(e))
                 _console_print(f"[worker] order unexpected error: strategy_id={strategy_id} pending_id={order_id} err={e}")
                 _notify_live_best_effort(status="failed", error=str(e), amount_hint=amount, price_hint=ref_price)
@@ -1959,6 +2255,103 @@ class PendingOrderWorker:
                     strategy_id,
                     "info",
                     f"Fill recovered ({rec_src}): {signal_type} {symbol} qty={rec_filled:.6f} @ ~{avg_final:.4f}",
+                )
+
+        # [GhostPosition Fix - Close Order Safety Net]
+        # When a close/reduce order completes with filled=0, the exchange may have
+        # actually closed the position (fill polling missed it). Query the exchange
+        # to verify: if flat → clear the local ghost position to prevent infinite
+        # close retry loops ("INCREASE_POSITION: empty position" every minute).
+        if filled_final <= 0 and reduce_only and pre_position_qty > 0:
+            try:
+                post_close_qty = float(
+                    query_exchange_position_size(
+                        client=client,
+                        symbol=str(symbol),
+                        pos_side=str(pos_side or ""),
+                        market_type=str(market_type or "swap"),
+                        exchange_config=exchange_config if isinstance(exchange_config, dict) else {},
+                    )
+                    or 0.0
+                )
+                # Also try to recover fill from the market order creation response.
+                # Gate.io market orders return fill_price/finish_as:"filled" in the
+                # creation response, but fill polling may return filled=0.
+                _market_resp = phases.get("market_place") or {}
+                _market_filled_qty = 0.0
+                _market_fill_price = 0.0
+                if isinstance(_market_resp, dict):
+                    try:
+                        _market_fill_price = float(_market_resp.get("fill_price") or 0.0)
+                    except (ValueError, TypeError):
+                        _market_fill_price = 0.0
+                    # If exchange says "filled" and left=0, the order completed.
+                    _finish_as = str(_market_resp.get("finish_as") or "").lower()
+                    _left = _market_resp.get("left")
+                    _resp_size = 0.0
+                    try:
+                        _resp_size = float(_market_resp.get("size") or 0.0)
+                    except (ValueError, TypeError):
+                        _resp_size = 0.0
+                    if _finish_as in ("filled", "closed") and _left is not None and int(_left) == 0 and _resp_size > 0:
+                        _market_filled_qty = _resp_size
+
+                if post_close_qty <= 0:
+                    # Exchange confirms FLAT — close order filled completely.
+                    filled_final = float(pre_position_qty)
+                    avg_final = _market_fill_price if _market_fill_price > 0 else float(ref_price or 0.0)
+                    phases["close_ghost_recovery"] = {
+                        "pre_qty": pre_position_qty,
+                        "post_qty": post_close_qty,
+                        "recovered_filled": filled_final,
+                        "source": "exchange_flat",
+                    }
+                    append_strategy_log(
+                        int(strategy_id), "warning",
+                        f"Close order verified flat on exchange ({symbol} {signal_type}): "
+                        f"pre={pre_position_qty:.6f}, post=0. Recovering fill for trade record.",
+                    )
+                elif post_close_qty < pre_position_qty:
+                    # Position decreased — close order partially/fully filled but fill polling missed it.
+                    filled_final = float(pre_position_qty - post_close_qty)
+                    avg_final = _market_fill_price if _market_fill_price > 0 else float(ref_price or 0.0)
+                    phases["close_ghost_recovery"] = {
+                        "pre_qty": pre_position_qty,
+                        "post_qty": post_close_qty,
+                        "recovered_filled": filled_final,
+                        "source": "exchange_decreased",
+                    }
+                    append_strategy_log(
+                        int(strategy_id), "warning",
+                        f"Close order fill recovered from exchange decrease ({symbol} {signal_type}): "
+                        f"pre={pre_position_qty:.6f}, post={post_close_qty:.6f}, filled={filled_final:.6f}.",
+                    )
+                elif _market_filled_qty > 0:
+                    # Exchange order response says "filled" but position didn't decrease
+                    # (could be timing — position query hasn't updated yet).
+                    filled_final = float(_market_filled_qty)
+                    avg_final = _market_fill_price if _market_fill_price > 0 else float(ref_price or 0.0)
+                    phases["close_ghost_recovery"] = {
+                        "pre_qty": pre_position_qty,
+                        "post_qty": post_close_qty,
+                        "recovered_filled": filled_final,
+                        "source": "market_response_filled",
+                    }
+                    append_strategy_log(
+                        int(strategy_id), "warning",
+                        f"Close order recovered from market response ({symbol} {signal_type}): "
+                        f"filled={filled_final:.6f} @ {avg_final:.4f}.",
+                    )
+                else:
+                    logger.info(
+                        "[GhostCheck] close order filled=0 but exchange still has position: "
+                        "strategy=%s symbol=%s pre=%s post=%s (genuine unfilled)",
+                        strategy_id, symbol, pre_position_qty, post_close_qty,
+                    )
+            except Exception as _gce:
+                logger.warning(
+                    "[GhostCheck] exchange position query failed: strategy=%s symbol=%s err=%s",
+                    strategy_id, symbol, _gce,
                 )
 
         res = type("Tmp", (), {"exchange_id": str(exchange_config.get("exchange_id") or ""), "exchange_order_id": str(market_order_id or limit_order_id), "raw": phases, "filled": filled_final, "avg_price": avg_final})()
@@ -2339,6 +2732,228 @@ class PendingOrderWorker:
             _console_print(f"[worker] Alpaca order exception: strategy_id={strategy_id} pending_id={order_id} err={e}")
             _notify_live_best_effort(status="failed", error=str(e))
             append_strategy_log(strategy_id, "error", f"Alpaca order exception ({symbol} {signal_type}): {e}")
+
+    def _execute_qmt_order(
+        self,
+        *,
+        order_id: int,
+        order_row: Dict[str, Any],
+        payload: Dict[str, Any],
+        client,  # QMTBridgeRestClient instance
+        strategy_id: int,
+        exchange_config: Dict[str, Any],
+        _notify_live_best_effort,
+        _console_print,
+    ) -> None:
+        """
+        Execute order via QMT Bridge for A-share (CNStock) trading.
+        Uses the QMT Bridge HTTP API on the Windows host.
+        A-share rules: long-only, minimum 100 shares, market order at latest price.
+        """
+        signal_type = payload.get("signal_type") or order_row.get("signal_type")
+        symbol = payload.get("symbol") or order_row.get("symbol")
+        amount = float(payload.get("amount") or order_row.get("amount") or 0.0)
+        ref_price = float(payload.get("ref_price") or payload.get("price") or order_row.get("price") or 0.0)
+
+        sig = str(signal_type or "").strip().lower()
+
+        # A-share: long-only, no short selling
+        if "short" in sig:
+            self._mark_failed(order_id=order_id, error="qmt_ashare_short_not_supported")
+            _console_print(f"[worker] QMT order rejected: strategy_id={strategy_id} pending_id={order_id} short not supported (A-share)")
+            _notify_live_best_effort(status="failed", error="qmt_ashare_short_not_supported")
+            return
+
+        # Map signal to side
+        if sig in ("open_long", "add_long"):
+            side = "buy"
+        elif sig in ("close_long", "reduce_long", "close_long_stop", "close_long_profit", "close_long_trailing"):
+            side = "sell"
+        else:
+            self._mark_failed(order_id=order_id, error=f"qmt_unsupported_signal:{signal_type}")
+            _console_print(f"[worker] QMT order rejected: strategy_id={strategy_id} pending_id={order_id} unsupported signal {signal_type}")
+            _notify_live_best_effort(status="failed", error=f"qmt_unsupported_signal:{signal_type}")
+            return
+
+        # A-share: minimum 100 shares, must be integer
+        # Calculate volume from amount (amount is in quote currency for spot buy, or share count)
+        if ref_price > 0 and amount > 0:
+            # If amount looks like quote currency (much larger than price), convert to shares
+            if amount > ref_price * 10:
+                volume = int(amount / ref_price / 100) * 100  # Round to nearest 100
+            else:
+                volume = int(amount / 100) * 100  # amount is already in shares
+        else:
+            volume = int(amount)
+
+        # A-share board-lot is 100 shares; never round *up* a sub-lot into a live order.
+        if volume < 100:
+            self._mark_failed(order_id=order_id, error=f"qmt_volume_below_lot:{volume}")
+            _console_print(
+                f"[worker] QMT order rejected: strategy_id={strategy_id} pending_id={order_id} "
+                f"volume={volume} below 100-share lot (amount={amount} ref_price={ref_price})"
+            )
+            _notify_live_best_effort(status="failed", error=f"qmt_volume_below_lot:{volume}")
+            return
+
+        logger.info(
+            f"[QMT] Placing order: strategy_id={strategy_id} pending_id={order_id} "
+            f"symbol={symbol} side={side} volume={volume} ref_price={ref_price}"
+        )
+
+        try:
+            # Get latest quote for market order pricing
+            if ref_price <= 0:
+                try:
+                    quote = client.get_quote(symbol)
+                    ref_price = float(quote.get("price") or quote.get("last_price") or 0.0)
+                except Exception:
+                    pass
+
+            # Place market order via QMT Bridge
+            result = client.place_order(
+                symbol=str(symbol),
+                side=side,
+                volume=volume,
+                order_type="market",
+                price=0.0,
+                comment=f"QD_S{strategy_id}_O{order_id}",
+            )
+
+            exchange_order_id = str(result.get("order_id", ""))
+            bridge_status = str(result.get("status") or "unknown")
+            raw_filled = float(result.get("filled") or 0)
+            raw_price = float(result.get("price") or 0)
+
+            # ── Never assume fill data from a 0/0 response ──────────────
+            # If the bridge returned filled=0 or price=0, it means the order
+            # hasn't been confirmed filled yet.  We must NOT fallback to
+            # (volume / ref_price) because that corrupts P&L tracking.
+            if bridge_status == "submitted" and raw_filled == 0:
+                logger.warning(
+                    f"[QMT] Order {exchange_order_id} submitted but not filled within bridge timeout. "
+                    f"Will poll for fill status."
+                )
+                # Poll the bridge for final fill status (up to 30s)
+                _poll_ok = False
+                for _attempt in range(60):  # 60 * 0.5s = 30s
+                    time.sleep(0.5)
+                    try:
+                        qres = client.query_order(exchange_order_id)
+                        if qres:
+                            qvol = float(qres.get("traded_volume", 0) or 0)
+                            qpx = float(qres.get("traded_price", 0) or 0)
+                            if qvol > 0 and qpx > 0:
+                                raw_filled = qvol
+                                raw_price = qpx
+                                bridge_status = "filled"
+                                _poll_ok = True
+                                break
+                    except Exception:
+                        pass
+                if not _poll_ok:
+                    self._mark_failed(
+                        order_id=order_id,
+                        error=f"qmt_order_not_filled:{exchange_order_id}",
+                    )
+                    _console_print(
+                        f"[worker] QMT order NOT filled after polling: strategy_id={strategy_id} "
+                        f"pending_id={order_id} order_id={exchange_order_id}"
+                    )
+                    _notify_live_best_effort(
+                        status="failed",
+                        error="Order submitted but not filled within timeout",
+                    )
+                    return
+
+            filled = raw_filled
+            avg_price = raw_price
+
+            # Sanity check: if we somehow still have 0 price after polling, fail
+            if avg_price <= 0:
+                self._mark_failed(
+                    order_id=order_id,
+                    error=f"qmt_no_fill_price:{exchange_order_id}",
+                )
+                _console_print(
+                    f"[worker] QMT order has no fill price: strategy_id={strategy_id} "
+                    f"pending_id={order_id} order_id={exchange_order_id}"
+                )
+                _notify_live_best_effort(status="failed", error="No fill price from QMT bridge")
+                return
+
+            if filled <= 0:
+                filled = volume  # bridge confirmed fill but volume=0 edge case
+
+            executed_at = int(time.time())
+
+            # Mark order as sent
+            self._mark_sent(
+                order_id=order_id,
+                note="qmt_order_sent",
+                exchange_id="qmt",
+                exchange_order_id=exchange_order_id,
+                exchange_response_json=json.dumps(result, ensure_ascii=False),
+                filled=filled,
+                avg_price=avg_price,
+                executed_at=executed_at,
+            )
+            _console_print(
+                f"[worker] QMT order sent: strategy_id={strategy_id} pending_id={order_id} "
+                f"order_id={exchange_order_id} {side} {volume} shares @ {avg_price}"
+            )
+
+            # Record trade
+            try:
+                if filled > 0 and avg_price > 0:
+                    logger.info(
+                        f"QMT record begin: pending_id={order_id} strategy_id={strategy_id} "
+                        f"symbol={symbol} signal={signal_type} filled={filled} avg_price={avg_price}"
+                    )
+                    profit, matched_entry = persist_strategy_fill(
+                        strategy_id=int(strategy_id),
+                        symbol=str(symbol),
+                        signal_type=str(signal_type),
+                        filled=float(filled),
+                        avg_price=float(avg_price),
+                        exchange_config=exchange_config,
+                        market_type="spot",
+                        order_id=int(order_id),
+                        fill_source="worker_qmt",
+                        close_reason=trade_close_reason_from_payload(payload, str(signal_type)),
+                        strategy_run_id=int(payload.get("strategy_run_id") or order_row.get("strategy_run_id") or 0),
+                        order_intent_id=int(payload.get("order_intent_id") or order_row.get("order_intent_id") or 0),
+                        basket_id=str(payload.get("basket_id") or ""),
+                        exchange_id="qmt",
+                        exchange_order_id=str(exchange_order_id or ""),
+                        raw_fill=result,
+                    )
+                    logger.info(f"QMT record done: pending_id={order_id} strategy_id={strategy_id} symbol={symbol}")
+                    _pstr = f", profit={profit:.4f}" if profit is not None else ""
+                    append_strategy_log(
+                        strategy_id, "trade",
+                        f"Trade executed: {signal_type} {symbol} filled={filled:.0f} @ {avg_price:.2f}{_pstr} (exchange=qmt)",
+                    )
+            except Exception as e:
+                logger.warning(f"QMT record_trade/update_position failed: pending_id={order_id}, err={e}")
+
+            # Notify success
+            _notify_live_best_effort(
+                status="sent",
+                exchange_id="qmt",
+                exchange_order_id=exchange_order_id,
+                price_hint=avg_price,
+                amount_hint=filled,
+            )
+
+        except Exception as e:
+            logger.error(f"QMT order execution failed: pending_id={order_id}, strategy_id={strategy_id}, err={e}")
+            self._mark_failed(order_id=order_id, error=f"qmt_exception:{e}")
+            _console_print(f"[worker] QMT order exception: strategy_id={strategy_id} pending_id={order_id} err={e}")
+            _notify_live_best_effort(status="failed", error=str(e))
+            append_strategy_log(strategy_id, "error", f"QMT order exception ({symbol} {signal_type}): {e}")
+            if is_fatal_exchange_error(str(e)):
+                auto_stop_live_strategy(int(strategy_id), str(e), source="qmt_order")
 
     def _mark_sent(
         self,

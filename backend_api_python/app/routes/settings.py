@@ -1159,7 +1159,7 @@ CONFIG_SCHEMA = {
                 'description': 'Hard kill switch for live trading from agent tokens. When False, T-class agent calls always record paper orders even if the token allows live mode.'
             },
             {
-                'key': 'QUANTDINGER_DEPLOYMENT_MODE',
+                'key': 'CHANQUANT_DEPLOYMENT_MODE',
                 'label': 'Deployment Mode',
                 'type': 'select',
                 'options': [

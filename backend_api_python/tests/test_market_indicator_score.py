@@ -20,7 +20,7 @@ pure-Python aggregation function directly with hand-built result rows.
 
 import json
 
-from app.services.community_service import _summarise_indicator_runs
+from app.services.community_kpis import summarise_indicator_runs as _summarise_indicator_runs
 from app.services.experiment.scoring import StrategyScoringService
 
 
@@ -81,12 +81,10 @@ def test_composite_score_is_nonzero_for_good_backtests():
 
 
 def test_composite_score_matches_underlying_scorer():
-    """The summary score must equal the median of the underlying
+    """The summary score must equal the best (max) of the underlying
     ``StrategyScoringService.score_result`` overallScore values.
 
-    Catches both (a) the original wrong-key bug (would return 0) and
-    (b) any future refactor that accidentally swaps median for mean or
-    drops the scoring call.
+    The representative run is chosen by best score (max), not median.
     """
     runs = [
         _make_run(11, total_return=20, sharpe=1.2, drawdown=-15,
@@ -97,14 +95,14 @@ def test_composite_score_matches_underlying_scorer():
                   win_rate=62, profit_factor=2.5, total_trades=60),
     ]
     scorer = StrategyScoringService()
-    expected_scores = sorted(
+    expected_scores = [
         float(scorer.score_result(json.loads(r["result_json"]))["overallScore"])
         for r in runs
-    )
-    expected_median = expected_scores[1]
+    ]
+    expected_best = max(expected_scores)
 
     summary = _summarise_indicator_runs(runs)
-    assert abs(summary["score"] - round(expected_median, 2)) < 0.05
+    assert abs(summary["score"] - round(expected_best, 2)) < 0.05
 
 
 def test_summary_handles_empty_runs():

@@ -13,6 +13,7 @@ from app.services.live_trading.records import (
     record_trade,
 )
 from app.utils.logger import get_logger
+from app.utils.risk_guard import DEFAULT_TAKER_FEE_RATE
 
 logger = get_logger(__name__)
 
@@ -74,7 +75,7 @@ def apply_grid_fill_to_local_state(
     if qty <= 0 or px <= 0:
         return
     tc = trading_config if isinstance(trading_config, dict) else {}
-    fee_rate = float(tc.get("commission") or 0) / 100.0 or 0.001
+    fee_rate = float(tc.get("commission") or 0) / 100.0 or DEFAULT_TAKER_FEE_RATE
     grid_entry_price = _matched_grid_entry_price(int(strategy_id), sym, order)
     grid_profit = _grid_match_profit(purpose, grid_entry_price, px, qty)
 
@@ -133,7 +134,7 @@ def record_grid_market_fill(
     if qty <= 0 or px <= 0:
         return
     tc = trading_config if isinstance(trading_config, dict) else {}
-    fee_rate = float(tc.get("commission") or 0) / 100.0 or 0.001
+    fee_rate = float(tc.get("commission") or 0) / 100.0 or DEFAULT_TAKER_FEE_RATE
     leg = resolve_leg_context(
         strategy_id=int(strategy_id),
         symbol=sym,

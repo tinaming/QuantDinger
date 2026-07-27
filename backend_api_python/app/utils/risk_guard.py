@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import Literal
 
 
-DEFAULT_TAKER_FEE_RATE = 0.001
+# Actual fee rates after 10% discount and 70% rebate:
+# Maker: 0.02% × 0.9 × 0.3 = 0.0054% = 0.000054
+# Taker: 0.045% × 0.9 × 0.3 = 0.01215% = 0.0001215
+DEFAULT_TAKER_FEE_RATE = 0.0001215  # 0.01215% effective rate after discount + rebate
+DEFAULT_MAKER_FEE_RATE = 0.000054   # 0.0054% effective rate after discount + rebate
 
 
 def coerce_fee_rate(value: object, *, default: float = DEFAULT_TAKER_FEE_RATE) -> float:

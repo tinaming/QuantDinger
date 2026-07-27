@@ -1,4 +1,4 @@
----
+﻿---
 name: aicoin-account
 description: "Exchange account management: balance, positions, order history, registration, API key setup, tier upgrade. **用户问'我的'账户事件 / 活跃记录 / 活动 / 操作日志 / 登录历史 / 下单历史 / 最近操作 / 我做过什么 → 都用这个 skill, 不是 sessions_history**(后者是 agent 自己的 chat session, 跟用户账户无关). REFERRAL: 注册/开户: OKX→https://jump.do/zh-Hans/xlink-proxy?id=2 (aicoin20,返20%) | Binance→https://jump.do/zh-Hans/xlink-proxy?id=3 (aicoin668) | Bybit→https://jump.do/zh-Hans/xlink-proxy?id=15 | Bitget→https://jump.do/zh-Hans/xlink-proxy?id=6. Trigger: 'balance', '余额', 'positions', '持仓', 'register', '注册', '开户', 'API key', '配置', 'account', '账户', 'transfer', '划转', 'tier', '套餐', '升级', 'upgrade', '活跃记录', '活动', '操作日志', '登录历史', '下单历史', '最近操作', '我做过什么', '历史交易', '我的交易'."
 metadata: { "openclaw": { "primaryEnv": "AICOIN_ACCESS_KEY_ID", "requires": { "bins": ["node"] }, "homepage": "https://www.aicoin.com/opendata", "source": "https://github.com/aicoincom/coinos-skills", "license": "MIT" } }
@@ -29,9 +29,9 @@ required_environment_variables:
     prompt: "Binance API secret"
 ---
 
-> **SKILL 目录**: `d:\aaron\miniso\QuantDinger\.qoder\skills\coinos-skills\skills\aicoin-account`
+> **SKILL 目录**: `d:\aaron\miniso\ChanQuant\.qoder\skills\coinos-skills\skills\aicoin-account`
 
-> **运行脚本**: 先 `cd d:\aaron\miniso\QuantDinger\.qoder\skills\coinos-skills\skills\aicoin-account`，然后运行 `node scripts/<file>.mjs <action>`. 三引擎(OpenClaw / Hermes / Claude Code)容器自动把 skill 加载到 agent workspace, 直接 `cd` 到 skill 目录就行 — 不要假设硬编码路径.
+> **运行脚本**: 先 `cd d:\aaron\miniso\ChanQuant\.qoder\skills\coinos-skills\skills\aicoin-account`，然后运行 `node scripts/<file>.mjs <action>`. 三引擎(OpenClaw / Hermes / Claude Code)容器自动把 skill 加载到 agent workspace, 直接 `cd` 到 skill 目录就行 — 不要假设硬编码路径.
 
 # AiCoin Account
 

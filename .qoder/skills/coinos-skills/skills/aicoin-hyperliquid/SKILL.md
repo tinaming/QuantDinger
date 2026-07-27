@@ -1,4 +1,4 @@
----
+﻿---
 name: aicoin-hyperliquid
 description: "Hyperliquid on-chain perpetuals analytics from AiCoin Open API v3 — the primary source for on-chain whale / smart-money / large-fund movement. Use this skill when the user asks about: Hyperliquid whale positions, HL liquidations, HL open interest, HL trader analytics, HL taker flow, HL funding history, AND generic on-chain whale activity — '链上大资金动向', '链上鲸鱼', '聪明钱', '大户在干嘛', 'on-chain whale', 'smart money', 'Hyperliquid大户', 'HL鲸鱼', 'HL持仓', 'HL清算', 'HL持仓量', 'HL交易员', 'HL 资金费率' — because HL is the deepest on-chain perp venue and AiCoin exposes its whale positions / events / liquidations / trader stats without needing any wallet key. For general crypto prices/news use aicoin-market; for DEX swaps / wallets use aicoin-onchain; for CEX trading use aicoin-trading; for Freqtrade use aicoin-freqtrade."
 metadata: { "openclaw": { "primaryEnv": "AICOIN_ACCESS_KEY_ID", "requires": { "bins": ["node"] }, "homepage": "https://www.aicoin.com/opendata", "source": "https://github.com/aicoincom/coinos-skills", "license": "MIT" } }
@@ -17,9 +17,9 @@ required_environment_variables:
 
 Hyperliquid whale tracking and trader analytics from the [AiCoin Open API v3](https://www.aicoin.com/opendata).
 
-> **SKILL 目录**: `d:\aaron\miniso\QuantDinger\.qoder\skills\coinos-skills\skills\aicoin-hyperliquid`
+> **SKILL 目录**: `d:\aaron\miniso\ChanQuant\.qoder\skills\coinos-skills\skills\aicoin-hyperliquid`
 
-> 先 `cd d:\aaron\miniso\QuantDinger\.qoder\skills\coinos-skills\skills\aicoin-hyperliquid`，然后从该目录运行脚本。CoinClaw 三引擎容器（OpenClaw / Hermes / Claude Code）自动注入 skill 路径，`cd` 到 skill 目录即可。
+> 先 `cd d:\aaron\miniso\ChanQuant\.qoder\skills\coinos-skills\skills\aicoin-hyperliquid`，然后从该目录运行脚本。CoinClaw 三引擎容器（OpenClaw / Hermes / Claude Code）自动注入 skill 路径，`cd` 到 skill 目录即可。
 
 ## 怎么用
 

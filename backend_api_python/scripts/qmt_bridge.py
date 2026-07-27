@@ -28,10 +28,25 @@ QMT_PATH = os.getenv(
 )
 QMT_ACCOUNT_ID = os.getenv("QMT_ACCOUNT_ID", "00930599")
 QMT_SESSION_ID = int(os.getenv("QMT_SESSION_ID", "999999"))
-QMT_LIB_PATH = os.getenv(
-    "QMT_LIB_PATH",
-    os.path.join(QMT_PATH, "site-packages"),
-)
+
+
+def _resolve_qmt_lib_path() -> str:
+    """Prefer env, then userdata_mini/site-packages, then already-importable xtquant."""
+    env = (os.getenv("QMT_LIB_PATH") or "").strip()
+    if env and os.path.isdir(os.path.join(env, "xtquant")):
+        return env
+    bundled = os.path.join(QMT_PATH, "site-packages")
+    if os.path.isdir(os.path.join(bundled, "xtquant")):
+        return bundled
+    try:
+        import xtquant as _xt  # noqa: WPS433 — probe only
+
+        return os.path.dirname(os.path.dirname(_xt.__file__))
+    except Exception:
+        return env or bundled
+
+
+QMT_LIB_PATH = _resolve_qmt_lib_path()
 
 if QMT_LIB_PATH and QMT_LIB_PATH not in sys.path:
     sys.path.insert(0, QMT_LIB_PATH)
@@ -196,6 +211,24 @@ def _err(code, message, details=""):
     return jsonify({"code": code, "message": message, "details": details})
 
 
+def _lot_size_for_symbol(symbol: str) -> int:
+    """Main-board A-shares: 100; STAR/ChiNext/BJ often allow 1."""
+    code = (symbol or "").split(".")[0]
+    if code.startswith(("688", "689", "300", "301", "8", "4", "9")):
+        return 1
+    return 100
+
+
+def _reject_if_below_lot(symbol: str, volume: int):
+    lot = _lot_size_for_symbol(symbol)
+    if volume < lot or (lot > 1 and volume % lot != 0):
+        return _err(
+            400,
+            f"qmt_volume_below_lot:{volume} (board lot is {lot} shares for {symbol})",
+        )
+    return None
+
+
 @app.route("/qmt/status")
 def status():
     return _ok({
@@ -312,40 +345,145 @@ def quote():
     try:
         from xtquant import xtdata
         qmt_symbol = normalize_symbol(symbol)
-        # Use get_full_tick for real-time quote
-        tick = xtdata.get_full_tick([qmt_symbol])
-        if not tick or qmt_symbol not in tick:
-            # Try with market_data_ex
-            data = xtdata.get_market_data_ex([], [qmt_symbol], period='tick', count=1)
-            if data and qmt_symbol in data and len(data[qmt_symbol]) > 0:
-                df = data[qmt_symbol].iloc[-1]
+
+        # 1. Try get_full_tick (requires prior subscription)
+        try:
+            tick = xtdata.get_full_tick([qmt_symbol])
+            if tick and qmt_symbol in tick:
+                t = tick[qmt_symbol]
+                lp = float(t.get('lastPrice', 0))
+                if lp > 0:
+                    return _ok({
+                        "success": True,
+                        "symbol": qmt_symbol,
+                        "last_price": lp,
+                        "open": float(t.get('open', 0)),
+                        "high": float(t.get('high', 0)),
+                        "low": float(t.get('low', 0)),
+                        "last_close": float(t.get('lastClose', 0)),
+                        "volume": int(t.get('volume', 0)),
+                        "amount": float(t.get('amount', 0)),
+                        "bid_price": float(t.get('bidPrice', [0])[0] if t.get('bidPrice') else 0),
+                        "ask_price": float(t.get('askPrice', [0])[0] if t.get('askPrice') else 0),
+                    })
+        except Exception:
+            pass
+
+        # 2. Subscribe and use get_market_data_ex (always works, auto-downloads)
+        try:
+            xtdata.subscribe_quote(qmt_symbol, period='1m')
+        except Exception:
+            pass
+
+        data = xtdata.get_market_data_ex(
+            field_list=[],
+            stock_list=[qmt_symbol],
+            period='1m',
+            count=2,
+            dividend_type="front",
+        )
+        if data and qmt_symbol in data and len(data[qmt_symbol]) > 0:
+            df = data[qmt_symbol]
+            last_row = df.iloc[-1]
+            prev_close = float(df.iloc[-2].get('close', 0)) if len(df) >= 2 else 0.0
+            last_price = float(last_row.get('close', 0))
+            if last_price > 0:
                 return _ok({
                     "success": True,
                     "symbol": qmt_symbol,
-                    "last_price": float(df.get('close', 0)),
-                    "open": float(df.get('open', 0)),
-                    "high": float(df.get('high', 0)),
-                    "low": float(df.get('low', 0)),
-                    "volume": int(df.get('volume', 0)),
-                    "amount": float(df.get('amount', 0)),
+                    "last_price": last_price,
+                    "open": float(last_row.get('open', 0)),
+                    "high": float(last_row.get('high', 0)),
+                    "low": float(last_row.get('low', 0)),
+                    "last_close": prev_close,
+                    "volume": int(last_row.get('volume', 0)),
+                    "amount": float(last_row.get('amount', 0)),
                 })
-            return _err(502, f"No quote for {qmt_symbol}")
-        t = tick[qmt_symbol]
-        return _ok({
-            "success": True,
-            "symbol": qmt_symbol,
-            "last_price": float(t.get('lastPrice', 0)),
-            "open": float(t.get('open', 0)),
-            "high": float(t.get('high', 0)),
-            "low": float(t.get('low', 0)),
-            "last_close": float(t.get('lastClose', 0)),
-            "volume": int(t.get('volume', 0)),
-            "amount": float(t.get('amount', 0)),
-            "bid_price": float(t.get('bidPrice', [0])[0] if t.get('bidPrice') else 0),
-            "ask_price": float(t.get('askPrice', [0])[0] if t.get('askPrice') else 0),
-        })
+        return _err(502, f"No quote for {qmt_symbol}")
     except Exception as e:
         return _err(500, f"Quote error: {e}")
+
+
+@app.route("/qmt/klines")
+def klines():
+    """Fetch K-line (candlestick) data via xtdata.
+
+    Query params:
+      symbol   — e.g. 600519.SH
+      period   — 1m, 5m, 15m, 30m, 1H, 1D, 1W (default: 1m)
+      count    — number of bars (default: 300)
+    """
+    if not _ensure_connected():
+        return _err(502, "Cannot connect to miniQMT")
+    symbol = request.args.get("symbol", "").strip()
+    period = request.args.get("period", "1m").strip().lower()
+    count = int(request.args.get("count", 300))
+    if not symbol:
+        return _err(400, "symbol parameter is required")
+
+    # Map common timeframe strings to xtdata period codes
+    period_map = {
+        "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
+        "1h": "1H", "60m": "1H",
+        "1d": "1D", "day": "1D", "1w": "1W", "week": "1W",
+    }
+    xt_period = period_map.get(period, period)
+
+    try:
+        from xtquant import xtdata
+        qmt_symbol = normalize_symbol(symbol)
+
+        # Use get_market_data_ex for historical K-lines
+        data = xtdata.get_market_data_ex(
+            field_list=[],
+            stock_list=[qmt_symbol],
+            period=xt_period,
+            count=count,
+            dividend_type="front",
+        )
+
+        if not data or qmt_symbol not in data or len(data[qmt_symbol]) == 0:
+            return _err(502, f"No kline data for {qmt_symbol} period={xt_period}")
+
+        df = data[qmt_symbol]
+        bars = []
+        for ts, row in df.iterrows():
+            # xtdata returns index as string like '20260701145900' (YYYYMMDDHHMMSS)
+            epoch = 0
+            try:
+                from datetime import datetime
+                ts_str = str(ts)
+                # Try YYYYMMDDHHMMSS format (xtdata native)
+                if len(ts_str) >= 14 and ts_str.isdigit():
+                    dt = datetime.strptime(ts_str[:14], "%Y%m%d%H%M%S")
+                # Try standard datetime format
+                elif "-" in ts_str:
+                    clean = ts_str.replace(".000", "")[:19]
+                    dt = datetime.strptime(clean, "%Y-%m-%d %H:%M:%S")
+                else:
+                    dt = None
+                if dt:
+                    epoch = int(dt.timestamp())
+            except Exception:
+                epoch = 0
+
+            bars.append({
+                "time": epoch,
+                "open": float(row.get("open", 0)),
+                "high": float(row.get("high", 0)),
+                "low": float(row.get("low", 0)),
+                "close": float(row.get("close", 0)),
+                "volume": float(row.get("volume", 0)),
+            })
+
+        return _ok({
+            "symbol": qmt_symbol,
+            "period": xt_period,
+            "count": len(bars),
+            "bars": bars,
+        })
+    except Exception as e:
+        return _err(500, f"Kline error: {e}")
 
 
 @app.route("/qmt/orders", methods=["POST"])
@@ -358,7 +496,7 @@ def place_order():
     order_type = (body.get("order_type") or body.get("orderType") or "market").strip().lower()
     volume = int(body.get("volume") or body.get("qty") or 0)
     price = float(body.get("price") or body.get("limit_price") or 0)
-    comment = (body.get("comment") or "QuantDinger").strip()
+    comment = (body.get("comment") or "ChanQuant").strip()
 
     if not symbol:
         return _err(400, "symbol is required")
@@ -368,6 +506,9 @@ def place_order():
         return _err(400, "volume must be positive")
 
     qmt_symbol = normalize_symbol(symbol)
+    lot_err = _reject_if_below_lot(qmt_symbol, volume)
+    if lot_err is not None:
+        return lot_err
     order_dir = xtconstant.STOCK_BUY if side == "buy" else xtconstant.STOCK_SELL
     pt = xtconstant.FIX_PRICE if order_type == "limit" else xtconstant.LATEST_PRICE
     if order_type == "limit" and price <= 0:
@@ -378,7 +519,7 @@ def place_order():
     try:
         order_id = _trader.order_stock(
             _account, qmt_symbol, order_dir, volume, pt, price,
-            "QuantDinger", comment,
+            "ChanQuant", comment,
         )
         if order_id is None or order_id < 0:
             return _err(500, f"order_stock returned error: {order_id}")
@@ -386,24 +527,83 @@ def place_order():
         filled = 0.0
         fill_price = 0.0
         status_str = "submitted"
-        try:
-            o = _trader.query_stock_order(_account, order_id)
-            if o:
-                filled = float(getattr(o, "traded_volume", 0) or 0)
-                fill_price = float(getattr(o, "traded_price", 0) or 0)
-        except Exception:
-            pass
+
+        # Poll for order fill — market orders on A-shares usually fill within
+        # seconds, but we must NOT return 0/0 as fill data; that would cause
+        # the caller to use the reference price instead of the real fill price.
+        _POLL_MAX = 15          # max seconds to wait
+        _POLL_INTERVAL = 0.5    # seconds between polls
+        _elapsed = 0.0
+        while _elapsed < _POLL_MAX:
+            try:
+                o = _trader.query_stock_order(_account, order_id)
+                if o:
+                    traded_vol = float(getattr(o, "traded_volume", 0) or 0)
+                    traded_px = float(getattr(o, "traded_price", 0) or 0)
+                    if traded_vol > 0 and traded_px > 0:
+                        filled = traded_vol
+                        fill_price = traded_px
+                        status_str = "filled"
+                        break
+                    # Partial fill or still pending — keep waiting
+                    if traded_vol > 0:
+                        filled = traded_vol
+                        fill_price = traded_px
+                        status_str = "partial"
+            except Exception:
+                pass
+            time.sleep(_POLL_INTERVAL)
+            _elapsed += _POLL_INTERVAL
+
+        if status_str == "submitted":
+            # Still no fill data after timeout — return order_id only,
+            # explicitly mark filled/price as None so caller knows it's unknown.
+            return _ok({
+                "order_id": order_id,
+                "filled": 0,
+                "price": 0.0,
+                "status": "submitted",
+                "message": f"Order submitted but not filled within {_POLL_MAX}s",
+                "paper": False,
+            }, message="live-order-pending")
 
         return _ok({
             "order_id": order_id,
             "filled": filled,
             "price": fill_price,
             "status": status_str,
-            "message": "Order submitted to miniQMT",
+            "message": "Order filled" if status_str == "filled" else "Order partially filled",
             "paper": False,
         }, message="live-order")
     except Exception as e:
         return _err(500, f"Order error: {e}")
+
+
+@app.route("/qmt/orders/<int:order_id>", methods=["GET"])
+def query_order(order_id: int):
+    if not _ensure_connected():
+        return _err(502, "Cannot connect to miniQMT")
+    try:
+        o = _trader.query_stock_order(_account, order_id)
+        if not o:
+            return _err(404, f"Order {order_id} not found")
+        status_val = getattr(o, "order_status", 0)
+        status_map = {56: "filled", 55: "partially_filled", 57: "rejected",
+                      54: "canceled", 50: "pending", 53: "cancelling",
+                      58: "partially_canceled", 59: "queueing"}
+        return _ok({
+            "order_id": getattr(o, "order_id", 0),
+            "symbol": getattr(o, "stock_code", ""),
+            "side": "buy" if getattr(o, "order_type", 0) in (23, 24) else "sell",
+            "volume": int(getattr(o, "order_volume", 0) or 0),
+            "traded_volume": int(getattr(o, "traded_volume", 0) or 0),
+            "traded_price": float(getattr(o, "traded_price", 0) or 0),
+            "order_status": status_map.get(int(status_val), f"unknown({status_val})"),
+            "price": float(getattr(o, "price", 0) or 0),
+            "order_time": getattr(o, "order_time", 0),
+        })
+    except Exception as e:
+        return _err(500, f"Order query error: {e}")
 
 
 @app.route("/qmt/orders/<int:order_id>", methods=["DELETE"])
@@ -434,4 +634,4 @@ if __name__ == "__main__":
     else:
         print("  Status:   NOT CONNECTED (miniQMT may not be running)")
 
-    app.run(host="127.0.0.1", port=port, debug=False)
+    app.run(host="0.0.0.0", port=port, debug=False)

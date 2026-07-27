@@ -1247,18 +1247,28 @@ def get_system_strategies():
         with get_db_connection() as db:
             cur = db.cursor()
 
-            # Aggregate strategy counts/capital by execution mode and running status.
+            # Aggregate strategy counts/capital by execution mode, running status, and market category.
+            # total_capital only counts RUNNING strategies to avoid inflated numbers from stopped strategies.
             agg_sql = f"""
                 SELECT
                     COUNT(*) AS total_strategies,
-                    COALESCE(SUM(s.initial_capital), 0) AS total_capital,
+                    COALESCE(SUM(CASE WHEN s.status = 'running' THEN s.initial_capital ELSE 0 END), 0) AS total_capital,
+                    COALESCE(SUM(s.initial_capital), 0) AS all_capital,
                     COALESCE(SUM(CASE WHEN s.status = 'running' THEN 1 ELSE 0 END), 0) AS running_strategies,
                     COALESCE(SUM(CASE WHEN s.execution_mode = 'live' THEN 1 ELSE 0 END), 0) AS live_strategies,
                     COALESCE(SUM(CASE WHEN s.execution_mode = 'signal' THEN 1 ELSE 0 END), 0) AS signal_strategies,
                     COALESCE(SUM(CASE WHEN s.status = 'running' AND s.execution_mode = 'live' THEN 1 ELSE 0 END), 0) AS running_live_strategies,
                     COALESCE(SUM(CASE WHEN s.status = 'running' AND s.execution_mode = 'signal' THEN 1 ELSE 0 END), 0) AS running_signal_strategies,
                     COALESCE(SUM(CASE WHEN s.execution_mode = 'live' THEN s.initial_capital ELSE 0 END), 0) AS live_capital,
-                    COALESCE(SUM(CASE WHEN s.execution_mode = 'signal' THEN s.initial_capital ELSE 0 END), 0) AS signal_capital
+                    COALESCE(SUM(CASE WHEN s.execution_mode = 'signal' THEN s.initial_capital ELSE 0 END), 0) AS signal_capital,
+                    -- Crypto market breakdown
+                    COALESCE(SUM(CASE WHEN s.market_category = 'Crypto' AND s.status = 'running' THEN s.initial_capital ELSE 0 END), 0) AS crypto_capital,
+                    COALESCE(SUM(CASE WHEN s.market_category = 'Crypto' AND s.execution_mode = 'live' THEN 1 ELSE 0 END), 0) AS crypto_live_count,
+                    COALESCE(SUM(CASE WHEN s.market_category = 'Crypto' AND s.execution_mode = 'signal' THEN 1 ELSE 0 END), 0) AS crypto_signal_count,
+                    -- CNStock market breakdown
+                    COALESCE(SUM(CASE WHEN s.market_category = 'CNStock' AND s.status = 'running' THEN s.initial_capital ELSE 0 END), 0) AS cn_stock_capital,
+                    COALESCE(SUM(CASE WHEN s.market_category = 'CNStock' AND s.execution_mode = 'live' THEN 1 ELSE 0 END), 0) AS cn_stock_live_count,
+                    COALESCE(SUM(CASE WHEN s.market_category = 'CNStock' AND s.execution_mode = 'signal' THEN 1 ELSE 0 END), 0) AS cn_stock_signal_count
                 FROM qd_strategies_trading s
                 LEFT JOIN qd_users u ON u.id = s.user_id
                 {where_clause}
@@ -1266,11 +1276,13 @@ def get_system_strategies():
             cur.execute(agg_sql, tuple(params))
             agg_row = cur.fetchone() or {}
 
-            # Aggregate unrealized pnl from current positions.
+            # Aggregate unrealized pnl from current positions, by market category.
             unreal_sql = f"""
                 SELECT COALESCE(SUM(p.unrealized_pnl), 0) AS total_unrealized,
                        COALESCE(SUM(CASE WHEN s.execution_mode = 'live' THEN p.unrealized_pnl ELSE 0 END), 0) AS live_unrealized,
-                       COALESCE(SUM(CASE WHEN s.execution_mode = 'signal' THEN p.unrealized_pnl ELSE 0 END), 0) AS signal_unrealized
+                       COALESCE(SUM(CASE WHEN s.execution_mode = 'signal' THEN p.unrealized_pnl ELSE 0 END), 0) AS signal_unrealized,
+                       COALESCE(SUM(CASE WHEN s.market_category = 'Crypto' THEN p.unrealized_pnl ELSE 0 END), 0) AS crypto_unrealized,
+                       COALESCE(SUM(CASE WHEN s.market_category = 'CNStock' THEN p.unrealized_pnl ELSE 0 END), 0) AS cn_stock_unrealized
                 FROM qd_strategy_positions p
                 JOIN qd_strategies_trading s ON s.id = p.strategy_id
                 LEFT JOIN qd_users u ON u.id = s.user_id
@@ -1279,11 +1291,13 @@ def get_system_strategies():
             cur.execute(unreal_sql, tuple(params))
             unreal_row = cur.fetchone() or {}
 
-            # Aggregate realized pnl from trade history.
+            # Aggregate realized pnl from trade history, by market category.
             realized_sql = f"""
                 SELECT COALESCE(SUM(COALESCE(t.profit, 0) - COALESCE(t.commission, 0)), 0) AS total_realized,
                        COALESCE(SUM(CASE WHEN s.execution_mode = 'live' THEN COALESCE(t.profit, 0) - COALESCE(t.commission, 0) ELSE 0 END), 0) AS live_realized,
-                       COALESCE(SUM(CASE WHEN s.execution_mode = 'signal' THEN COALESCE(t.profit, 0) - COALESCE(t.commission, 0) ELSE 0 END), 0) AS signal_realized
+                       COALESCE(SUM(CASE WHEN s.execution_mode = 'signal' THEN COALESCE(t.profit, 0) - COALESCE(t.commission, 0) ELSE 0 END), 0) AS signal_realized,
+                       COALESCE(SUM(CASE WHEN s.market_category = 'Crypto' THEN COALESCE(t.profit, 0) - COALESCE(t.commission, 0) ELSE 0 END), 0) AS crypto_realized,
+                       COALESCE(SUM(CASE WHEN s.market_category = 'CNStock' THEN COALESCE(t.profit, 0) - COALESCE(t.commission, 0) ELSE 0 END), 0) AS cn_stock_realized
                 FROM qd_strategy_trades t
                 JOIN qd_strategies_trading s ON s.id = t.strategy_id
                 LEFT JOIN qd_users u ON u.id = s.user_id
@@ -1294,10 +1308,16 @@ def get_system_strategies():
             cur.close()
 
         total_capital = float(agg_row.get('total_capital') or 0)
+        all_capital = float(agg_row.get('all_capital') or 0)
         total_running = int(agg_row.get('running_strategies') or 0)
         total_system_pnl = float(unreal_row.get('total_unrealized') or 0) + float(realized_row.get('total_realized') or 0)
         live_pnl = float(unreal_row.get('live_unrealized') or 0) + float(realized_row.get('live_realized') or 0)
         signal_pnl = float(unreal_row.get('signal_unrealized') or 0) + float(realized_row.get('signal_realized') or 0)
+        # Market category PnL
+        crypto_pnl = float(unreal_row.get('crypto_unrealized') or 0) + float(realized_row.get('crypto_realized') or 0)
+        cn_stock_pnl = float(unreal_row.get('cn_stock_unrealized') or 0) + float(realized_row.get('cn_stock_realized') or 0)
+        crypto_capital = float(agg_row.get('crypto_capital') or 0)
+        cn_stock_capital = float(agg_row.get('cn_stock_capital') or 0)
 
         return jsonify({
             'code': 1,
@@ -1311,6 +1331,7 @@ def get_system_strategies():
                     'total_strategies': int(agg_row.get('total_strategies') or total),
                     'running_strategies': total_running,
                     'total_capital': round(total_capital, 2),
+                    'all_capital': round(all_capital, 2),
                     'total_pnl': round(total_system_pnl, 4),
                     'total_roi': round((total_system_pnl / total_capital * 100) if total_capital > 0 else 0, 2),
                     'live_strategies': int(agg_row.get('live_strategies') or 0),
@@ -1320,7 +1341,22 @@ def get_system_strategies():
                     'live_capital': round(float(agg_row.get('live_capital') or 0), 2),
                     'signal_capital': round(float(agg_row.get('signal_capital') or 0), 2),
                     'live_pnl': round(live_pnl, 4),
-                    'signal_pnl': round(signal_pnl, 4)
+                    'signal_pnl': round(signal_pnl, 4),
+                    # Market category breakdown
+                    'crypto': {
+                        'capital': round(crypto_capital, 2),
+                        'pnl': round(crypto_pnl, 4),
+                        'roi': round((crypto_pnl / crypto_capital * 100) if crypto_capital > 0 else 0, 2),
+                        'live_count': int(agg_row.get('crypto_live_count') or 0),
+                        'signal_count': int(agg_row.get('crypto_signal_count') or 0),
+                    },
+                    'cn_stock': {
+                        'capital': round(cn_stock_capital, 2),
+                        'pnl': round(cn_stock_pnl, 4),
+                        'roi': round((cn_stock_pnl / cn_stock_capital * 100) if cn_stock_capital > 0 else 0, 2),
+                        'live_count': int(agg_row.get('cn_stock_live_count') or 0),
+                        'signal_count': int(agg_row.get('cn_stock_signal_count') or 0),
+                    },
                 }
             }
         })

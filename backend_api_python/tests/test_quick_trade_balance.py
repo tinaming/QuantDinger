@@ -1,6 +1,6 @@
 """Quick-trade balance parsing for Bybit / Gate / HTX."""
 
-from app.routes.quick_trade import _parse_balance
+from app.services.quick_trade.balances import parse_balance as _parse_balance
 from app.services.live_trading import htx_v5
 
 

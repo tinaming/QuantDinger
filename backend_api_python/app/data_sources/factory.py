@@ -20,6 +20,109 @@ from app.utils.resource_guard import (
 logger = get_logger(__name__)
 
 
+class QMTBridgeDataSource(BaseDataSource):
+    """CNStock data source that fetches K-lines and quotes via the QMT Bridge HTTP API.
+
+    Used when the backend runs in Docker (Linux) and cannot access xtquant directly.
+    The QMT Bridge (scripts/qmt_bridge.py) runs on the Windows host and proxies
+    requests to the miniQMT xtquant SDK.
+    """
+
+    name = "QMT-Bridge"
+
+    def __init__(self, bridge_url: str = "http://host.docker.internal:5001", timeout: float = 15.0):
+        self.bridge_url = bridge_url.rstrip("/")
+        self.timeout = timeout
+
+    def check_connection(self) -> bool:
+        """Check if the bridge is reachable and QMT is connected."""
+        try:
+            import requests
+            resp = requests.get(f"{self.bridge_url}/qmt/status", timeout=self.timeout)
+            if resp.status_code != 200:
+                return False
+            data = resp.json().get("data", {})
+            return bool(data.get("connected"))
+        except Exception:
+            return False
+
+    def get_kline(self, symbol: str, timeframe: str, limit: int,
+                  before_time: Optional[int] = None, after_time: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Fetch K-lines via QMT Bridge /qmt/klines endpoint."""
+        import requests
+        # Map our timeframe format to bridge period
+        tf_map = {
+            "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
+            "1H": "1H", "4H": "1H",  # QMT doesn't have 4H, use 1H
+            "1D": "1D", "1W": "1W",
+        }
+        period = tf_map.get(timeframe, timeframe)
+        try:
+            resp = requests.get(
+                f"{self.bridge_url}/qmt/klines",
+                params={"symbol": symbol, "period": period, "count": max(limit, 300)},
+                timeout=self.timeout,
+            )
+            if resp.status_code != 200:
+                logger.warning("QMT Bridge kline HTTP %d for %s", resp.status_code, symbol)
+                return []
+            body = resp.json()
+            if body.get("code", -1) != 0:
+                logger.warning("QMT Bridge kline error: %s", body.get("message", ""))
+                return []
+            bars = body.get("data", {}).get("bars", [])
+            if not bars:
+                return []
+            # Filter by time range if provided
+            result = []
+            for b in bars:
+                t = int(b.get("time", 0))
+                if before_time and t >= before_time:
+                    continue
+                if after_time and t < after_time:
+                    continue
+                result.append({
+                    "time": t,
+                    "open": float(b.get("open", 0)),
+                    "high": float(b.get("high", 0)),
+                    "low": float(b.get("low", 0)),
+                    "close": float(b.get("close", 0)),
+                    "volume": float(b.get("volume", 0)),
+                })
+            result.sort(key=lambda x: x["time"])
+            return result
+        except Exception as e:
+            logger.warning("QMT Bridge kline fetch failed for %s: %s", symbol, e)
+            return []
+
+    def get_ticker(self, symbol: str) -> Dict[str, Any]:
+        """Fetch real-time quote via QMT Bridge /qmt/quote endpoint."""
+        import requests
+        try:
+            resp = requests.get(
+                f"{self.bridge_url}/qmt/quote",
+                params={"symbol": symbol},
+                timeout=self.timeout,
+            )
+            if resp.status_code != 200:
+                return {"last": 0, "symbol": symbol}
+            body = resp.json()
+            if body.get("code", -1) != 0:
+                return {"last": 0, "symbol": symbol}
+            d = body.get("data", {})
+            return {
+                "last": float(d.get("last_price", 0)),
+                "open": float(d.get("open", 0)),
+                "high": float(d.get("high", 0)),
+                "low": float(d.get("low", 0)),
+                "volume": int(d.get("volume", 0)),
+                "symbol": symbol,
+            }
+        except Exception as e:
+            logger.warning("QMT Bridge quote fetch failed for %s: %s", symbol, e)
+            return {"last": 0, "symbol": symbol}
+
+
 def _env_positive_int(key: str, default: int) -> int:
     try:
         value = int(os.getenv(key, str(default)))
@@ -150,6 +253,20 @@ class DataSourceFactory:
         return cls._sources[market]
 
     @classmethod
+    def get_source_name(cls, market: str) -> str:
+        """Return human-readable name of the data source for a market.
+
+        Used by the strategy executor to log which concrete provider is used
+        for K-line fetching, so failures are debuggable (e.g. QMT vs fallback).
+        """
+        try:
+            m = cls.normalize_market(market or "")
+            src = cls.get_source(m)
+            return getattr(src, 'name', type(src).__name__)
+        except Exception:
+            return "unknown"
+
+    @classmethod
     def get_data_source(cls, name: str) -> BaseDataSource:
         """
         Backward compatible alias used by older code paths.
@@ -208,8 +325,9 @@ class DataSourceFactory:
         创建 A 股数据源，根据 CN_STOCK_DATA_SOURCE 配置选择实现。
 
         配置值:
-          auto       — 优先 QMT（Windows），失败 fallback 到外部 API
+          auto       — 优先 QMT（Windows）或 QMT Bridge（Docker），失败 fallback 到外部 API
           qmt        — 强制使用 QMT/xtdata（仅 Windows）
+          bridge     — 强制使用 QMT Bridge HTTP 代理（Docker）
           twelvedata — 使用 TwelveData API
           tencent    — 使用腾讯财经
           default    — 使用内置多层 fallback（原始 CNStockDataSource）
@@ -218,24 +336,62 @@ class DataSourceFactory:
         import sys
 
         mode = (os.environ.get('CN_STOCK_DATA_SOURCE', 'auto') or 'auto').strip().lower()
+        logger.info("CNStock data source: mode=%s (env CN_STOCK_DATA_SOURCE)", mode)
 
         if mode == 'qmt':
-            return cls._try_create_qmt_source(required=True)
+            src = cls._try_create_qmt_source(required=True)
+            logger.info("CNStock data source: forced QMT (xtdata) → %s", getattr(src, 'name', type(src).__name__))
+            return src
+
+        if mode == 'bridge':
+            bridge_url = os.getenv('QMT_BRIDGE_URL', 'http://host.docker.internal:5001')
+            logger.info("CNStock data source: forced QMT Bridge (url=%s)", bridge_url)
+            return QMTBridgeDataSource(bridge_url=bridge_url)
 
         if mode == 'twelvedata' or mode == 'tencent' or mode == 'default':
             from app.data_sources.cn_stock import CNStockDataSource
             logger.info("CNStock data source: using %s mode (CNStockDataSource)", mode)
             return CNStockDataSource()
 
-        # mode == 'auto': try QMT first, fallback to CNStockDataSource
+        # mode == 'auto': 
+        # 1) On Windows: try native QMT (xtdata) first
+        # 2) On Linux/Docker: try QMT Bridge HTTP proxy
+        # 3) Fallback to CNStockDataSource
         qmt_source = cls._try_create_qmt_source(required=False)
         if qmt_source is not None:
-            logger.info("CNStock data source: auto mode → QMT (xtdata)")
+            logger.info("CNStock data source: auto mode → QMT (xtdata) selected ✓")
             return qmt_source
 
-        logger.info("CNStock data source: auto mode → QMT unavailable, falling back to CNStockDataSource")
+        # Docker/Linux: try QMT Bridge
+        bridge_url = os.getenv('QMT_BRIDGE_URL', '')
+        if not bridge_url and sys.platform != 'win32':
+            bridge_url = 'http://host.docker.internal:5001'
+        if bridge_url:
+            bridge_src = cls._try_create_bridge_source(bridge_url)
+            if bridge_src is not None:
+                logger.info("CNStock data source: auto mode → QMT Bridge selected ✓ (url=%s)", bridge_url)
+                return bridge_src
+
+        logger.warning(
+            "CNStock data source: auto mode → QMT unavailable, falling back to CNStockDataSource. "
+            "Set CN_STOCK_DATA_SOURCE=qmt in .env to force QMT and see the import error."
+        )
         from app.data_sources.cn_stock import CNStockDataSource
         return CNStockDataSource()
+
+    @staticmethod
+    def _try_create_bridge_source(bridge_url: str):
+        """Try to create a QMTBridgeDataSource, returns None if bridge is unreachable."""
+        try:
+            src = QMTBridgeDataSource(bridge_url=bridge_url)
+            # Verify connectivity
+            if src.check_connection():
+                return src
+            logger.warning("QMT Bridge at %s is not reachable or not connected", bridge_url)
+            return None
+        except Exception as e:
+            logger.warning("QMT Bridge at %s init failed: %s", bridge_url, e)
+            return None
 
     @staticmethod
     def _try_create_qmt_source(required: bool = False):
@@ -251,6 +407,7 @@ class DataSourceFactory:
         if sys.platform != 'win32':
             if required:
                 raise RuntimeError("QMT data source is only available on Windows")
+            logger.debug("QMT data source: not Windows, skipping")
             return None
 
         # 检查 xtquant 是否可导入
@@ -259,15 +416,20 @@ class DataSourceFactory:
             if _test_path and _test_path not in sys.path:
                 sys.path.insert(0, _test_path)
             from xtquant import xtdata  # noqa: F401
-        except ImportError:
+        except ImportError as e:
             if required:
                 raise RuntimeError(
-                    "xtquant is not available. Install miniQMT and set QMT_LIB_PATH "
-                    "to the site-packages directory containing xtquant."
+                    f"xtquant is not available. Install miniQMT and set QMT_LIB_PATH "
+                    f"to the site-packages directory containing xtquant. Error: {e}"
                 )
+            logger.warning(
+                "QMT data source: xtquant import failed (lib_path=%r): %s",
+                lib_path, e,
+            )
             return None
 
         from app.data_sources.qmt_data import QMTDataSource
+        logger.info("QMT data source: xtquant imported OK (lib_path=%r)", lib_path)
         return QMTDataSource(lib_path=lib_path)
     
     @classmethod

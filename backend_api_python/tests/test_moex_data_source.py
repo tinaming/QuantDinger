@@ -51,7 +51,7 @@ def test_invalid_board_falls_back_to_default():
     assert src.board == DEFAULT_BOARD
 
 
-def test_interval_map_covers_all_quantdinger_timeframes():
+def test_interval_map_covers_all_chanquant_timeframes():
     expected = {"1m", "5m", "15m", "30m", "1H", "4H", "1D", "1W"}
     assert expected.issubset(set(INTERVAL_MAP.keys()))
     # Native ISS intervals

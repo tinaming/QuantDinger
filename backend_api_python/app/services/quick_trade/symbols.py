@@ -11,7 +11,6 @@ CRYPTO_EXCHANGES = {
     "coinbaseexchange",
     "coinbase_exchange",
     "kraken",
-    "kucoin",
     "gate",
     "htx",
 }

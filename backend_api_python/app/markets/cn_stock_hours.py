@@ -38,15 +38,20 @@ def _get_holidays() -> set[date]:
 
 
 def _to_shanghai_time(dt: datetime) -> datetime:
-    """Convert datetime to Asia/Shanghai timezone."""
-    # Use zoneinfo for timezone conversion
+    """Convert datetime to Asia/Shanghai timezone.
+
+    If the datetime is naive, it is interpreted as *local container time*
+    (which may already be CST).  To avoid double-offset bugs we simply
+    replace tzinfo with Asia/Shanghai for naive datetimes.
+    """
     try:
         from zoneinfo import ZoneInfo
         tz = ZoneInfo("Asia/Shanghai")
         if dt.tzinfo is None:
-            # Naive datetime: assume UTC, convert to Shanghai
-            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
-            return dt.astimezone(tz)
+            # Naive datetime from datetime.now() is container-local time.
+            # The container TZ is typically already Asia/Shanghai (+0800),
+            # so just tag it — do NOT assume UTC and add 8h again.
+            return dt.replace(tzinfo=tz)
         return dt.astimezone(tz)
     except ImportError:
         # Fallback: assume already in Shanghai time
@@ -56,7 +61,11 @@ def _to_shanghai_time(dt: datetime) -> datetime:
 def is_cn_market_open(now: datetime | None = None) -> bool:
     """Check if A-share market is currently in a trading session."""
     if now is None:
-        now = datetime.now()
+        try:
+            from zoneinfo import ZoneInfo
+            now = datetime.now(ZoneInfo("Asia/Shanghai"))
+        except ImportError:
+            now = datetime.now()
     now = _to_shanghai_time(now)
     
     # Weekend check
@@ -78,7 +87,11 @@ def get_cn_market_session(now: datetime | None = None) -> str:
     Returns one of: "pre-market", "morning", "lunch-break", "afternoon", "closed"
     """
     if now is None:
-        now = datetime.now()
+        try:
+            from zoneinfo import ZoneInfo
+            now = datetime.now(ZoneInfo("Asia/Shanghai"))
+        except ImportError:
+            now = datetime.now()
     now = _to_shanghai_time(now)
     
     if now.weekday() >= 5 or now.date() in _get_holidays():
@@ -105,7 +118,11 @@ def next_cn_market_event(now: datetime | None = None) -> Dict:
     Returns: {"event": str, "time": str (ISO format), "session": str}
     """
     if now is None:
-        now = datetime.now()
+        try:
+            from zoneinfo import ZoneInfo
+            now = datetime.now(ZoneInfo("Asia/Shanghai"))
+        except ImportError:
+            now = datetime.now()
     now = _to_shanghai_time(now)
     
     t = now.time()

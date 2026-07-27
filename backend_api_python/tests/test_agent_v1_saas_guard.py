@@ -27,9 +27,9 @@ from app.utils import agent_auth, auth as core_auth
 )
 def test_is_saas_mode_recognizes_known_spellings(monkeypatch, raw, expected):
     if raw is None:
-        monkeypatch.delenv("QUANTDINGER_DEPLOYMENT_MODE", raising=False)
+        monkeypatch.delenv("CHANQUANT_DEPLOYMENT_MODE", raising=False)
     else:
-        monkeypatch.setenv("QUANTDINGER_DEPLOYMENT_MODE", raw)
+        monkeypatch.setenv("CHANQUANT_DEPLOYMENT_MODE", raw)
     assert agent_token_service.is_saas_mode() is expected
     assert admin_routes._is_saas_mode() is expected
 
@@ -141,7 +141,7 @@ def _post_me_issue(client, payload, *, base_url="http://localhost"):
 def test_self_hosted_mode_allows_T_scope(
     client, admin_authed, stub_db_for_issue, monkeypatch
 ):
-    monkeypatch.delenv("QUANTDINGER_DEPLOYMENT_MODE", raising=False)
+    monkeypatch.delenv("CHANQUANT_DEPLOYMENT_MODE", raising=False)
 
     resp = _post_admin_issue(client, {
         "name": "selfhost-trader",
@@ -158,7 +158,7 @@ def test_self_hosted_mode_allows_T_scope(
 def test_saas_mode_allows_T_scope_paper_only(
     client, admin_authed, stub_db_for_issue, monkeypatch
 ):
-    monkeypatch.setenv("QUANTDINGER_DEPLOYMENT_MODE", "saas")
+    monkeypatch.setenv("CHANQUANT_DEPLOYMENT_MODE", "saas")
 
     resp = _post_admin_issue(client, {
         "name": "saas-research-bot",
@@ -174,7 +174,7 @@ def test_saas_mode_allows_T_scope_paper_only(
 def test_saas_mode_live_T_requires_ack(
     client, admin_authed, stub_db_for_issue, monkeypatch
 ):
-    monkeypatch.setenv("QUANTDINGER_DEPLOYMENT_MODE", "hosted")
+    monkeypatch.setenv("CHANQUANT_DEPLOYMENT_MODE", "hosted")
 
     resp = _post_admin_issue(client, {
         "name": "saas-live-attempt",
@@ -188,7 +188,7 @@ def test_saas_mode_live_T_requires_ack(
 def test_saas_mode_live_T_with_ack_succeeds(
     client, admin_authed, stub_db_for_issue, monkeypatch
 ):
-    monkeypatch.setenv("QUANTDINGER_DEPLOYMENT_MODE", "saas")
+    monkeypatch.setenv("CHANQUANT_DEPLOYMENT_MODE", "saas")
 
     resp = _post_admin_issue(client, {
         "name": "saas-live-ack",
@@ -204,7 +204,7 @@ def test_saas_mode_live_T_with_ack_succeeds(
 def test_me_tokens_rejects_C_scope(
     client, user_authed, stub_db_for_issue, monkeypatch
 ):
-    monkeypatch.delenv("QUANTDINGER_DEPLOYMENT_MODE", raising=False)
+    monkeypatch.delenv("CHANQUANT_DEPLOYMENT_MODE", raising=False)
 
     resp = _post_me_issue(client, {
         "name": "user-c-attempt",
@@ -216,7 +216,7 @@ def test_me_tokens_rejects_C_scope(
 
 
 def test_me_tokens_issue_and_policy(client, user_authed, stub_db_for_issue, monkeypatch):
-    monkeypatch.setenv("QUANTDINGER_DEPLOYMENT_MODE", "saas")
+    monkeypatch.setenv("CHANQUANT_DEPLOYMENT_MODE", "saas")
 
     policy = client.get(
         "/api/agent/v1/me/tokens/policy",

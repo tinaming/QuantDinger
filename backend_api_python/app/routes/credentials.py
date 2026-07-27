@@ -149,7 +149,7 @@ def create_credential():
         if not exchange_id:
             return jsonify({'code': 0, 'msg': 'Missing exchange_id', 'data': None}), 400
 
-        if exchange_id == 'ibkr':
+        if exchange_id in ('ibkr', 'qmt'):
             from app.utils.local_brokers import desktop_broker_cloud_reject_message, local_desktop_brokers_allowed
 
             if not local_desktop_brokers_allowed():
@@ -195,6 +195,27 @@ def create_credential():
                 'ibkr_account': (data.get('ibkr_account') or '').strip()
             })
             hint = f"{config['ibkr_host']}:{config['ibkr_port']}"
+        elif exchange_id == 'qmt':
+            # QMT/miniQMT (A-shares). Paths come from the host env / form;
+            # never store passwords here — miniQMT login is interactive on desktop.
+            import os as _os
+            qmt_path = (data.get('qmt_path') or data.get('qmtPath') or _os.getenv('QMT_PATH') or '').strip()
+            qmt_lib_path = (data.get('qmt_lib_path') or data.get('qmtLibPath') or _os.getenv('QMT_LIB_PATH') or '').strip()
+            if not qmt_lib_path and qmt_path:
+                qmt_lib_path = _os.path.join(qmt_path, 'site-packages')
+            qmt_account_id = (data.get('qmt_account_id') or data.get('qmtAccountId') or _os.getenv('QMT_ACCOUNT_ID') or '').strip()
+            try:
+                qmt_session_id = int(data.get('qmt_session_id') or data.get('qmtSessionId') or _os.getenv('QMT_SESSION_ID') or 123456)
+            except (TypeError, ValueError):
+                qmt_session_id = 123456
+            config.update({
+                'qmt_path': qmt_path,
+                'qmt_lib_path': qmt_lib_path,
+                'qmt_account_id': qmt_account_id,
+                'qmt_session_id': qmt_session_id,
+                'qmt_bridge_url': (data.get('qmt_bridge_url') or data.get('qmtBridgeUrl') or _os.getenv('QMT_BRIDGE_URL') or '').strip(),
+            })
+            hint = f"{qmt_account_id or 'qmt'}@{qmt_path or 'bridge'}"
         elif exchange_id in CRYPTO_EXCHANGES:
             # Crypto exchanges
             api_key = (data.get('api_key') or '').strip()

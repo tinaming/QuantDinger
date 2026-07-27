@@ -13,15 +13,15 @@ if [ ! -f /app/.env ]; then
     echo "[WARNING] .env file not found at /app/.env"
     echo "Creating .env from env.example..."
     if [ -f /app/env.example ]; then
-        if cp /app/env.example /app/.env 2>/tmp/quantdinger-env-copy.err; then
+        if cp /app/env.example /app/.env 2>/tmp/chanquant-env-copy.err; then
             echo "[INFO] Created .env from env.example"
             echo "[IMPORTANT] Please edit /app/.env and set a secure SECRET_KEY before restarting!"
         else
-            echo "[WARNING] Cannot create /app/.env: $(cat /tmp/quantdinger-env-copy.err)"
+            echo "[WARNING] Cannot create /app/.env: $(cat /tmp/chanquant-env-copy.err)"
             echo "[WARNING] Continuing with container environment variables only."
             echo "[TIP] Create the host env file before starting Docker:"
             echo "      cp backend_api_python/env.example backend_api_python/.env"
-            rm -f /tmp/quantdinger-env-copy.err
+            rm -f /tmp/chanquant-env-copy.err
         fi
     else
         echo "[WARNING] env.example not found. Continuing with container environment variables only."
@@ -29,7 +29,7 @@ if [ ! -f /app/.env ]; then
 fi
 
 # Check SECRET_KEY configuration
-DEFAULT_SECRET="quantdinger-secret-key-change-me"
+DEFAULT_SECRET="chanquant-secret-key-change-me"
 CURRENT_SECRET=$(grep -E "^SECRET_KEY=" /app/.env 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'" | xargs || true)
 CURRENT_SECRET=${CURRENT_SECRET:-${SECRET_KEY:-}}
 

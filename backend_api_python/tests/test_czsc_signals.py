@@ -154,7 +154,9 @@ class TestComputeCzscSignalColumns:
         # Pick first signal
         sig = signals[0]
         config = {"name": sig["name"]}
-        config.update(sig.get("param_template", {}))
+        param_template = sig.get("param_template", {})
+        if isinstance(param_template, dict):
+            config.update(param_template)
 
         result = compute_czsc_signal_columns(
             df, signals_config=[config], freq="1H",

@@ -20,7 +20,7 @@ def local_desktop_brokers_allowed() -> bool:
 def desktop_broker_cloud_reject_message() -> str:
     return (
         "当前部署环境已关闭 IBKR / MT5 / QMT（需本机 TWS、IB Gateway、MT5 终端或 miniQMT 客户端）。"
-        "请在个人电脑或私有服务器上本地部署 QuantDinger，并安装相应的本地交易终端。"
+        "请在个人电脑或私有服务器上本地部署 ChanQuant，并安装相应的本地交易终端。"
         " | This server has disabled IBKR/MT5/QMT (requires local TWS/Gateway, MT5, or miniQMT). "
-        "Deploy QuantDinger on your own machine and install the corresponding terminal."
+        "Deploy ChanQuant on your own machine and install the corresponding terminal."
     )

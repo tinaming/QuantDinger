@@ -24,8 +24,8 @@ pytest.importorskip("mcp")
 @pytest.fixture
 def fresh_module(monkeypatch):
     """Reload the server module with the env preset so import-time checks pass."""
-    monkeypatch.setenv("QUANTDINGER_BASE_URL", "http://localhost:8888")
-    monkeypatch.setenv("QUANTDINGER_AGENT_TOKEN", "qd_agent_test_token")
+    monkeypatch.setenv("CHANQUANT_BASE_URL", "http://localhost:8888")
+    monkeypatch.setenv("CHANQUANT_AGENT_TOKEN", "qd_agent_test_token")
     sys.modules.pop("chanquant_mcp.server", None)
     # Make the package importable when the project hasn't been pip-installed.
     pkg_root = sys.modules[__name__].__file__

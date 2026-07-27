@@ -165,11 +165,11 @@ def _env(name: str, required: bool = True) -> str:
 
 _base_url = (os.environ.get("CHANQUANT_BASE_URL") or os.environ.get("QUANTDINGER_BASE_URL") or "").strip()
 
-BASE_URL = (_base_url or _env("QUANTDINGER_BASE_URL")).rstrip("/")
+BASE_URL = (_base_url or _env("CHANQUANT_BASE_URL")).rstrip("/")
 
 _agent_token = (os.environ.get("CHANQUANT_AGENT_TOKEN") or os.environ.get("QUANTDINGER_AGENT_TOKEN") or "").strip()
 
-AGENT_TOKEN = _agent_token or _env("QUANTDINGER_AGENT_TOKEN")
+AGENT_TOKEN = _agent_token or _env("CHANQUANT_AGENT_TOKEN")
 
 TIMEOUT_S = float(os.environ.get("CHANQUANT_TIMEOUT_S") or os.environ.get("QUANTDINGER_TIMEOUT_S", "60"))
 
@@ -1515,7 +1515,7 @@ def qmt_place_order(
     volume: int,
     order_type: str = "market",
     price: float | None = None,
-    comment: str = "QuantDinger",
+    comment: str = "ChanQuant",
 ) -> Any:
     """Place an A-share order via miniQMT (requires T scope).
 
@@ -1528,7 +1528,7 @@ def qmt_place_order(
         volume: Number of shares (must be positive, ideally multiple of 100).
         order_type: "market" (latest price) or "limit".
         price: Required for limit orders. Ignored for market orders.
-        comment: Order remark (default "QuantDinger").
+        comment: Order remark (default "ChanQuant").
     """
     body: dict[str, Any] = {
         "symbol": symbol,

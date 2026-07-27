@@ -26,17 +26,18 @@ def get_broker_market_policy():
           "broker_markets": {
               "ibkr":   {"USStock": ["spot"]},
               "alpaca": {"USStock": ["spot"], "Crypto": ["spot"]},
+              "qmt":    {"CNStock": ["spot"]},
               "binance": {"Crypto":  ["spot", "swap"]},
               ...
           },
-          "long_only_brokers": ["alpaca", "ibkr"],
+          "long_only_brokers": ["alpaca", "ibkr", "qmt"],
           "bot_type_markets": {
               "grid":       ["Crypto"],
               "martingale": ["Crypto"],
               "dca":        ["Crypto", "USStock"],
               "trend":      ["Crypto", "USStock"]
           },
-          "live_market_categories": ["Crypto", "USStock"]
+          "live_market_categories": ["Crypto", "USStock", "CNStock", "Forex"]
         }
       }
     """

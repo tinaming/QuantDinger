@@ -114,8 +114,11 @@ services:
       - backend_data:/app/data
       # Mount .env for runtime config and admin-panel updates
       - ./backend_api_python/.env:/app/.env
-      # Dev overlay: mount local source for hot code sync
+      # Dev overlay: mount local source for hot code sync (edit locally → restart container)
       - ./backend_api_python/app:/app/app
+      - ./backend_api_python/migrations:/app/migrations
+      - ./backend_api_python/scripts:/app/scripts
+      - ./backend_api_python/docker-entrypoint.sh:/app/docker-entrypoint.sh
     environment:
       - PYTHON_API_HOST=0.0.0.0
       - PYTHON_API_PORT=5000
@@ -149,6 +152,12 @@ services:
       # Takes precedence over mounted .env (run.py load_dotenv override=False).
       # Include :8000 when using Vite dev server alongside this stack.
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8888,http://localhost:8889,http://localhost:8000}
+      # SECRET_KEY must match the key used to encrypt exchange credentials.
+      # If missing, container falls back to default and credential decryption fails.
+      - SECRET_KEY=${SECRET_KEY:-quantdinger-secret-key-change-me}
+      # Override PYTHON_API_DEBUG from baked-in .env; must be false in gunicorn
+      # production mode, otherwise restore_running_strategies() is silently skipped.
+      - PYTHON_API_DEBUG=false
     networks:
       - chanquant-network
     healthcheck:

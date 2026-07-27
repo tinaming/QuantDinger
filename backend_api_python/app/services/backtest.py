@@ -872,7 +872,7 @@ class BacktestService:
         # 6. Format result
         try:
             logger.info("Formatting backtest result...")
-            result = self._format_result(metrics, equity_curve, trades)
+            result = self._format_result(metrics, equity_curve, trades, candles_df=df_exec)
             result['signalDiagnostics'] = signal_diagnostics
             result['precision_info'] = precision_info
             result['execution_timeframe'] = exec_tf
@@ -1953,7 +1953,7 @@ class BacktestService:
             market=market, symbol=symbol,
         )
         metrics = self._calculate_metrics(equity_curve, trades, initial_capital, timeframe, start_date, end_date, total_commission)
-        result = self._format_result(metrics, equity_curve, trades)
+        result = self._format_result(metrics, equity_curve, trades, candles_df=df)
         result['logs'] = script_logs
         result['precision_info'] = {
             'enabled': False,
@@ -2273,7 +2273,7 @@ class BacktestService:
         metrics = self._calculate_metrics(equity_curve, trades, initial_capital, timeframe, start_date, end_date, total_commission)
         
         # 5. Format result
-        result = self._format_result(metrics, equity_curve, trades)
+        result = self._format_result(metrics, equity_curve, trades, candles_df=df)
         result['signalDiagnostics'] = signal_diagnostics
         result['executionAssumptions'] = self._execution_assumptions(
             strategy_config,
@@ -4759,9 +4759,16 @@ class BacktestService:
         self,
         metrics: Dict,
         equity_curve: List,
-        trades: List
+        trades: List,
+        candles_df: Optional[Any] = None,
     ) -> Dict[str, Any]:
-        """Format backtest result for API responses."""
+        """Format backtest result for API responses.
+
+        Args:
+            candles_df: Optional pandas DataFrame with datetime index and
+                columns open/high/low/close/volume. Sampled to ≤2000 bars
+                and included as ``candles`` in the result for chart rendering.
+        """
         # Simplify equity curve
         max_points = 500
         if len(equity_curve) > max_points:
@@ -4820,10 +4827,54 @@ class BacktestService:
             if inferred_reason and not cleaned_trade.get('close_reason'):
                 cleaned_trade['close_reason'] = inferred_reason
             cleaned_trades.append(cleaned_trade)
-        
-        return {
+
+        result = {
             **cleaned_metrics,
             'equityCurve': cleaned_curve,
             'trades': cleaned_trades
         }
+
+        # Attach candle (OHLCV) data for chart visualization
+        if candles_df is not None:
+            try:
+                result['candles'] = self._df_to_candles(candles_df)
+            except Exception as exc:
+                logger.warning(f"Failed to attach candles to result: {exc}")
+                result['candles'] = []
+
+        return result
+
+    @staticmethod
+    def _df_to_candles(df: Any, max_bars: int = 2000) -> List[Dict[str, Any]]:
+        """Convert a pandas DataFrame (datetime index, OHLCV cols) to a
+        lightweight-charts-compatible candle list, sampling if necessary.
+
+        Returns list of ``{time, open, high, low, close, volume}`` dicts.
+        ``time`` is a Unix timestamp in seconds.
+        """
+        import pandas as _pd
+        if df is None or not hasattr(df, 'empty') or df.empty:
+            return []
+        if len(df) > max_bars:
+            step = max(1, math.ceil(len(df) / max_bars))
+            df = df.iloc[::step]
+        candles = []
+        for idx, row in df.iterrows():
+            try:
+                ts = idx
+                if hasattr(ts, 'timestamp'):
+                    ts = int(ts.timestamp())
+                else:
+                    ts = int(_pd.Timestamp(ts).timestamp())
+                candles.append({
+                    'time': ts,
+                    'open': float(row.get('open', 0)),
+                    'high': float(row.get('high', 0)),
+                    'low': float(row.get('low', 0)),
+                    'close': float(row.get('close', 0)),
+                    'volume': float(row.get('volume', 0)) if 'volume' in row.index else 0,
+                })
+            except Exception:
+                continue
+        return candles
 
