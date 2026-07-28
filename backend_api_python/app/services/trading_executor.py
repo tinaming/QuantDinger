@@ -4298,6 +4298,13 @@ class TradingExecutor:
             # so that zhongshu-breakout stop-loss can fire independently.
             _has_entry = any(s.get('type') in ('open_long', 'open_short') for s in pending_signals)
             _czsc_tf = str((trading_config or {}).get('timeframe', ''))
+            # Initialize defaults for Part C anti-whipsaw filter (outside CZSC block)
+            _has_zs = False
+            _zs_zd = 0.0
+            _zs_zg = 0.0
+            _zs_pos = ''
+            _pos = initial_position
+            _last_close = 0.0
             if ('czsc_bi_dir' in executed_df.columns
                     and _czsc_tf in ('10s', '1m', '3m', '5m')):
                 _n = len(executed_df)

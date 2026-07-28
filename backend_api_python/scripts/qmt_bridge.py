@@ -433,6 +433,15 @@ def klines():
         from xtquant import xtdata
         qmt_symbol = normalize_symbol(symbol)
 
+        # Subscribe and download history data
+        try:
+            xtdata.subscribe_quote(qmt_symbol, period=xt_period)
+            # Download history data to ensure availability
+            xtdata.download_history_data(qmt_symbol, period=xt_period, start_time='20250101')
+            import time; time.sleep(0.5)  # Wait for download
+        except Exception as e:
+            pass
+
         # Use get_market_data_ex for historical K-lines
         data = xtdata.get_market_data_ex(
             field_list=[],
