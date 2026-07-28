@@ -2780,13 +2780,23 @@ class PendingOrderWorker:
         if ref_price > 0 and amount > 0:
             # If amount looks like quote currency (much larger than price), convert to shares
             if amount > ref_price * 10:
-                volume = int(amount / ref_price / 100) * 100  # Round to nearest 100
+                raw_shares = amount / ref_price
             else:
-                volume = int(amount / 100) * 100  # amount is already in shares
+                raw_shares = amount  # amount is already in shares
         else:
-            volume = int(amount)
+            raw_shares = float(amount)
 
-        # A-share board-lot is 100 shares; never round *up* a sub-lot into a live order.
+        # A-share board-lot rounding: round DOWN to nearest 100, but guarantee at
+        # least 1 lot (100 shares) when there is any buying intent (raw_shares > 0).
+        # This prevents the common case where 5% of a small initial_capital yields
+        # fewer than 100 shares for expensive stocks (e.g. 茅台 @ 1300+).
+        if raw_shares >= 100:
+            volume = int(raw_shares / 100) * 100
+        elif raw_shares > 0:
+            volume = 100  # round UP to minimum board lot
+        else:
+            volume = 0
+
         if volume < 100:
             self._mark_failed(order_id=order_id, error=f"qmt_volume_below_lot:{volume}")
             _console_print(

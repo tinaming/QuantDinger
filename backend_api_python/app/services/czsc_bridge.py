@@ -192,6 +192,52 @@ CZSC_COLUMNS: List[Dict[str, str]] = [
         'desc': 'Trend classification: 1=uptrend (上涨趋势, at least 2 upward centers), '
                 '-1=downtrend (下跌趋势), 0=consolidation (盘整, 0-1 center)',
     },
+    # ── v4.1 auxiliary columns ──
+    {
+        'name': 'czsc_bi_force',
+        'dtype': 'float',
+        'desc': 'Stroke force (笔力度): |end-start|/start × bar_count; used for 背驰 comparison',
+    },
+    {
+        'name': 'czsc_beichi',
+        'dtype': 'int',
+        'desc': 'Divergence (背驰): 1=bottom divergence (底背驰), -1=top divergence (顶背驰), 0=none',
+    },
+    {
+        'name': 'czsc_zs_event',
+        'dtype': 'str',
+        'desc': "Center event: 'expand'=中枢扩张, 'narrow'=中枢收敛, 'new'=中枢新生, ''=none",
+    },
+    {
+        'name': 'czsc_trend_continue',
+        'dtype': 'int',
+        'desc': 'Trend continuation via centers: 1=ZG progressively higher, -1=ZD progressively lower, 0=none',
+    },
+    {
+        'name': 'czsc_amp_narrow',
+        'dtype': 'int',
+        'desc': 'Amplitude narrowing flag (振幅收敛): 1 when consecutive center amplitude shrinks, else 0',
+    },
+    {
+        'name': 'czsc_vol_surge',
+        'dtype': 'int',
+        'desc': 'Volume surge (放量): 1 when volume > 20-bar MA × 1.5, else 0',
+    },
+    {
+        'name': 'czsc_vol_shrink',
+        'dtype': 'int',
+        'desc': 'Volume shrink (缩量): 1 when volume < 10-bar MA × 0.7, else 0',
+    },
+    {
+        'name': 'czsc_prior_low_ok',
+        'dtype': 'int',
+        'desc': 'Prior-low protection (前低保护): 1 when close >= recent significant low, else 0',
+    },
+    {
+        'name': 'czsc_ml_align',
+        'dtype': 'int',
+        'desc': 'Multi-level proxy alignment: 1 if bi_dir and duan_dir same sign, -1 if opposite, 0 if either unset',
+    },
 ]
 
 
@@ -502,9 +548,13 @@ def _compute_features_inner(df: pd.DataFrame, freq: str, symbol: str = 'SYMBOL',
     # Uses confirmed strokes only (via czsc_obj.bi_list replacement above).
     _map_centers(czsc_obj, czsc_df, zs_level, zs_zd, zs_zg, zs_position, n)
 
-    # ---- Step 6: Detect buy/sell points (买卖点) ----
+    # ---- Step 6: Detect buy/sell points (买卖点) — v4.1 with 1/2/3 + 背驰 ----
     # Uses confirmed strokes only (via czsc_obj.bi_list replacement above).
-    _detect_buy_sell_points(czsc_obj, czsc_df, bs_type, n)
+    beichi_arr = np.zeros(n, dtype=np.int8)
+    bi_force_arr = np.full(n, np.nan, dtype=np.float64)
+    _detect_buy_sell_points_v41(
+        czsc_obj, czsc_df, bs_type, beichi_arr, bi_force_arr, n,
+    )
 
     # ---- Step 7: Classify trend ----
     if causal:
@@ -515,6 +565,13 @@ def _compute_features_inner(df: pd.DataFrame, freq: str, symbol: str = 'SYMBOL',
     # ---- Step 8: Map duan (段 / segments) ----
     # Uses confirmed strokes only (via czsc_obj.bi_list replacement above).
     duan_dir_arr, duan_start_price, duan_end_price = _detect_duan(czsc_obj, czsc_df, n)
+
+    # ---- Step 8b: v4.1 aux features (zs events, volume, prior-low, ml align) ----
+    zs_event, trend_continue, amp_narrow, vol_surge, vol_shrink, prior_low_ok, ml_align = (
+        _compute_v41_aux_features(
+            czsc_df, zs_zd, zs_zg, zs_level, bi_dir, duan_dir_arr, n,
+        )
+    )
 
     # Restore original bi_list on czsc_obj
     try:
@@ -538,6 +595,16 @@ def _compute_features_inner(df: pd.DataFrame, freq: str, symbol: str = 'SYMBOL',
     result['czsc_duan_dir'] = duan_dir_arr
     result['czsc_duan_start_price'] = duan_start_price
     result['czsc_duan_end_price'] = duan_end_price
+    # v4.1
+    result['czsc_bi_force'] = bi_force_arr
+    result['czsc_beichi'] = beichi_arr
+    result['czsc_zs_event'] = zs_event
+    result['czsc_trend_continue'] = trend_continue
+    result['czsc_amp_narrow'] = amp_narrow
+    result['czsc_vol_surge'] = vol_surge
+    result['czsc_vol_shrink'] = vol_shrink
+    result['czsc_prior_low_ok'] = prior_low_ok
+    result['czsc_ml_align'] = ml_align
 
     n_strokes = len(getattr(czsc_obj, 'bi_list', []) or [])
     n_fractals = len(getattr(czsc_obj, 'fx_list', []) or [])
@@ -844,94 +911,333 @@ def _get_zs_bar_range(zs: Any, czsc_df: pd.DataFrame, n: int) -> Tuple[int, int]
     return start_idx, end_idx
 
 
+def _macd_hist_from_close(close: np.ndarray) -> np.ndarray:
+    """MACD histogram (DIF-DEA) for stroke-force / 背驰 comparison."""
+    s = pd.Series(close.astype(float))
+    ema12 = s.ewm(span=12, adjust=False).mean()
+    ema26 = s.ewm(span=26, adjust=False).mean()
+    dif = ema12 - ema26
+    dea = dif.ewm(span=9, adjust=False).mean()
+    return (dif - dea).to_numpy(dtype=np.float64)
+
+
+def _bi_price_range(bi: Any) -> Tuple[float, float]:
+    """Return (low, high) of a stroke from its fractals."""
+    fa = getattr(bi, 'fx_a', None)
+    fb = getattr(bi, 'fx_b', None)
+    pa = float(getattr(fa, 'fx', 0) or 0) if fa else 0.0
+    pb = float(getattr(fb, 'fx', 0) or 0) if fb else 0.0
+    if pa <= 0 or pb <= 0:
+        return 0.0, 0.0
+    return min(pa, pb), max(pa, pb)
+
+
+def _build_centers_from_bi(bi_list: list, czsc_df: pd.DataFrame) -> list:
+    """Build non-overlapping center records: (start_idx, end_idx, zd, zg)."""
+    centers: list = []
+    if len(bi_list) < 3:
+        return centers
+    i = 0
+    while i <= len(bi_list) - 3:
+        triplet = bi_list[i:i + 3]
+        ranges = []
+        idxs = []
+        for bi in triplet:
+            lo, hi = _bi_price_range(bi)
+            s_idx, e_idx = _bi_bar_range(bi, czsc_df)
+            if hi > 0 and lo > 0:
+                ranges.append((lo, hi))
+                idxs.append((s_idx, e_idx))
+        if len(ranges) >= 2:
+            zd = max(r[0] for r in ranges)
+            zg = min(r[1] for r in ranges)
+            if zd < zg:
+                centers.append((idxs[0][0], idxs[-1][1], zd, zg))
+                i += 3
+                continue
+        i += 1
+    return centers
+
+
+def _active_center_at(centers: list, bar_idx: int) -> Optional[Tuple[float, float]]:
+    """Most recent center whose span covers (or precedes) bar_idx → (zd, zg)."""
+    active = None
+    for c_start, c_end, zd, zg in centers:
+        if c_start <= bar_idx:
+            active = (zd, zg)
+        if c_start > bar_idx:
+            break
+    return active
+
+
 def _detect_buy_sell_points(czsc_obj: Any, czsc_df: pd.DataFrame,
                             bs_type: np.ndarray, n: int) -> None:
-    """Detect Chan Theory buy/sell points (买卖点) based on stroke/center relationships.
+    """Legacy simplified 1buy/1sell/3buy/3sell (kept for compatibility).
 
-    Simplified detection:
-    - 1buy (第一类买点): Last downward stroke ends below center ZD (trend reversal)
-    - 2buy (第二类买点): First upward pullback after 1buy that holds above 1buy low
-    - 3buy (第三类买点): Price pulls back but stays above center ZG (breakout confirmed)
-    - Mirror logic for sell points.
+    Prefer ``_detect_buy_sell_points_v41`` which adds 2buy/2sell + 背驰.
+    """
+    beichi = np.zeros(n, dtype=np.int8)
+    force = np.full(n, np.nan, dtype=np.float64)
+    _detect_buy_sell_points_v41(czsc_obj, czsc_df, bs_type, beichi, force, n)
+
+
+def _detect_buy_sell_points_v41(
+    czsc_obj: Any,
+    czsc_df: pd.DataFrame,
+    bs_type: np.ndarray,
+    beichi_arr: np.ndarray,
+    bi_force_arr: np.ndarray,
+    n: int,
+) -> None:
+    """v4.1 buy/sell detection with 1/2/3 classes + MACD/force 背驰.
+
+    - 1buy: down stroke ends below ZD **and** bottom divergence (force/MACD)
+    - 2buy: first pullback after 1buy that holds above the 1buy low
+    - 3buy: pullback after leaving center that stays above ZG
+    - Mirror for sell points. Marks are written at stroke end bars only.
     """
     try:
         bi_list = getattr(czsc_obj, 'bi_list', []) or []
     except Exception:
         return
-
     if len(bi_list) < 3:
         return
 
-    # czsc 1.0.x doesn't expose zs_list directly; compute centers from bi_list
-    # A center (中枢) is formed by 3+ consecutive strokes with overlapping price ranges
-    # Simplified: use last 3-5 strokes to detect buy/sell points
-    last_strokes = bi_list[-5:] if len(bi_list) >= 5 else bi_list
-    
-    # Compute a simple center from the last few strokes
-    if len(last_strokes) >= 3:
-        # Get price range overlap
-        ranges = []
-        for bi in last_strokes[:-1]:  # Exclude last stroke for center definition
-            try:
-                high = float(getattr(bi.fx_b, 'fx', 0)) if hasattr(bi, 'fx_b') and bi.fx_b else 0
-                low = float(getattr(bi.fx_a, 'fx', 0)) if hasattr(bi, 'fx_a') and bi.fx_a else 0
-                if high > 0 and low > 0:
-                    ranges.append((min(low, high), max(low, high)))
-            except Exception:
-                pass
-        
-        if len(ranges) >= 2:
-            # Find overlapping range (simplified center)
-            zd = max(r[0] for r in ranges)  # Highest low
-            zg = min(r[1] for r in ranges)  # Lowest high
-            
-            if zd < zg:  # Valid center exists
-                last_bi = last_strokes[-1]
-                last_bi_start_idx, last_bi_end_idx = _bi_bar_range(last_bi, czsc_df)
-                
-                # Check if last stroke is below/above center
-                last_fx = getattr(last_bi, 'fx_b', None)
-                if last_fx:
-                    last_price = float(getattr(last_fx, 'fx', 0))
-                    direction = str(getattr(last_bi, 'direction', ''))
-                    _is_down = ('向下' in direction or 'down' in direction.lower()
-                                or direction == '-1' or '下降' in direction)
-                    _is_up = ('向上' in direction or 'up' in direction.lower()
-                              or direction == '1' or '上升' in direction)
-                    
-                    # 1buy: downward stroke ends below center
-                    if _is_down:
-                        if last_price < zd:
-                            for j in range(max(0, last_bi_end_idx), min(last_bi_end_idx + 1, n)):
-                                bs_type[j] = '1buy'
-                    
-                    # 1sell: upward stroke ends above center
-                    elif _is_up:
-                        if last_price > zg:
-                            for j in range(max(0, last_bi_end_idx), min(last_bi_end_idx + 1, n)):
-                                bs_type[j] = '1sell'
-                    
-                    # 3buy: price pulls back but stays above zg
-                    if len(last_strokes) >= 4:
-                        prev_bi = last_strokes[-2]
-                        prev_dir = str(getattr(prev_bi, 'direction', ''))
-                        _prev_up = ('向上' in prev_dir or 'up' in prev_dir.lower()
-                                    or prev_dir == '1' or '上升' in prev_dir)
-                        if _prev_up:
-                            if last_price > zg and _is_down:
-                                for j in range(max(0, last_bi_end_idx), min(last_bi_end_idx + 1, n)):
-                                    bs_type[j] = '3buy'
-                    
-                    # 3sell: price pulls back but stays below zd
-                    if len(last_strokes) >= 4:
-                        prev_bi = last_strokes[-2]
-                        prev_dir = str(getattr(prev_bi, 'direction', ''))
-                        _prev_down = ('向下' in prev_dir or 'down' in prev_dir.lower()
-                                      or prev_dir == '-1' or '下降' in prev_dir)
-                        if _prev_down:
-                            if last_price < zd and _is_up:
-                                for j in range(max(0, last_bi_end_idx), min(last_bi_end_idx + 1, n)):
-                                    bs_type[j] = '3sell'
+    close = czsc_df['close'].to_numpy(dtype=np.float64) if 'close' in czsc_df.columns else None
+    macd_hist = _macd_hist_from_close(close) if close is not None and len(close) == n else None
+
+    # Per-stroke metrics
+    strokes = []  # dicts
+    for bi in bi_list:
+        s_idx, e_idx = _bi_bar_range(bi, czsc_df)
+        direction = _get_bi_direction_int(bi)
+        lo, hi = _bi_price_range(bi)
+        if hi <= 0 or lo <= 0 or direction == 0:
+            continue
+        start_p = lo if direction == 1 else hi
+        end_p = hi if direction == 1 else lo
+        bar_len = max(1, e_idx - s_idx + 1)
+        base = start_p if start_p > 0 else 1.0
+        price_force = abs(end_p - start_p) / base * bar_len
+        macd_force = 0.0
+        if macd_hist is not None:
+            a = max(0, s_idx)
+            b = min(n, e_idx + 1)
+            if b > a:
+                segment = macd_hist[a:b]
+                # Same-direction area magnitude
+                if direction == 1:
+                    macd_force = float(np.nansum(np.clip(segment, 0, None)))
+                else:
+                    macd_force = float(np.nansum(np.clip(-segment, 0, None)))
+        force = price_force + macd_force
+        strokes.append({
+            's': s_idx, 'e': e_idx, 'dir': direction,
+            'lo': lo, 'hi': hi, 'end_p': end_p, 'force': force,
+        })
+        # Map force onto bars of this stroke (overwrite; last stroke wins)
+        for j in range(max(0, s_idx), min(e_idx + 1, n)):
+            bi_force_arr[j] = force
+
+    centers = _build_centers_from_bi(bi_list, czsc_df)
+
+    last_1buy_low: Optional[float] = None
+    last_1buy_idx: int = -1
+    last_1sell_high: Optional[float] = None
+    last_1sell_idx: int = -1
+    saw_leave_above = False  # left center upward (for 3buy)
+    saw_leave_below = False
+    last_up_force: Optional[float] = None
+    last_dn_force: Optional[float] = None
+
+    for i, st in enumerate(strokes):
+        e = st['e']
+        if e < 0 or e >= n:
+            continue
+        zd_zg = _active_center_at(centers, e)
+        zd = zd_zg[0] if zd_zg else None
+        zg = zd_zg[1] if zd_zg else None
+
+        # ── Divergence vs previous same-direction stroke ──
+        beichi = 0
+        if st['dir'] == -1 and last_dn_force is not None and st['force'] < last_dn_force * 0.95:
+            beichi = 1  # 底背驰
+        elif st['dir'] == 1 and last_up_force is not None and st['force'] < last_up_force * 0.95:
+            beichi = -1  # 顶背驰
+        if beichi != 0:
+            beichi_arr[e] = beichi
+
+        # Track leave-center for 3-class
+        if zd is not None and zg is not None:
+            if st['dir'] == 1 and st['end_p'] > zg:
+                saw_leave_above = True
+                saw_leave_below = False
+            elif st['dir'] == -1 and st['end_p'] < zd:
+                saw_leave_below = True
+                saw_leave_above = False
+
+        mark = ''
+
+        # ── 1buy / 1sell (require 背驰 when prior same-dir force exists) ──
+        if zd is not None and zg is not None:
+            if st['dir'] == -1 and st['end_p'] < zd:
+                has_prior = last_dn_force is not None
+                if (not has_prior) or beichi == 1:
+                    mark = '1buy'
+                    last_1buy_low = st['lo']
+                    last_1buy_idx = e
+            elif st['dir'] == 1 and st['end_p'] > zg:
+                has_prior = last_up_force is not None
+                if (not has_prior) or beichi == -1:
+                    mark = '1sell'
+                    last_1sell_high = st['hi']
+                    last_1sell_idx = e
+
+        # ── 2buy / 2sell ──
+        if not mark and last_1buy_low is not None and e > last_1buy_idx:
+            # First down stroke after 1buy that holds above 1buy low
+            if st['dir'] == -1 and st['lo'] > last_1buy_low:
+                # Prefer after an intervening up stroke
+                if i >= 1 and strokes[i - 1]['dir'] == 1:
+                    mark = '2buy'
+                    last_1buy_low = None  # consume
+        if not mark and last_1sell_high is not None and e > last_1sell_idx:
+            if st['dir'] == 1 and st['hi'] < last_1sell_high:
+                if i >= 1 and strokes[i - 1]['dir'] == -1:
+                    mark = '2sell'
+                    last_1sell_high = None
+
+        # ── 3buy / 3sell (pullback holds outside center) ──
+        if not mark and zd is not None and zg is not None:
+            if saw_leave_above and st['dir'] == -1 and st['end_p'] > zg:
+                mark = '3buy'
+            elif saw_leave_below and st['dir'] == 1 and st['end_p'] < zd:
+                mark = '3sell'
+
+        if mark:
+            bs_type[e] = mark
+
+        if st['dir'] == 1:
+            last_up_force = st['force']
+        elif st['dir'] == -1:
+            last_dn_force = st['force']
+
+
+def _compute_v41_aux_features(
+    czsc_df: pd.DataFrame,
+    zs_zd: np.ndarray,
+    zs_zg: np.ndarray,
+    zs_level: np.ndarray,
+    bi_dir: np.ndarray,
+    duan_dir: np.ndarray,
+    n: int,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Compute v4.1 auxiliary columns (events, volume filters, ml align).
+
+    Returns:
+        zs_event, trend_continue, amp_narrow, vol_surge, vol_shrink, prior_low_ok, ml_align
+    """
+    zs_event = np.array([''] * n, dtype=object)
+    trend_continue = np.zeros(n, dtype=np.int8)
+    amp_narrow = np.zeros(n, dtype=np.int8)
+    vol_surge = np.zeros(n, dtype=np.int8)
+    vol_shrink = np.zeros(n, dtype=np.int8)
+    prior_low_ok = np.ones(n, dtype=np.int8)
+    ml_align = np.zeros(n, dtype=np.int8)
+
+    close = czsc_df['close'].to_numpy(dtype=np.float64) if 'close' in czsc_df.columns else np.full(n, np.nan)
+    low = czsc_df['low'].to_numpy(dtype=np.float64) if 'low' in czsc_df.columns else close
+    vol_col = 'vol' if 'vol' in czsc_df.columns else ('volume' if 'volume' in czsc_df.columns else None)
+    volume = czsc_df[vol_col].to_numpy(dtype=np.float64) if vol_col else np.zeros(n)
+
+    # Volume MA filters
+    vol_s = pd.Series(volume)
+    vol_ma20 = vol_s.rolling(20, min_periods=5).mean().to_numpy()
+    vol_ma10 = vol_s.rolling(10, min_periods=3).mean().to_numpy()
+    with np.errstate(invalid='ignore'):
+        vol_surge[:] = ((volume > vol_ma20 * 1.5) & np.isfinite(vol_ma20)).astype(np.int8)
+        vol_shrink[:] = ((volume < vol_ma10 * 0.7) & np.isfinite(vol_ma10) & (vol_ma10 > 0)).astype(np.int8)
+
+    # Prior-low protection: close >= rolling min low of prior 40 bars (excl current)
+    low_s = pd.Series(low)
+    prior_min = low_s.shift(1).rolling(40, min_periods=5).min().to_numpy()
+    with np.errstate(invalid='ignore'):
+        prior_low_ok[:] = np.where(
+            np.isfinite(prior_min),
+            (close >= prior_min * 0.998).astype(np.int8),
+            1,
+        )
+
+    # Center amplitude / events / trend continuation across center changes
+    amp = zs_zg - zs_zd
+    last_zd: Optional[float] = None
+    last_zg: Optional[float] = None
+    last_amp: Optional[float] = None
+    zg_rising = 0
+    zd_falling = 0
+    for j in range(n):
+        zd_j = zs_zd[j]
+        zg_j = zs_zg[j]
+        lvl = zs_level[j]
+        if not (np.isfinite(zd_j) and np.isfinite(zg_j) and zg_j > zd_j and lvl >= 1):
+            continue
+        amp_j = float(amp[j])
+        changed = (
+            last_zd is None
+            or abs(zd_j - last_zd) > 1e-12
+            or abs(zg_j - last_zg) > 1e-12
+        )
+        if changed:
+            if last_zd is None:
+                zs_event[j] = 'new'
+            else:
+                # Expansion: new center overlaps and extends prior range
+                overlap = min(zg_j, last_zg) - max(zd_j, last_zd)
+                if overlap > 0 and (zg_j - zd_j) > (last_zg - last_zd) * 1.05:
+                    zs_event[j] = 'expand'
+                elif last_amp is not None and amp_j < last_amp * 0.95:
+                    zs_event[j] = 'narrow'
+                    amp_narrow[j] = 1
+                else:
+                    zs_event[j] = 'new'
+                # Progressive ZG higher / ZD lower between successive centers
+                if zg_j > last_zg * 1.001:
+                    zg_rising += 1
+                    zd_falling = 0
+                elif zd_j < last_zd * 0.999:
+                    zd_falling += 1
+                    zg_rising = 0
+                else:
+                    zg_rising = 0
+                    zd_falling = 0
+            last_zd, last_zg, last_amp = float(zd_j), float(zg_j), amp_j
+
+        if zg_rising >= 1:
+            trend_continue[j] = 1
+        elif zd_falling >= 1:
+            trend_continue[j] = -1
+
+    # Persist amp_narrow / trend_continue briefly after center change
+    for j in range(1, n):
+        if amp_narrow[j] == 0 and zs_event[j] == '':
+            # carry last narrow flag for 20 bars via rolling max below
+            pass
+    # Rolling persistence of amp_narrow
+    amp_s = pd.Series(amp_narrow.astype(np.int8))
+    amp_narrow[:] = amp_s.rolling(20, min_periods=1).max().fillna(0).astype(np.int8).to_numpy()
+
+    # Multi-level proxy: bi vs duan alignment
+    for j in range(n):
+        b = int(bi_dir[j])
+        d = int(duan_dir[j])
+        if b == 0 or d == 0:
+            ml_align[j] = 0
+        elif b == d:
+            ml_align[j] = 1
+        else:
+            ml_align[j] = -1
+
+    return zs_event, trend_continue, amp_narrow, vol_surge, vol_shrink, prior_low_ok, ml_align
 
 
 def _classify_trend(czsc_obj: Any, trend_arr: np.ndarray, n: int) -> None:
@@ -1158,4 +1464,14 @@ def add_mock_czsc_columns(df: pd.DataFrame) -> pd.DataFrame:
     result['czsc_zs_position'] = np.array(['inside'] * n, dtype=object)
     result['czsc_bs_type'] = np.array([''] * n, dtype=object)
     result['czsc_trend'] = np.zeros(n, dtype=np.int8)
+    # v4.1 mock columns
+    result['czsc_bi_force'] = np.full(n, 0.0, dtype=np.float64)
+    result['czsc_beichi'] = np.zeros(n, dtype=np.int8)
+    result['czsc_zs_event'] = np.array([''] * n, dtype=object)
+    result['czsc_trend_continue'] = np.zeros(n, dtype=np.int8)
+    result['czsc_amp_narrow'] = np.zeros(n, dtype=np.int8)
+    result['czsc_vol_surge'] = np.zeros(n, dtype=np.int8)
+    result['czsc_vol_shrink'] = np.zeros(n, dtype=np.int8)
+    result['czsc_prior_low_ok'] = np.ones(n, dtype=np.int8)
+    result['czsc_ml_align'] = np.zeros(n, dtype=np.int8)
     return result

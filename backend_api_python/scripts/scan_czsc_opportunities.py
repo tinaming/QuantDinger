@@ -183,6 +183,166 @@ def _empty_result() -> Dict[str, Any]:
         'last20_long': 0, 'last20_short': 0, 'last20_total': 0,
         'bi_flip_count': 0, 'last_flip_pos': -1,
         'current_bi_dir': 0, 'current_trend': 0, 'bar_count': 0,
+        # V4 extras
+        's1_breakout_long': 0, 's1_breakout_short': 0,
+        's2_top_divergence': 0, 's2_bot_divergence': 0,
+        's3_range_long': 0, 's3_range_short': 0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# CZSC v4 signal logic (multi-scenario)
+# ---------------------------------------------------------------------------
+
+def compute_v4_signals(
+    df: pd.DataFrame,
+    trend_filter: int = 1,
+    vol_confirm: int = 1,
+    center_narrow: int = 1,
+    divergence_filter: int = 1,
+    range_trade: int = 0,
+) -> Dict[str, Any]:
+    """Apply CZSC v4 multi-scenario signal logic and return summary stats."""
+    if 'czsc_bi_dir' not in df.columns:
+        return _empty_result()
+
+    bi_dir = df['czsc_bi_dir']
+    bi_dir_prev = bi_dir.shift(1).fillna(0)
+    bs_type = df['czsc_bs_type'].fillna('')
+    trend = df['czsc_trend'].fillna(0)
+    zs_level = df['czsc_zs_level'].fillna(0)
+    zs_zd = df['czsc_zs_zd']
+    zs_zg = df['czsc_zs_zg']
+    zs_pos = df['czsc_zs_position'].fillna('')
+    bi_length = df['czsc_bi_length'].fillna(0)
+    bi_start_p = df['czsc_bi_start_price'].fillna(0)
+    bi_end_p = df['czsc_bi_end_price'].fillna(0)
+    close = df['close']
+    volume = df['volume']
+
+    bi_flip_up = (bi_dir == 1) & (bi_dir_prev != 1)
+    bi_flip_dn = (bi_dir == -1) & (bi_dir_prev != -1)
+
+    def edge(s: pd.Series) -> pd.Series:
+        s = s.fillna(False).astype(bool)
+        prev = s.shift(1).fillna(False).astype(int)
+        return s & (prev == 0)
+
+    # ── V3 base ──
+    has_buy = bs_type.str.contains('buy', case=False, na=False) & (bs_type != '')
+    has_sell = bs_type.str.contains('sell', case=False, na=False) & (bs_type != '')
+    v3_long = bi_flip_dn & (has_buy | (trend >= 0))
+    v3_short = bi_flip_up & (has_sell | (trend <= 0))
+
+    # ── S1: 收敛中枢放量突破 ──
+    has_center = zs_level >= 1
+    center_amp = zs_zg - zs_zd
+    zs_changed = (zs_zd != zs_zd.shift(1)) | (zs_zg != zs_zg.shift(1))
+    amp_narrowing = (center_amp < center_amp.shift(1)) & zs_changed & (center_amp > 0)
+    amp_narrowed_recently = amp_narrowing.rolling(20, min_periods=1).max().fillna(0).astype(bool)
+    vol_ma = volume.rolling(20, min_periods=5).mean()
+    vol_surge = volume > vol_ma * 1.5
+
+    breakout_long = has_center & (zs_pos == 'above') & (bi_dir == 1) & vol_surge
+    breakout_short = has_center & (zs_pos == 'below') & (bi_dir == -1) & vol_surge
+    if center_narrow:
+        breakout_long = breakout_long & amp_narrowed_recently
+        breakout_short = breakout_short & amp_narrowed_recently
+
+    s1_long = int(edge(breakout_long).sum())
+    s1_short = int(edge(breakout_short).sum())
+
+    # ── S2: 趋势背驰 ──
+    bi_pct = abs(bi_end_p - bi_start_p) / bi_start_p.replace(0, float('nan')).fillna(0.001)
+    bi_force = bi_pct * bi_length
+    bi_force_prev = bi_force.shift(1)
+    force_decay = (bi_force < bi_force_prev) & (bi_flip_up | bi_flip_dn)
+    top_div = force_decay & bi_flip_up & (trend == 1)
+    bot_div = force_decay & bi_flip_dn & (trend == -1)
+    # Persist divergence warnings
+    top_warn = top_div.copy()
+    bot_warn = bot_div.copy()
+    for i in range(1, len(df)):
+        if not bool(top_warn.iloc[i]):
+            top_warn.iloc[i] = top_warn.iloc[i - 1] if i > 0 else False
+        if not bool(bot_warn.iloc[i]):
+            bot_warn.iloc[i] = bot_warn.iloc[i - 1] if i > 0 else False
+
+    s2_top = int(top_div.sum())
+    s2_bot = int(bot_div.sum())
+
+    # ── S3: 中枢震荡 ──
+    in_center = has_center & (zs_pos == 'inside')
+    near_zd = in_center & (close < zs_zd + (zs_zg - zs_zd) * 0.2) & (zs_zg > zs_zd)
+    near_zg = in_center & (close > zs_zg - (zs_zg - zs_zd) * 0.2) & (zs_zg > zs_zd)
+    range_long = near_zd & (trend == 0) if range_trade else pd.Series(False, index=df.index)
+    range_short = near_zg & (trend == 0) if range_trade else pd.Series(False, index=df.index)
+
+    s3_long = int(edge(range_long).sum())
+    s3_short = int(edge(range_short).sum())
+
+    # ── S4: 量价增强 ──
+    close_high_20 = close.rolling(20, min_periods=5).max()
+    at_high = close >= close_high_20 * 0.995
+    vol_peak_20 = volume.rolling(20, min_periods=5).max()
+    vol_weakening = at_high & (volume < vol_peak_20 * 0.6) & (trend == 1)
+
+    # ── Combine ──
+    long_cond = v3_long | breakout_long | range_long
+    short_cond = v3_short | breakout_short | range_short
+    if trend_filter:
+        long_cond = long_cond & (trend >= 0)
+        short_cond = short_cond & (trend <= 0)
+    if divergence_filter:
+        long_cond = long_cond & ~top_warn.astype(bool)
+        short_cond = short_cond & ~bot_warn.astype(bool)
+    if vol_confirm:
+        long_cond = long_cond & ~vol_weakening
+
+    open_long = edge(long_cond)
+    open_short = edge(short_cond)
+
+    n = len(df)
+    total_open_long = int(open_long.sum())
+    total_open_short = int(open_short.sum())
+
+    def sum_last(s: pd.Series, n_bars: int) -> int:
+        return int(s.iloc[-n_bars:].sum()) if n_bars <= len(s) else int(s.sum())
+
+    last5_long = sum_last(open_long, LAST_N_ACTIVE)
+    last5_short = sum_last(open_short, LAST_N_ACTIVE)
+    last20_long = sum_last(open_long, LAST_N_RECENT)
+    last20_short = sum_last(open_short, LAST_N_RECENT)
+
+    bi_flip_all = bi_flip_up | bi_flip_dn
+    bi_flip_count = int(bi_flip_all.sum())
+    flip_indices = np.where(bi_flip_all.values)[0]
+    last_flip_pos = int(n - flip_indices[-1]) if len(flip_indices) > 0 else n
+    current_bi_dir = int(bi_dir.iloc[-1])
+    current_trend = int(trend.iloc[-1])
+
+    return {
+        'total_open_long': total_open_long,
+        'total_open_short': total_open_short,
+        'total_signals': total_open_long + total_open_short,
+        'last5_long': last5_long,
+        'last5_short': last5_short,
+        'last5_total': last5_long + last5_short,
+        'last20_long': last20_long,
+        'last20_short': last20_short,
+        'last20_total': last20_long + last20_short,
+        'bi_flip_count': bi_flip_count,
+        'last_flip_pos': last_flip_pos,
+        'current_bi_dir': current_bi_dir,
+        'current_trend': current_trend,
+        'bar_count': n,
+        # V4 scenario breakdown
+        's1_breakout_long': s1_long,
+        's1_breakout_short': s1_short,
+        's2_top_divergence': s2_top,
+        's2_bot_divergence': s2_bot,
+        's3_range_long': s3_long,
+        's3_range_short': s3_short,
     }
 
 
@@ -194,12 +354,15 @@ def scan_symbol(
     exchange: ccxt.Exchange,
     symbol: str,
     timeframe: str,
+    use_v4: bool = False,
+    range_trade: bool = False,
 ) -> Dict[str, Any]:
     """Fetch data, compute CZSC features and signals for one symbol+timeframe."""
     result = {
         'symbol': symbol,
         'timeframe': timeframe,
         'status': 'ok',
+        'version': 'v4' if use_v4 else 'v3',
     }
     df = fetch_klines(exchange, symbol, timeframe, KLINE_LIMIT)
     if df is None:
@@ -224,7 +387,12 @@ def scan_symbol(
         return result
 
     # Compute signals
-    sig = compute_signals(df_czsc, trend_filter=1)
+    if use_v4:
+        sig = compute_v4_signals(df_czsc, trend_filter=1, vol_confirm=1,
+                                  center_narrow=1, divergence_filter=1,
+                                  range_trade=1 if range_trade else 0)
+    else:
+        sig = compute_signals(df_czsc, trend_filter=1)
     result.update(sig)
     return result
 
@@ -246,8 +414,17 @@ def classify_activity(result: Dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="CZSC Market Opportunity Scanner")
+    parser.add_argument("--v4", action="store_true", help="Use V4 multi-scenario signal logic")
+    parser.add_argument("--range", action="store_true", help="Enable range trading (S3) in V4 mode")
+    args = parser.parse_args()
+
+    use_v4 = args.v4
+    range_trade = args.range
+
     print("=" * 70)
-    print("CZSC Market Opportunity Scanner")
+    print(f"CZSC Market Opportunity Scanner ({'V4' if use_v4 else 'V3'})")
     print("=" * 70)
 
     # Check czsc
@@ -279,7 +456,7 @@ def main():
             print(f"  [{done:3d}/{total_combos}] {symbol:<16s} {tf:>3s} ...", end=' ', flush=True)
             t0 = time.time()
             try:
-                r = scan_symbol(exchange, symbol, tf)
+                r = scan_symbol(exchange, symbol, tf, use_v4=use_v4, range_trade=range_trade)
             except Exception as e:
                 r = {'symbol': symbol, 'timeframe': tf, 'status': 'error'}
                 r.update(_empty_result())
@@ -297,6 +474,12 @@ def main():
                 f"=> {activity:<8s}  "
                 f"({elapsed:.1f}s)"
             )
+            if use_v4 and r.get('version') == 'v4':
+                s1 = r.get('s1_breakout_long', 0) + r.get('s1_breakout_short', 0)
+                s2 = r.get('s2_top_divergence', 0) + r.get('s2_bot_divergence', 0)
+                s3 = r.get('s3_range_long', 0) + r.get('s3_range_short', 0)
+                if s1 or s2 or s3:
+                    print(f"         [V4] S1(Brk)={s1} S2(Div)={s2} S3(Rng)={s3}")
             all_results.append(r)
             # Small delay to be gentle on rate limit
             time.sleep(0.3)

@@ -595,7 +595,7 @@ def create_qmt_client(exchange_config: Dict[str, Any]):
     Create QMT (miniQMT) client for A-share (China A-Stock) trading.
 
     On Linux/Docker, returns a QMTBridgeRestClient that proxies to the QMT Bridge
-    running on the Windows host (port 5001). The Docker container cannot access
+    running on the Windows host (port 5002). The Docker container cannot access
     miniQMT directly (xtquant uses Windows IPC).
 
     On Windows, uses the native xtquant SDK via QMTClient.
@@ -607,7 +607,7 @@ def create_qmt_client(exchange_config: Dict[str, Any]):
     - qmt_username:    miniQMT login username (for reference)
     - qmt_password:    miniQMT login password (for reference)
     - qmt_lib_path:    Path to site-packages containing the xtquant package
-    - qmt_bridge_url:  Bridge URL override (default: http://host.docker.internal:5001)
+    - qmt_bridge_url:  Bridge URL override (default: http://host.docker.internal:5002)
     """
     qmt_account_id = _get(exchange_config, "qmt_account_id", "qmtAccountId", "qmt_account")
     if not qmt_account_id:
@@ -619,7 +619,7 @@ def create_qmt_client(exchange_config: Dict[str, Any]):
     _is_linux = platform.system() != "Windows"
     if _is_linux:
         bridge_url = _get(exchange_config, "qmt_bridge_url", "qmtBridgeUrl") or \
-            os.getenv("QMT_BRIDGE_URL", "http://host.docker.internal:5001")
+            os.getenv("QMT_BRIDGE_URL", "http://host.docker.internal:5002")
         logger.info(f"[QMT] Using bridge client at {bridge_url} for account {qmt_account_id}")
         client = QMTBridgeRestClient(
             bridge_url=bridge_url,

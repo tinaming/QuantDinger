@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 _IS_LINUX = platform.system() != "Windows"
 _BRIDGE_URL = os.getenv(
     "QMT_BRIDGE_URL",
-    "http://host.docker.internal:5001" if _IS_LINUX else "http://127.0.0.1:5001",
+    "http://host.docker.internal:5002" if _IS_LINUX else "http://127.0.0.1:5002",
 )
 
 

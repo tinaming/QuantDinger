@@ -5957,6 +5957,18 @@ class TradingExecutor:
                             )
                             cur.close()
                             return None
+                        # Failure cooldown: when the last order FAILED, wait much longer
+                        # before allowing a new order with the same signal. This prevents
+                        # infinite order spam when the exchange/bridge is unreachable.
+                        failure_cooldown_sec = 300 if mode == "live" else cooldown_sec
+                        if last_status == "failed" and last_created > 0 and (now - last_created) < failure_cooldown_sec:
+                            logger.info(
+                                f"enqueue_pending_order failure_cooldown: last_id={last_id} "
+                                f"age_sec={now - last_created} (<{failure_cooldown_sec}) "
+                                f"strategy_id={strategy_id} symbol={symbol} signal={signal_type}"
+                            )
+                            cur.close()
+                            return None
                         if last_created > 0 and (now - last_created) < cooldown_sec:
                             logger.info(
                                 f"enqueue_pending_order cooldown: last_id={last_id} last_status={last_status} "

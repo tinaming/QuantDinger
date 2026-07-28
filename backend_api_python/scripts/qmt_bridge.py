@@ -2,7 +2,7 @@
 QMT Bridge — lightweight HTTP service running on Windows host.
 
 The Docker backend cannot access miniQMT (xtquant uses Windows IPC).
-This bridge runs on the Windows host (port 5001) and exposes the same
+This bridge runs on the Windows host (port 5002) and exposes the same
 QMT trading API. The Docker backend's QMT routes proxy to this bridge
 when xtquant is not available locally.
 
@@ -27,7 +27,7 @@ QMT_PATH = os.getenv(
     r"D:\迅投极速策略交易系统交易终端 华鑫证券QMT模拟\userdata_mini",
 )
 QMT_ACCOUNT_ID = os.getenv("QMT_ACCOUNT_ID", "00930599")
-QMT_SESSION_ID = int(os.getenv("QMT_SESSION_ID", "999999"))
+QMT_SESSION_ID = int(os.getenv("QMT_SESSION_ID", "123456"))
 
 
 def _resolve_qmt_lib_path() -> str:
@@ -631,7 +631,7 @@ def cancel_order(order_id: int):
 # ── Main ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    port = int(os.getenv("QMT_BRIDGE_PORT", "5001"))
+    port = int(os.getenv("QMT_BRIDGE_PORT", "5002"))
     print(f"=== QMT Bridge starting on port {port} ===")
     print(f"  QMT_PATH: {QMT_PATH}")
     print(f"  ACCOUNT:  {QMT_ACCOUNT_ID}")

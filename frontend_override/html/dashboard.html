@@ -286,10 +286,94 @@ tbody tr:hover { background: var(--bg-card-hover) }
 .fade-in:nth-child(2) { animation-delay: .05s }
 .fade-in:nth-child(3) { animation-delay: .1s }
 .fade-in:nth-child(4) { animation-delay: .15s }
+
+/* ── Notification Bell ── */
+.bell-btn {
+  position: relative; background: transparent; border: 1px solid var(--border-light);
+  padding: 7px 10px; border-radius: 8px; cursor: pointer; color: var(--text-dim);
+  display: flex; align-items: center; gap: 6px; transition: all .2s;
+}
+.bell-btn:hover { color: var(--text); border-color: var(--accent); background: var(--accent-glow) }
+.bell-badge {
+  position: absolute; top: -6px; right: -6px;
+  background: var(--red); color: #fff; font-size: 10px; font-weight: 700;
+  min-width: 18px; height: 18px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 4px; box-shadow: 0 2px 6px rgba(239,68,68,0.4);
+}
+.bell-badge.hidden { display: none }
+
+/* ── Notification Panel ── */
+.notif-panel {
+  position: fixed; top: 64px; right: 32px; width: 420px; max-height: 70vh;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5); z-index: 100;
+  display: none; flex-direction: column; overflow: hidden;
+}
+.notif-panel.open { display: flex }
+.notif-panel-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.notif-panel-header h3 { font-size: 14px; font-weight: 600 }
+.notif-panel-actions { display: flex; gap: 8px }
+.notif-panel-actions button {
+  background: transparent; border: none; color: var(--text-dim); cursor: pointer;
+  font-size: 12px; padding: 4px 8px; border-radius: 4px; transition: all .15s;
+}
+.notif-panel-actions button:hover { color: var(--accent); background: var(--accent-glow) }
+.notif-list { overflow-y: auto; flex: 1; max-height: 60vh }
+.notif-item {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background .15s; display: flex; gap: 10px;
+}
+.notif-item:hover { background: var(--bg-card-hover) }
+.notif-item.unread { background: rgba(59,130,246,0.04) }
+.notif-item.unread::before {
+  content: ''; width: 6px; height: 6px; border-radius: 3px;
+  background: var(--accent); flex-shrink: 0; margin-top: 6px;
+}
+.notif-item.read::before {
+  content: ''; width: 6px; height: 6px; flex-shrink: 0; margin-top: 6px;
+}
+.notif-body { flex: 1; min-width: 0 }
+.notif-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.notif-detail { font-size: 12px; color: var(--text-dim); line-height: 1.5 }
+.notif-detail .tag {
+  display: inline-block; padding: 1px 6px; border-radius: 4px;
+  font-size: 11px; font-weight: 600; margin-right: 4px;
+}
+.notif-detail .tag-buy { background: var(--green-bg); color: var(--green) }
+.notif-detail .tag-sell { background: var(--red-bg); color: var(--red) }
+.notif-detail .tag-live { background: rgba(59,130,246,0.1); color: var(--accent) }
+.notif-meta { font-size: 11px; color: var(--text-muted); margin-top: 4px }
+.notif-empty { padding: 40px; text-align: center; color: var(--text-muted); font-size: 13px }
+
+/* ── Toast ── */
+.toast-container {
+  position: fixed; top: 72px; right: 32px; z-index: 200;
+  display: flex; flex-direction: column; gap: 8px; max-width: 380px;
+}
+.toast {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  animation: toastIn .3s ease-out; cursor: pointer; position: relative;
+}
+.toast.closing { animation: toastOut .25s ease-in forwards }
+@keyframes toastIn { from { opacity: 0; transform: translateX(30px) } to { opacity: 1; transform: translateX(0) } }
+@keyframes toastOut { from { opacity: 1; transform: translateX(0) } to { opacity: 0; transform: translateX(30px) } }
+.toast-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px }
+.toast-title { font-size: 13px; font-weight: 700 }
+.toast-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 0 4px }
+.toast-body { font-size: 12px; color: var(--text-dim); line-height: 1.6 }
+.toast-body .kv { display: flex; gap: 6px }
+.toast-body .kv .k { color: var(--text-muted); min-width: 48px }
+.toast-body .kv .v { color: var(--text); font-weight: 500 }
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div class="toast-container" id="toast-container"></div>
 <script>
 const API = '/api';
 let token = '';
@@ -302,6 +386,9 @@ let currentTab = 'all';
 let allData = null;
 let lastUpdate = null;
 let isRefreshing = false;
+let notifications = [];
+let lastNotifId = 0;
+let notifPanelOpen = false;
 
 const REFRESH_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>`;
 
@@ -331,6 +418,142 @@ async function loadData() {
     else { renderLogin(data.msg) }
   } catch (e) { renderLogin() }
   finally { isRefreshing = false; }
+}
+
+async function loadNotifications() {
+  if (!token) return;
+  try {
+    const params = lastNotifId ? `?since_id=${lastNotifId}&limit=50` : '?limit=20';
+    const res = await api('/strategies/notifications' + params);
+    if (res.code === 1 && res.data?.items?.length) {
+      const items = res.data.items;
+      const newItems = items.filter(i => i.id > lastNotifId);
+      if (lastNotifId > 0 && newItems.length > 0) {
+        newItems.reverse().forEach(n => showToast(n));
+      }
+      if (lastNotifId === 0) {
+        notifications = items;
+      } else {
+        notifications = [...items, ...notifications].slice(0, 100);
+      }
+      lastNotifId = Math.max(...items.map(i => i.id));
+      renderBellBadge();
+    }
+  } catch (e) { /* silent */ }
+}
+
+function getUnreadCount() {
+  return notifications.filter(n => !n.is_read).length;
+}
+
+function renderBellBadge() {
+  const badge = document.querySelector('.bell-badge');
+  if (!badge) return;
+  const count = getUnreadCount();
+  badge.textContent = count > 99 ? '99+' : String(count);
+  badge.classList.toggle('hidden', count === 0);
+}
+
+function parseNotifPayload(n) {
+  let p = {};
+  try { p = typeof n.payload_json === 'string' ? JSON.parse(n.payload_json) : (n.payload_json || {}) } catch {}
+  const strategy = p.strategy || {};
+  const instrument = p.instrument || {};
+  const sig = p.signal || {};
+  const order = p.order || {};
+  const trace = p.trace || {};
+  return {
+    strategyName: strategy.name || n.strategy_id || '',
+    strategyId: strategy.id || n.strategy_id || 0,
+    symbol: instrument.symbol || n.symbol || '',
+    signalType: sig.type || n.signal_type || '',
+    action: (sig.action || '').toUpperCase(),
+    side: (sig.side || '').toUpperCase(),
+    price: order.ref_price || 0,
+    stake: order.stake_amount || 0,
+    mode: trace.mode || '',
+    pendingOrderId: trace.pending_order_id || '',
+    status: (p.extra || {}).status || '',
+  };
+}
+
+function showToast(n) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const p = parseNotifPayload(n);
+  const isLong = p.side === 'LONG' || p.signalType?.includes('long');
+  const sideTag = isLong ? '<span class="tag tag-buy">买入</span>' : '<span class="tag tag-sell">卖出</span>';
+  const modeTag = p.mode === 'live' ? '<span class="tag tag-live">实盘</span>' : '';
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `
+    <div class="toast-header">
+      <span class="toast-title">${sideTag} ${modeTag} ${p.symbol || ''}</span>
+      <button class="toast-close" onclick="this.parentElement.parentElement.classList.add('closing');setTimeout(()=>this.parentElement.parentElement.remove(),250)">&times;</button>
+    </div>
+    <div class="toast-body">
+      <div class="kv"><span class="k">策略</span><span class="v">${p.strategyName || ''}</span></div>
+      <div class="kv"><span class="k">信号</span><span class="v">${p.signalType || ''}</span></div>
+      <div class="kv"><span class="k">价格</span><span class="v">${p.price ? Number(p.price).toLocaleString('zh-CN', {maximumFractionDigits:4}) : '--'}</span></div>
+      <div class="kv"><span class="k">金额</span><span class="v">${p.stake ? Number(p.stake).toLocaleString('zh-CN', {maximumFractionDigits:0}) : '--'}</span></div>
+      ${p.pendingOrderId ? `<div class="kv"><span class="k">委托ID</span><span class="v">${p.pendingOrderId}</span></div>` : ''}
+    </div>`;
+  toast.onclick = (e) => {
+    if (e.target.classList.contains('toast-close')) return;
+    markNotifRead(n.id);
+    toast.classList.add('closing');
+    setTimeout(() => toast.remove(), 250);
+  };
+  container.prepend(toast);
+  setTimeout(() => { if (toast.parentElement) { toast.classList.add('closing'); setTimeout(() => toast.remove(), 250) } }, 8000);
+}
+
+async function markNotifRead(id) {
+  try { await api('/strategies/notifications/read', { method: 'POST', body: JSON.stringify({ id }) }); } catch {}
+  const n = notifications.find(x => x.id === id);
+  if (n) { n.is_read = 1; renderBellBadge(); }
+}
+
+async function markAllRead() {
+  try { await api('/strategies/notifications/read-all', { method: 'POST' }); } catch {}
+  notifications.forEach(n => n.is_read = 1);
+  renderBellBadge();
+  renderNotifPanel();
+}
+
+function toggleNotifPanel() {
+  notifPanelOpen = !notifPanelOpen;
+  const panel = document.getElementById('notif-panel');
+  if (panel) panel.classList.toggle('open', notifPanelOpen);
+  if (notifPanelOpen) renderNotifPanel();
+}
+
+function renderNotifPanel() {
+  const list = document.getElementById('notif-list');
+  if (!list) return;
+  if (!notifications.length) {
+    list.innerHTML = '<div class="notif-empty">暂无通知</div>';
+    return;
+  }
+  list.innerHTML = notifications.map(n => {
+    const p = parseNotifPayload(n);
+    const isLong = p.side === 'LONG' || p.signalType?.includes('long');
+    const sideTag = isLong ? '<span class="tag tag-buy">买入</span>' : '<span class="tag tag-sell">卖出</span>';
+    const modeTag = p.mode === 'live' ? '<span class="tag tag-live">实盘</span>' : '<span class="tag" style="background:rgba(139,157,195,0.1);color:var(--text-dim)">模拟</span>';
+    const ts = n.created_at ? new Date(typeof n.created_at === 'number' ? n.created_at * 1000 : n.created_at).toLocaleString('zh-CN', {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+    return `<div class="notif-item ${n.is_read ? 'read' : 'unread'}" onclick="markNotifRead(${n.id})">
+      <div class="notif-body">
+        <div class="notif-title">${p.symbol} ${p.signalType}</div>
+        <div class="notif-detail">${sideTag} ${modeTag} ${p.strategyName}</div>
+        <div class="notif-detail">
+          价格: ${p.price ? Number(p.price).toLocaleString('zh-CN', {maximumFractionDigits:4}) : '--'} &nbsp;
+          金额: ${p.stake ? Number(p.stake).toLocaleString('zh-CN', {maximumFractionDigits:0}) : '--'}
+          ${p.pendingOrderId ? ' &nbsp; 委托ID: ' + p.pendingOrderId : ''}
+        </div>
+        <div class="notif-meta">${ts} &middot; #${n.strategy_id || ''}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function fmt(n, dec = 2) { if (n == null) return '--'; return Number(n).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }) }
@@ -397,8 +620,23 @@ function render() {
     </div>
     <div class="header-right">
       <span class="last-update">${lastUpdate ? '更新于 ' + fmtTime(lastUpdate) : ''}</span>
+      <button class="bell-btn" onclick="toggleNotifPanel()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="bell-badge ${getUnreadCount() === 0 ? 'hidden' : ''}">${getUnreadCount()}</span>
+      </button>
       <button class="btn-refresh ${isRefreshing ? 'loading' : ''}" onclick="loadData()">${REFRESH_ICON} 刷新</button>
     </div>
+  </div>
+
+  <div id="notif-panel" class="notif-panel ${notifPanelOpen ? 'open' : ''}">
+    <div class="notif-panel-header">
+      <h3>🔔 订单通知</h3>
+      <div class="notif-panel-actions">
+        <button onclick="markAllRead()">全部已读</button>
+        <button onclick="toggleNotifPanel()">关闭</button>
+      </div>
+    </div>
+    <div class="notif-list" id="notif-list"></div>
   </div>
 
   <div class="tabs-bar">
@@ -538,10 +776,14 @@ function render() {
 
 window.switchTab = function (t) { currentTab = t; render() };
 window.loadData = loadData;
+window.toggleNotifPanel = toggleNotifPanel;
+window.markAllRead = markAllRead;
+window.markNotifRead = markNotifRead;
 
 setInterval(() => { if (token) loadData() }, 30000);
+setInterval(() => { if (token) loadNotifications() }, 5000);
 
-if (token) { loadData() } else { renderLogin() }
+if (token) { loadData(); loadNotifications() } else { renderLogin() }
 </script>
 </body>
 </html>

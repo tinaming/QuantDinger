@@ -5,7 +5,7 @@ Mirrors ``routes/ibkr.py`` / ``routes/alpaca.py`` so the BrokerPanel SPA can
 talk to A-share trading the same way it talks to IBKR/Alpaca.
 
 In Docker (Linux) the backend has no xtquant IPC — every call proxies to the
-Windows-host QMT Bridge (``QMT_BRIDGE_URL``, default host.docker.internal:5001).
+Windows-host QMT Bridge (``QMT_BRIDGE_URL``, default host.docker.internal:5002).
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ qmt_blp = Blueprint("qmt", __name__)
 _IS_LINUX = platform.system() != "Windows"
 _BRIDGE_URL = os.getenv(
     "QMT_BRIDGE_URL",
-    "http://host.docker.internal:5001" if _IS_LINUX else "http://127.0.0.1:5001",
+    "http://host.docker.internal:5002" if _IS_LINUX else "http://127.0.0.1:5002",
 )
 
 
