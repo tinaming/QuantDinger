@@ -46,19 +46,23 @@ def _use_bridge() -> bool:
     return _IS_LINUX
 
 
-def _bridge_get(path, params=None):
-    r = _requests.get(f"{_BRIDGE_URL}{path}", params=params, timeout=10)
+def _bridge_get(path, params=None, timeout=10):
+    r = _requests.get(f"{_BRIDGE_URL}{path}", params=params, timeout=timeout)
     return r.json()
 
 
-def _bridge_post(path, json_body=None):
-    r = _requests.post(f"{_BRIDGE_URL}{path}", json=json_body or {}, timeout=15)
+def _bridge_post(path, json_body=None, timeout=15):
+    r = _requests.post(f"{_BRIDGE_URL}{path}", json=json_body or {}, timeout=timeout)
     return r.json()
 
 
-def _bridge_delete(path):
-    r = _requests.delete(f"{_BRIDGE_URL}{path}", timeout=10)
+def _bridge_delete(path, timeout=10):
+    r = _requests.delete(f"{_BRIDGE_URL}{path}", timeout=timeout)
     return r.json()
+
+
+# Place-order may block while bridge polls for fill (~12s) + IPC overhead.
+_ORDER_BRIDGE_TIMEOUT = 45.0
 
 
 def _get_qmt_config():
@@ -317,7 +321,7 @@ def qmt_place_order():
 
     if _use_bridge():
         try:
-            return _bridge_post("/qmt/orders", json_body=order_body)
+            return _bridge_post("/qmt/orders", json_body=order_body, timeout=_ORDER_BRIDGE_TIMEOUT)
         except Exception as e:
             return error(502, "QMT Bridge unreachable", details=str(e), http=502)
 

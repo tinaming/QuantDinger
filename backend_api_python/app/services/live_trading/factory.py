@@ -493,6 +493,10 @@ class QMTBridgeRestClient:
     Implements the minimum interface needed by pending_order_worker for A-share orders.
     """
 
+    # Bridge place_order polls for fill (~12s). Client timeout must exceed that
+    # or ReadTimeout looks like intermittent order failures while QMT already filled.
+    ORDER_TIMEOUT = 45.0
+
     def __init__(self, bridge_url: str, account_id: str, timeout: float = 15.0):
         self.bridge_url = bridge_url.rstrip("/")
         self.account_id = account_id
@@ -504,8 +508,12 @@ class QMTBridgeRestClient:
         r.raise_for_status()
         return r.json()
 
-    def _post(self, path: str, body: Optional[Dict] = None) -> Dict:
-        r = requests.post(f"{self.bridge_url}{path}", json=body or {}, timeout=self.timeout)
+    def _post(self, path: str, body: Optional[Dict] = None, timeout: Optional[float] = None) -> Dict:
+        r = requests.post(
+            f"{self.bridge_url}{path}",
+            json=body or {},
+            timeout=self.timeout if timeout is None else timeout,
+        )
         r.raise_for_status()
         return r.json()
 
@@ -524,7 +532,13 @@ class QMTBridgeRestClient:
 
     def get_positions(self) -> list:
         resp = self._get("/qmt/positions")
-        return resp.get("data", [])
+        data = resp.get("data", {})
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            positions = data.get("positions")
+            return positions if isinstance(positions, list) else []
+        return []
 
     def get_quote(self, symbol: str) -> Dict:
         resp = self._get("/qmt/quote", params={"symbol": symbol})
@@ -551,7 +565,7 @@ class QMTBridgeRestClient:
             "order_type": order_type,
             "price": price,
             "comment": comment,
-        })
+        }, timeout=max(float(self.timeout or 0), self.ORDER_TIMEOUT))
         if resp.get("code", 0) != 0:
             raise LiveTradingError(f"QMT Bridge order failed: {resp.get('message', 'unknown error')}")
         return resp.get("data", {})
@@ -579,11 +593,21 @@ class QMTBridgeRestClient:
 
     def get_orders(self) -> list:
         resp = self._get("/qmt/orders")
-        return resp.get("data", [])
+        data = resp.get("data", {})
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            orders = data.get("orders")
+            return orders if isinstance(orders, list) else []
+        return []
 
     def connect(self) -> bool:
-        """Verify bridge connectivity."""
+        """Ensure bridge is connected to miniQMT (reconnect if needed)."""
         try:
+            status = self.get_status()
+            if status.get("connected"):
+                return True
+            self._post("/qmt/connect", timeout=20)
             status = self.get_status()
             return bool(status.get("connected"))
         except Exception:
@@ -625,15 +649,24 @@ def create_qmt_client(exchange_config: Dict[str, Any]):
             bridge_url=bridge_url,
             account_id=qmt_account_id,
         )
-        # Verify bridge connectivity
+        # Verify bridge connectivity; reconnect if miniQMT session dropped.
         try:
             status = client.get_status()
+            if not status.get("connected"):
+                if not client.connect():
+                    raise LiveTradingError(
+                        f"QMT Bridge reports not connected at {bridge_url}. "
+                        "Ensure miniQMT is running and logged in on the Windows host."
+                    )
+                status = client.get_status()
             if not status.get("connected"):
                 raise LiveTradingError(
                     f"QMT Bridge reports not connected at {bridge_url}. "
                     "Ensure miniQMT is running and logged in on the Windows host."
                 )
             logger.info(f"[QMT] Bridge connected: {status}")
+        except LiveTradingError:
+            raise
         except Exception as e:
             raise LiveTradingError(
                 f"Cannot reach QMT Bridge at {bridge_url}: {e}. "

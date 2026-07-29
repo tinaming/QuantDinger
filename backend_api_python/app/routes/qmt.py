@@ -40,22 +40,34 @@ def _deny_if_cloud():
     return None
 
 
-def _bridge_get(path: str, params=None):
-    r = _requests.get(f"{_BRIDGE_URL}{path}", params=params, timeout=10)
+def _bridge_get(path: str, params=None, timeout: float = 10):
+    r = _requests.get(f"{_BRIDGE_URL}{path}", params=params, timeout=timeout)
     r.raise_for_status()
     return r.json()
 
 
-def _bridge_post(path: str, json_body=None):
-    r = _requests.post(f"{_BRIDGE_URL}{path}", json=json_body or {}, timeout=15)
+def _bridge_post(path: str, json_body=None, timeout: float = 15):
+    r = _requests.post(f"{_BRIDGE_URL}{path}", json=json_body or {}, timeout=timeout)
     r.raise_for_status()
     return r.json()
 
 
-def _bridge_delete(path: str):
-    r = _requests.delete(f"{_BRIDGE_URL}{path}", timeout=10)
+def _bridge_delete(path: str, timeout: float = 10):
+    r = _requests.delete(f"{_BRIDGE_URL}{path}", timeout=timeout)
     r.raise_for_status()
     return r.json()
+
+
+def _lot_size_for_symbol(symbol: str) -> int:
+    """Main-board A-shares: 100; STAR/ChiNext/BJ often allow 1."""
+    code = (symbol or "").split(".")[0]
+    if code.startswith(("688", "689", "300", "301", "8", "4", "9")):
+        return 1
+    return 100
+
+
+# Place-order may block while bridge polls for fill (~12s) + IPC overhead.
+_ORDER_BRIDGE_TIMEOUT = 45.0
 
 
 def _unwrap_bridge(payload: dict) -> dict:
@@ -247,10 +259,11 @@ def place_order():
             volume = int(float(quantity))
         except (TypeError, ValueError):
             return jsonify({"success": False, "error": "quantity must be a number"}), 400
-        if volume < 100:
+        lot = _lot_size_for_symbol(symbol)
+        if volume < lot or (lot > 1 and volume % lot != 0):
             return jsonify({
                 "success": False,
-                "error": f"qmt_volume_below_lot:{volume} (A-share board lot is 100 shares)",
+                "error": f"qmt_volume_below_lot:{volume} (board lot is {lot} shares)",
             }), 400
 
         order_type = (data.get("orderType") or data.get("order_type") or "market").lower()
@@ -266,7 +279,7 @@ def place_order():
                 return jsonify({"success": False, "error": "Limit order requires price"}), 400
             body["price"] = float(price)
 
-        raw = _bridge_post("/qmt/orders", json_body=body)
+        raw = _bridge_post("/qmt/orders", json_body=body, timeout=_ORDER_BRIDGE_TIMEOUT)
         out = _unwrap_bridge(raw)
         if out.get("success"):
             d = out.get("data") or {}

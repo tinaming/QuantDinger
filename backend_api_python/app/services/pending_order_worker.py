@@ -2846,11 +2846,16 @@ class PendingOrderWorker:
                 )
                 # Poll the bridge for final fill status (up to 30s)
                 _poll_ok = False
+                _reject_reason = ""
                 for _attempt in range(60):  # 60 * 0.5s = 30s
                     time.sleep(0.5)
                     try:
                         qres = client.query_order(exchange_order_id)
                         if qres:
+                            qstatus = str(qres.get("order_status") or "").strip().lower()
+                            if qstatus in ("rejected", "canceled"):
+                                _reject_reason = f"qmt_order_{qstatus}:{exchange_order_id}"
+                                break
                             qvol = float(qres.get("traded_volume", 0) or 0)
                             qpx = float(qres.get("traded_price", 0) or 0)
                             if qvol > 0 and qpx > 0:
@@ -2861,6 +2866,14 @@ class PendingOrderWorker:
                                 break
                     except Exception:
                         pass
+                if _reject_reason:
+                    self._mark_failed(order_id=order_id, error=_reject_reason)
+                    _console_print(
+                        f"[worker] QMT order rejected/canceled: strategy_id={strategy_id} "
+                        f"pending_id={order_id} order_id={exchange_order_id} err={_reject_reason}"
+                    )
+                    _notify_live_best_effort(status="failed", error=_reject_reason)
+                    return
                 if not _poll_ok:
                     self._mark_failed(
                         order_id=order_id,

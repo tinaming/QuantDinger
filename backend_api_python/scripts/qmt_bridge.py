@@ -151,6 +151,19 @@ class _BridgeCallback(XtQuantTraderCallback):
         pass
 
 
+def _stop_trader_unlocked() -> None:
+    """Stop and clear trader/account. Caller must hold ``_lock``."""
+    global _trader, _account, _connected
+    if _trader is not None:
+        try:
+            _trader.stop()
+        except Exception:
+            pass
+    _trader = None
+    _account = None
+    _connected = False
+
+
 def _ensure_connected() -> bool:
     global _trader, _account, _connected
     if _connected and _trader is not None:
@@ -158,44 +171,45 @@ def _ensure_connected() -> bool:
     with _lock:
         if _connected and _trader is not None:
             return True
+        # Stale session after on_disconnected: trader may still exist with
+        # _connected=False. Tear it down before creating a new session, or
+        # xtquant IPC / session_id conflicts cause intermittent connect failures.
+        _stop_trader_unlocked()
         try:
             _trader = XtQuantTrader(QMT_PATH, QMT_SESSION_ID)
             _trader.register_callback(_BridgeCallback())
             _trader.start()
             time.sleep(1)
-            result = _trader.connect()
+            # miniQMT IPC can briefly refuse connect right after restart/login.
+            result = -1
+            for attempt in range(1, 6):
+                result = _trader.connect()
+                if result == 0:
+                    break
+                print(f"[bridge] connect attempt {attempt}/5 failed: {result}")
+                time.sleep(2)
             if result != 0:
                 print(f"[bridge] connect failed: {result}")
-                _trader.stop()
-                _trader = None
+                _stop_trader_unlocked()
                 return False
             _account = StockAccount(QMT_ACCOUNT_ID)
             sub = _trader.subscribe(_account)
             if sub != 0:
                 print(f"[bridge] subscribe failed: {sub}")
-                _trader.stop()
-                _trader = None
-                _account = None
+                _stop_trader_unlocked()
                 return False
             _connected = True
             print(f"[bridge] connected: account={QMT_ACCOUNT_ID}")
             return True
         except Exception as e:
             print(f"[bridge] connection error: {e}")
+            _stop_trader_unlocked()
             return False
 
 
 def _disconnect():
-    global _trader, _account, _connected
     with _lock:
-        if _trader:
-            try:
-                _trader.stop()
-            except Exception:
-                pass
-        _trader = None
-        _account = None
-        _connected = False
+        _stop_trader_unlocked()
 
 
 # ── Flask app ──────────────────────────────────────────────────────────
@@ -536,26 +550,41 @@ def place_order():
         filled = 0.0
         fill_price = 0.0
         status_str = "submitted"
+        status_map = {
+            56: "filled", 55: "partially_filled", 57: "rejected",
+            54: "canceled", 50: "pending", 53: "cancelling",
+            58: "partially_canceled", 59: "queueing",
+        }
 
         # Poll for order fill — market orders on A-shares usually fill within
         # seconds, but we must NOT return 0/0 as fill data; that would cause
         # the caller to use the reference price instead of the real fill price.
-        _POLL_MAX = 15          # max seconds to wait
+        # Keep under typical upstream HTTP timeouts (routes/worker use >=45s).
+        _POLL_MAX = 12          # max seconds to wait
         _POLL_INTERVAL = 0.5    # seconds between polls
         _elapsed = 0.0
         while _elapsed < _POLL_MAX:
             try:
                 o = _trader.query_stock_order(_account, order_id)
                 if o:
+                    status_val = int(getattr(o, "order_status", 0) or 0)
+                    mapped = status_map.get(status_val, "")
                     traded_vol = float(getattr(o, "traded_volume", 0) or 0)
                     traded_px = float(getattr(o, "traded_price", 0) or 0)
+                    if mapped in ("rejected", "canceled"):
+                        return _err(
+                            400,
+                            f"qmt_order_{mapped}:{order_id}",
+                            details=f"order_status={status_val}",
+                        )
                     if traded_vol > 0 and traded_px > 0:
                         filled = traded_vol
                         fill_price = traded_px
-                        status_str = "filled"
-                        break
+                        status_str = "filled" if mapped == "filled" else "partial"
+                        if mapped == "filled":
+                            break
                     # Partial fill or still pending — keep waiting
-                    if traded_vol > 0:
+                    elif traded_vol > 0:
                         filled = traded_vol
                         fill_price = traded_px
                         status_str = "partial"

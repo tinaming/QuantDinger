@@ -258,6 +258,106 @@ tbody tr:hover { background: var(--bg-card-hover) }
 }
 .empty-state .icon { font-size: 36px; margin-bottom: 12px; opacity: 0.5 }
 
+/* ── Ranking Section ── */
+.ranking-section {
+  margin-bottom: 28px;
+}
+.ranking-title {
+  font-size: 14px; font-weight: 600; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.ranking-title .icon { font-size: 18px }
+.ranking-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.rank-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  cursor: pointer;
+  transition: all .2s;
+  position: relative;
+  overflow: hidden;
+}
+.rank-card:hover { border-color: var(--accent); background: var(--bg-card-hover); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3) }
+.rank-card .rank-badge {
+  position: absolute; top: 10px; right: 12px;
+  font-size: 20px; font-weight: 800; color: var(--border-light); opacity: 0.5;
+}
+.rank-card:nth-child(1) .rank-badge { color: #fbbf24; opacity: 0.8 }
+.rank-card:nth-child(2) .rank-badge { color: #94a3b8; opacity: 0.8 }
+.rank-card:nth-child(3) .rank-badge { color: #cd7f32; opacity: 0.8 }
+.rank-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px }
+.rank-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 10px }
+.rank-stats { display: flex; gap: 16px }
+.rank-stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px }
+.rank-stat-value { font-size: 15px; font-weight: 700; margin-top: 2px }
+
+/* ── Strategy Detail View ── */
+.detail-view { padding: 0 }
+.detail-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent; color: var(--text-dim); border: 1px solid var(--border-light);
+  padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  transition: all .2s; margin-bottom: 20px;
+}
+.detail-back:hover { color: var(--text); border-color: var(--accent); background: var(--accent-glow) }
+.detail-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 24px; flex-wrap: wrap; gap: 16px;
+}
+.detail-header-left { display: flex; align-items: center; gap: 16px }
+.detail-header h2 { font-size: 20px; font-weight: 700; margin: 0 }
+.detail-header .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px }
+.detail-kpi-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px; margin-bottom: 24px;
+}
+.detail-kpi {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.detail-kpi .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px }
+.detail-kpi .value { font-size: 20px; font-weight: 700 }
+
+/* Chart container */
+.chart-wrap {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
+}
+.chart-wrap h3 { font-size: 14px; font-weight: 600; margin-bottom: 14px }
+.chart-wrap canvas { width: 100%; height: 220px }
+
+/* Detail tabs */
+.detail-tabs {
+  display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--border);
+}
+.detail-tab {
+  padding: 10px 16px; cursor: pointer; color: var(--text-muted);
+  font-size: 13px; font-weight: 500; border-bottom: 2px solid transparent;
+  transition: all .2s;
+}
+.detail-tab:hover { color: var(--text-dim) }
+.detail-tab.active { color: var(--accent); border-bottom-color: var(--accent) }
+
+/* Log lines */
+.log-panel {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; max-height: 400px; overflow-y: auto;
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.7;
+}
+.log-line { color: var(--text-dim); white-space: pre-wrap; word-break: break-all }
+.log-line .ts { color: var(--text-muted); margin-right: 8px }
+.log-line.warn { color: var(--yellow) }
+.log-line.error { color: var(--red) }
+
+/* Clickable table rows */
+tbody tr.clickable { cursor: pointer }
+tbody tr.clickable:hover { background: var(--accent-glow) }
+
 /* ── Responsive ── */
 @media (max-width: 1024px) {
   .summary-row { grid-template-columns: repeat(2, 1fr) }
@@ -389,6 +489,11 @@ let isRefreshing = false;
 let notifications = [];
 let lastNotifId = 0;
 let notifPanelOpen = false;
+let detailView = false;        // true = showing single strategy detail
+let detailStrategyId = null;   // which strategy
+let detailTab = 'positions';   // positions | trades | logs
+let detailData = {};           // cached detail data
+let detailLoading = false;
 
 const REFRESH_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>`;
 
@@ -588,6 +693,7 @@ function renderHeader() {
 
 function render() {
   if (!allData) return;
+  if (detailView) { renderDetail(); return; }
   const s = allData.summary || {};
   const items = allData.items || [];
   const crypto = s.crypto || {};
@@ -739,6 +845,8 @@ function render() {
       </div>
     </div>
 
+    ${renderRankingSection(items)}
+
     ${filtered.length ? `
     <div class="table-wrap fade-in">
       <div class="table-title">
@@ -750,7 +858,7 @@ function render() {
           <th>ID</th><th>策略</th><th>品种</th><th>周期</th><th>模式</th><th>状态</th><th>资金</th><th>杠杆</th><th>盈亏</th><th>持仓</th>
         </tr></thead>
         <tbody>
-        ${filtered.map(i => `<tr>
+        ${filtered.map(i => `<tr class="clickable" onclick="showStrategyDetail(${i.id})">
           <td class="text-muted">#${i.id}</td>
           <td style="font-weight:500">${(i.strategy_name || i.indicator_name || '-').replace('CZSC v3 - ', '')}</td>
           <td>${i.symbol || '-'}</td>
@@ -780,10 +888,345 @@ window.toggleNotifPanel = toggleNotifPanel;
 window.markAllRead = markAllRead;
 window.markNotifRead = markNotifRead;
 
+// ─── Ranking helpers ───
+function getRankedStrategies(items) {
+  return (items || [])
+    .filter(i => i.total_pnl != null || i.trade_count > 0)
+    .slice()
+    .sort((a, b) => {
+      const roiA = a.roi || 0;
+      const roiB = b.roi || 0;
+      return roiB - roiA;
+    })
+    .slice(0, 6);
+}
+
+function renderRankingSection(items) {
+  const ranked = getRankedStrategies(items);
+  if (!ranked.length) return '';
+  return `
+    <div class="ranking-section fade-in">
+      <div class="ranking-title"><span class="icon">🏆</span> 策略排行榜 <span style="font-size:12px;color:var(--text-muted);font-weight:400">按 ROI 排序</span></div>
+      <div class="ranking-grid">
+        ${ranked.map((r, idx) => {
+          const name = (r.strategy_name || r.indicator_name || '-').replace('CZSC v3 - ', '');
+          const roi = r.roi || 0;
+          const pnl = r.total_pnl || 0;
+          return `
+            <div class="rank-card" onclick="showStrategyDetail(${r.id})">
+              <div class="rank-badge">#${idx + 1}</div>
+              <div class="rank-name">${name}</div>
+              <div class="rank-meta">${r.symbol || '-'} · ${r.timeframe || '-'} · ${r.execution_mode === 'live' ? '实盘' : '模拟'}</div>
+              <div class="rank-stats">
+                <div>
+                  <div class="rank-stat-label">ROI</div>
+                  <div class="rank-stat-value ${roi >= 0 ? 'pnl-pos' : 'pnl-neg'}">${roi >= 0 ? '+' : ''}${fmt(roi)}%</div>
+                </div>
+                <div>
+                  <div class="rank-stat-label">盈亏</div>
+                  <div class="rank-stat-value ${pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${pnl >= 0 ? '+' : ''}$${fmt(pnl, 2)}</div>
+                </div>
+                <div>
+                  <div class="rank-stat-label">交易</div>
+                  <div class="rank-stat-value">${r.trade_count || 0}</div>
+                </div>
+              </div>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+// ─── Strategy Detail ───
+window.showStrategyDetail = async function (id) {
+  detailView = true;
+  detailStrategyId = id;
+  detailTab = 'positions';
+  detailData = {};
+  detailLoading = true;
+  renderDetail();
+
+  // Update URL without reload
+  const url = new URL(window.location);
+  url.searchParams.set('strategyId', id);
+  window.history.pushState({}, '', url);
+
+  // Load performance + positions + trades + logs in parallel
+  try {
+    const [perf, pos, trades, logs] = await Promise.all([
+      api('/strategies/performance?id=' + id).catch(() => ({ code: 0 })),
+      api('/strategies/positions?id=' + id).catch(() => ({ code: 0 })),
+      api('/strategies/trades?id=' + id).catch(() => ({ code: 0 })),
+      api('/strategies/logs?id=' + id).catch(() => ({ code: 0 })),
+    ]);
+    detailData = {
+      perf: perf.code === 1 ? perf.data : null,
+      positions: pos.code === 1 ? (pos.data?.positions || []) : [],
+      trades: trades.code === 1 ? (trades.data?.trades || []) : [],
+      logs: logs.code === 1 ? (logs.data || []) : [],
+    };
+  } catch (e) {
+    console.error('detail load error', e);
+  }
+  detailLoading = false;
+  renderDetail();
+};
+
+window.backToList = function () {
+  detailView = false;
+  detailStrategyId = null;
+  detailData = {};
+  const url = new URL(window.location);
+  url.searchParams.delete('strategyId');
+  window.history.pushState({}, '', url);
+  render();
+};
+
+window.switchDetailTab = function (t) {
+  detailTab = t;
+  renderDetail();
+};
+
+function findStrategyById(id) {
+  if (!allData || !allData.items) return null;
+  return allData.items.find(i => i.id === id) || null;
+}
+
+function renderDetail() {
+  const st = findStrategyById(detailStrategyId);
+  if (!st) { document.getElementById('app').innerHTML = '<div class="content"><div class="empty-state">策略未找到</div></div>'; return; }
+
+  const name = (st.strategy_name || st.indicator_name || '-').replace('CZSC v3 - ', '');
+  const perf = detailData.perf || {};
+  const positions = detailData.positions || [];
+  const trades = detailData.trades || [];
+  const logs = detailData.logs || [];
+  const isCrypto = st.market_category === 'Crypto';
+  const ccy = isCrypto ? '$' : '¥';
+
+  // KPI
+  const totalReturn = perf.total_return || st.total_pnl || 0;
+  const totalReturnPct = perf.total_return_pct || st.roi || 0;
+  const maxDD = perf.max_drawdown || 0;
+  const maxDDPct = perf.max_drawdown_pct || 0;
+  const latestEquity = perf.latest_equity || (st.initial_capital + totalReturn);
+
+  const app = document.getElementById('app');
+  app.innerHTML = `
+  <div class="header">
+    <div class="header-left">
+      <h1><span>Chan</span>Quant</h1>
+      <div class="pulse-dot" title="系统运行中"></div>
+    </div>
+    <div class="header-right">
+      <button class="btn-refresh" onclick="backToList()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        返回列表
+      </button>
+    </div>
+  </div>
+  <div class="content detail-view">
+    <div class="detail-header">
+      <div class="detail-header-left">
+        <div>
+          <h2>${name}</h2>
+          <div class="subtitle">#${st.id} · ${st.symbol || '-'} · ${st.timeframe || '-'} · <span class="mode-tag ${st.execution_mode === 'live' ? 'live' : 'signal'}">${st.execution_mode === 'live' ? '实盘' : '模拟'}</span> · <span class="status-pill ${st.status === 'running' ? 'pill-running' : 'pill-stopped'}"><span class="dot"></span>${st.status === 'running' ? '运行中' : '已停止'}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-kpi-row">
+      <div class="detail-kpi">
+        <div class="label">初始资金</div>
+        <div class="value">${ccy}${fmt(st.initial_capital)}</div>
+      </div>
+      <div class="detail-kpi">
+        <div class="label">当前权益</div>
+        <div class="value">${ccy}${fmt(latestEquity)}</div>
+      </div>
+      <div class="detail-kpi">
+        <div class="label">总收益</div>
+        <div class="value ${totalReturn >= 0 ? 'pnl-pos' : 'pnl-neg'}">${totalReturn >= 0 ? '+' : ''}${ccy}${fmt(totalReturn, 4)} (${totalReturnPct >= 0 ? '+' : ''}${fmt(totalReturnPct)}%)</div>
+      </div>
+      <div class="detail-kpi">
+        <div class="label">最大回撤</div>
+        <div class="value pnl-neg">${ccy}${fmt(maxDD, 2)} (${fmt(maxDDPct)}%)</div>
+      </div>
+      <div class="detail-kpi">
+        <div class="label">交易次数</div>
+        <div class="value">${st.trade_count || 0}</div>
+      </div>
+      <div class="detail-kpi">
+        <div class="label">杠杆</div>
+        <div class="value">${st.leverage || 1}x</div>
+      </div>
+    </div>
+
+    ${detailLoading ? '<div class="empty-state">加载中...</div>' : `
+    <div class="chart-wrap">
+      <h3>📈 权益曲线</h3>
+      <canvas id="equityChart" height="220"></canvas>
+    </div>
+
+    <div class="detail-tabs">
+      <div class="detail-tab ${detailTab === 'positions' ? 'active' : ''}" onclick="switchDetailTab('positions')">持仓 (${positions.length})</div>
+      <div class="detail-tab ${detailTab === 'trades' ? 'active' : ''}" onclick="switchDetailTab('trades')">交易 (${trades.length})</div>
+      <div class="detail-tab ${detailTab === 'logs' ? 'active' : ''}" onclick="switchDetailTab('logs')">日志 (${logs.length})</div>
+    </div>
+
+    ${detailTab === 'positions' ? renderDetailPositions(positions, ccy) : ''}
+    ${detailTab === 'trades' ? renderDetailTrades(trades, ccy) : ''}
+    ${detailTab === 'logs' ? renderDetailLogs(logs) : ''}
+    `}
+  </div>`;
+
+  // Draw equity chart after DOM is ready
+  if (!detailLoading && perf.equity_curve && perf.equity_curve.length > 1) {
+    setTimeout(() => drawEquityChart(perf.equity_curve, isCrypto), 50);
+  }
+}
+
+function renderDetailPositions(positions, ccy) {
+  if (!positions.length) return '<div class="empty-state">暂无持仓</div>';
+  return `<div class="table-wrap">
+    <table><thead><tr>
+      <th>品种</th><th>方向</th><th>数量</th><th>入场价</th><th>现价</th><th>未实现盈亏</th><th>盈亏%</th>
+    </tr></thead><tbody>
+    ${positions.map(p => `<tr>
+      <td>${p.symbol || '-'}</td>
+      <td>${(p.side || '').toUpperCase()}</td>
+      <td>${fmt(p.size, 4)}</td>
+      <td>${fmt(p.entry_price, 4)}</td>
+      <td>${fmt(p.current_price, 4)}</td>
+      <td class="${(p.unrealized_pnl||0) >= 0 ? 'pnl-pos' : 'pnl-neg'}">${(p.unrealized_pnl||0) >= 0 ? '+' : ''}${ccy}${fmt(p.unrealized_pnl, 4)}</td>
+      <td class="${(p.pnl_percent||0) >= 0 ? 'pnl-pos' : 'pnl-neg'}">${(p.pnl_percent||0) >= 0 ? '+' : ''}${fmt(p.pnl_percent)}%</td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+function renderDetailTrades(trades, ccy) {
+  if (!trades.length) return '<div class="empty-state">暂无交易记录</div>';
+  const recent = trades.slice(0, 50);
+  return `<div class="table-wrap">
+    <table><thead><tr>
+      <th>时间</th><th>品种</th><th>类型</th><th>价格</th><th>数量</th><th>金额</th><th>盈亏</th>
+    </tr></thead><tbody>
+    ${recent.map(t => {
+      const ts = t.created_at ? new Date(typeof t.created_at === 'number' ? t.created_at * 1000 : t.created_at).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
+      const profit = t.net_pnl != null ? t.net_pnl : (t.profit || 0);
+      return `<tr>
+        <td class="text-dim">${ts}</td>
+        <td>${t.symbol || '-'}</td>
+        <td>${(t.type || '').toUpperCase()}</td>
+        <td>${fmt(t.price, 4)}</td>
+        <td>${fmt(t.amount, 4)}</td>
+        <td>${ccy}${fmt(t.value, 2)}</td>
+        <td class="${profit >= 0 ? 'pnl-pos' : 'pnl-neg'}">${profit !== 0 ? (profit >= 0 ? '+' : '') + ccy + fmt(profit, 4) : '--'}</td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>
+    ${trades.length > 50 ? '<div style="padding:12px 16px;text-align:center;color:var(--text-muted);font-size:12px">显示最近 50 条，共 ' + trades.length + ' 条</div>' : ''}
+  </div>`;
+}
+
+function renderDetailLogs(logs) {
+  if (!logs.length) return '<div class="empty-state">暂无日志</div>';
+  return `<div class="log-panel">
+    ${logs.slice(0, 200).map(l => {
+      const lvl = (l.level || '').toLowerCase();
+      const cls = lvl === 'warn' || lvl === 'warning' ? 'warn' : lvl === 'error' ? 'error' : '';
+      const ts = l.timestamp ? String(l.timestamp).slice(11, 19) || '' : '';
+      return `<div class="log-line ${cls}"><span class="ts">${ts}</span>${(l.message || '').replace(/</g,'&lt;')}</div>`;
+    }).join('')}
+  </div>`;
+}
+
+function drawEquityChart(curve, isCrypto) {
+  const canvas = document.getElementById('equityChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = { top: 10, right: 12, bottom: 30, left: 60 };
+
+  const values = curve.map(p => p.equity || 0);
+  const times = curve.map(p => p.time || 0);
+  const minV = Math.min(...values);
+  const maxV = Math.max(...values);
+  const range = maxV - minV || 1;
+  const minT = times[0] || 0;
+  const maxT = times[times.length - 1] || 1;
+  const tRange = maxT - minT || 1;
+
+  const ccy = isCrypto ? '$' : '¥';
+
+  // Grid
+  ctx.strokeStyle = 'rgba(42,58,77,0.5)';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (H - pad.top - pad.bottom) * i / 4;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+    const val = maxV - range * i / 4;
+    ctx.fillStyle = '#5a6a82'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(ccy + fmt(val, 0), pad.left - 6, y + 3);
+  }
+
+  // Time labels
+  ctx.fillStyle = '#5a6a82'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  const labelCount = Math.min(6, curve.length);
+  for (let i = 0; i < labelCount; i++) {
+    const idx = Math.floor(i * (curve.length - 1) / (labelCount - 1));
+    const t = times[idx];
+    if (!t) continue;
+    const d = new Date(typeof t === 'number' && t < 1e12 ? t * 1000 : t);
+    const label = d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+    const x = pad.left + (W - pad.left - pad.right) * idx / (curve.length - 1 || 1);
+    ctx.fillText(label, x, H - pad.bottom + 16);
+  }
+
+  // Line
+  const isProfit = values[values.length - 1] >= values[0];
+  const lineColor = isProfit ? '#22c55e' : '#ef4444';
+  const fillColor = isProfit ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)';
+
+  ctx.beginPath();
+  curve.forEach((p, i) => {
+    const x = pad.left + (W - pad.left - pad.right) * i / (curve.length - 1 || 1);
+    const y = pad.top + (H - pad.top - pad.bottom) * (1 - (p.equity - minV) / range);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = lineColor; ctx.lineWidth = 2; ctx.stroke();
+
+  // Fill area
+  const lastX = pad.left + (W - pad.left - pad.right);
+  const baseY = pad.top + (H - pad.top - pad.bottom);
+  ctx.lineTo(lastX, baseY);
+  ctx.lineTo(pad.left, baseY);
+  ctx.closePath();
+  ctx.fillStyle = fillColor; ctx.fill();
+}
+
 setInterval(() => { if (token) loadData() }, 30000);
 setInterval(() => { if (token) loadNotifications() }, 5000);
 
-if (token) { loadData(); loadNotifications() } else { renderLogin() }
+// Handle browser back/forward
+window.addEventListener('popstate', () => {
+  const sid = new URL(window.location).searchParams.get('strategyId');
+  if (sid && allData) { showStrategyDetail(parseInt(sid)); }
+  else if (detailView) { detailView = false; detailStrategyId = null; render(); }
+});
+
+if (token) {
+  loadData().then(() => {
+    const sid = new URL(window.location).searchParams.get('strategyId');
+    if (sid && allData) { showStrategyDetail(parseInt(sid)); }
+  });
+  loadNotifications();
+} else { renderLogin() }
 </script>
 </body>
 </html>
