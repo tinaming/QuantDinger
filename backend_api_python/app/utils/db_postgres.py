@@ -453,12 +453,26 @@ class PostgresCursor:
         # INSERT ... RETURNING: execute() peeks the first row for lastrowid; callers
         # that also cur.fetchone() must see the same row (not a second fetch from PG).
         self._buffered_row: Optional[Dict[str, Any]] = None
+
+    def __getattr__(self, name):
+        """Delegate unknown attributes to the underlying psycopg2 cursor.
+
+        This allows psycopg2.extras helpers (execute_values, execute_batch,
+        etc.) to access cursor.connection, cursor.mogrify, and other
+        attributes they need without us having to wrap every single one.
+        """
+        # Avoid infinite recursion: __getattr__ is only called for attributes
+        # that are NOT found via normal lookup.
+        return getattr(self._cursor, name)
     
     def _convert_placeholders(self, query: str) -> str:
         """
         Convert ? placeholders to PostgreSQL %s for backward compatibility.
         Also handle some SQL syntax differences.
         """
+        # psycopg2.extras.execute_values passes a bytes query (b''.join(parts)).
+        if isinstance(query, bytes):
+            query = query.decode('utf-8')
         # Replace ? -> %s
         query = query.replace('?', '%s')
         
@@ -489,8 +503,12 @@ class PostgresCursor:
 
         is_insert = query.strip().upper().startswith('INSERT')
         has_returning = 'RETURNING' in query.upper()
+        # Multi-row INSERTs (e.g. psycopg2.extras.execute_values) must not get
+        # auto RETURNING id: fetchone() would leave unread rows and break the
+        # next paged execute on the same cursor.
+        is_multi_row = '),(' in query.replace(' ', '')
 
-        if is_insert and not has_returning:
+        if is_insert and not has_returning and not is_multi_row:
             q_with_id = query.rstrip(';').rstrip() + ' RETURNING id'
             savepoint = '_pg_ins_ret_id'
             try:
@@ -589,6 +607,15 @@ class PostgresCursor:
     def rowcount(self) -> int:
         """Get affected row count"""
         return self._cursor.rowcount
+
+    @property
+    def connection(self):
+        """Expose the underlying psycopg2 cursor's connection.
+
+        Required by psycopg2.extras.execute_values and similar helpers that
+        need to inspect the connection encoding.
+        """
+        return self._cursor.connection
 
 
 class PostgresConnection:

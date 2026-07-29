@@ -665,62 +665,62 @@ is_3sell = bs_type == '3sell'
 has_buy = bs_type.str.contains('buy', case=False, na=False) & (bs_type != '')
 has_sell = bs_type.str.contains('sell', case=False, na=False) & (bs_type != '')
 
-# V3 causal base
+# V3 causal base (flip at confirmed stroke end — same timing as v3)
 v3_long = bi_flip_dn & (has_buy | (trend >= 0))
 v3_short = bi_flip_up & (has_sell | (trend <= 0))
 
-# Quality 1/2/3 entries (edge on bs mark bars)
-q1_long = is_1buy
+# Align sparse bs marks to causal flips via short lookback (marks may precede confirm)
+buy_recent = has_buy.rolling(5, min_periods=1).max().fillna(0).astype(bool)
+sell_recent = has_sell.rolling(5, min_periods=1).max().fillna(0).astype(bool)
+b1_recent = is_1buy.rolling(5, min_periods=1).max().fillna(0).astype(bool)
+b2_recent = is_2buy.rolling(5, min_periods=1).max().fillna(0).astype(bool)
+b3_recent = is_3buy.rolling(5, min_periods=1).max().fillna(0).astype(bool)
+s1_recent = is_1sell.rolling(5, min_periods=1).max().fillna(0).astype(bool)
+s2_recent = is_2sell.rolling(5, min_periods=1).max().fillna(0).astype(bool)
+s3_recent = is_3sell.rolling(5, min_periods=1).max().fillna(0).astype(bool)
+
+# Quality paths MUST be flip-gated (never sticky state ORs)
+q1_long = bi_flip_dn & b1_recent
 if require_beichi:
-    q1_long = q1_long & ((beichi == 1) | bot_warn)
-q2_long = is_2buy & (vol_shrink.astype(bool) | (vol_confirm == 0))
-q3_long = is_3buy
+    q1_long = q1_long & (bot_warn.astype(bool) | (beichi == 1))
+q2_long = bi_flip_dn & b2_recent
+if vol_confirm:
+    q2_long = q2_long & vol_shrink.astype(bool)
+q3_long = bi_flip_dn & (b3_recent | ((zs_pos == 'above') & (zs_level >= 1)))
 if amp_narrow_on:
-    q3_long = q3_long & (amp_narrow.astype(bool) | (zs_pos == 'above'))
+    q3_long = q3_long & amp_narrow.astype(bool)
 if vol_confirm:
     q3_long = q3_long & (vol_surge.astype(bool) | vol_shrink.astype(bool))
+if prior_low_on:
+    q3_long = q3_long & prior_low_ok.astype(bool)
 
-q1_short = is_1sell
+q1_short = bi_flip_up & s1_recent
 if require_beichi:
-    q1_short = q1_short & ((beichi == -1) | top_warn)
-q2_short = is_2sell & (vol_shrink.astype(bool) | (vol_confirm == 0))
-q3_short = is_3sell
+    q1_short = q1_short & (top_warn.astype(bool) | (beichi == -1))
+q2_short = bi_flip_up & s2_recent
+if vol_confirm:
+    q2_short = q2_short & vol_shrink.astype(bool)
+q3_short = bi_flip_up & (s3_recent | ((zs_pos == 'below') & (zs_level >= 1)))
 if amp_narrow_on:
-    q3_short = q3_short & (amp_narrow.astype(bool) | (zs_pos == 'below'))
+    q3_short = q3_short & amp_narrow.astype(bool)
 if vol_confirm:
     q3_short = q3_short & (vol_surge.astype(bool) | vol_shrink.astype(bool))
 
-# Enhanced breakout (优质突破) without explicit 3buy mark
+# Range trade (default off): flip-gated near ZD/ZG
 has_center = zs_level >= 1
-breakout_long = has_center & (zs_pos == 'above') & (bi_dir == 1)
-breakout_short = has_center & (zs_pos == 'below') & (bi_dir == -1)
-if amp_narrow_on:
-    breakout_long = breakout_long & amp_narrow.astype(bool)
-    breakout_short = breakout_short & amp_narrow.astype(bool)
-if vol_confirm:
-    breakout_long = breakout_long & vol_surge.astype(bool)
-    breakout_short = breakout_short & vol_surge.astype(bool)
-if prior_low_on:
-    breakout_long = breakout_long & prior_low_ok.astype(bool)
-
-# Range trade
 in_center = has_center & (zs_pos == 'inside')
 near_zd = in_center & (close < zs_zd + (zs_zg - zs_zd) * 0.2) & (zs_zg > zs_zd)
 near_zg = in_center & (close > zs_zg - (zs_zg - zs_zd) * 0.2) & (zs_zg > zs_zd)
-range_long = near_zd & (trend == 0) if range_trade else pd.Series(False, index=df.index)
-range_short = near_zg & (trend == 0) if range_trade else pd.Series(False, index=df.index)
+range_long = (bi_flip_dn & near_zd & (trend == 0)) if range_trade else pd.Series(False, index=df.index)
+range_short = (bi_flip_up & near_zg & (trend == 0)) if range_trade else pd.Series(False, index=df.index)
 
-if quality_bs:
-    long_cond = v3_long | q1_long | q2_long | q3_long | breakout_long | range_long
-    short_cond = v3_short | q1_short | q2_short | q3_short | breakout_short | range_short
-else:
-    long_cond = v3_long | breakout_long | range_long
-    short_cond = v3_short | breakout_short | range_short
+# Filtered v3 + flip-gated quality (no sticky breakout OR)
+long_cond = v3_long.copy()
+short_cond = v3_short.copy()
 
 if trend_filter == 1:
-    # Prefer structural trend; allow trend_continue as soft confirm (not OR-open)
-    long_cond = long_cond & (trend >= 0) & (trend_continue >= 0)
-    short_cond = short_cond & (trend <= 0) & (trend_continue <= 0)
+    long_cond = long_cond & (trend >= 0)
+    short_cond = short_cond & (trend <= 0)
 
 if divergence_filter:
     long_cond = long_cond & ~top_warn.astype(bool)
@@ -733,10 +733,19 @@ if ml_align_on:
     long_cond = long_cond & (ml_align >= 0)
     short_cond = short_cond & (ml_align <= 0)
 
+if quality_bs:
+    # When quality preferred: keep filtered v3 OR explicit 1/2/3 / range
+    long_cond = long_cond | q1_long | q2_long | q3_long | range_long
+    short_cond = short_cond | q1_short | q2_short | q3_short | range_short
+
+long_cond = long_cond & (trend_continue >= 0)
+short_cond = short_cond & (trend_continue <= 0)
+
+# Match v3 exits for fair compare
 df['open_long'] = edge(long_cond)
-df['close_long'] = edge(bi_flip_up) | edge(zs_pos == 'below')
+df['close_long'] = edge(bi_flip_up)
 df['open_short'] = edge(short_cond)
-df['close_short'] = edge(bi_flip_dn) | edge(zs_pos == 'above')
+df['close_short'] = edge(bi_flip_dn)
 
 buy_marks = [float(df['low'].iloc[i]) * 0.995 if bool(df['open_long'].iloc[i]) else None for i in range(len(df))]
 sell_marks = [float(df['high'].iloc[i]) * 1.005 if bool(df['open_short'].iloc[i]) else None for i in range(len(df))]
@@ -1370,3 +1379,64 @@ class TestCzscV3VsV4Comparison:
         assert 'range_long' not in CZSC_CENTER_BREAKOUT_CODE
         assert 'top_divergence' in CZSC_V4_INDICATOR_CODE
         assert 'top_divergence' not in CZSC_TREND_INDICATOR_CODE
+
+
+# ---------------------------------------------------------------------------
+# Test 8: CZSC V4.1 multi-resonance (bridge columns)
+# ---------------------------------------------------------------------------
+
+class TestCzscV41Indicator:
+    """Validate CZSC v4.1 indicator that consumes bridge v4.1 columns."""
+
+    def test_v41_code_detected_as_czsc(self):
+        assert code_uses_czsc(CZSC_V41_INDICATOR_CODE) is True
+
+    def test_v41_four_way_contract(self):
+        assert '# signal_form: four_way' in CZSC_V41_INDICATOR_CODE
+        assert "df['open_long']" in CZSC_V41_INDICATOR_CODE
+        assert "df['close_long']" in CZSC_V41_INDICATOR_CODE
+        assert "df['open_short']" in CZSC_V41_INDICATOR_CODE
+        assert "df['close_short']" in CZSC_V41_INDICATOR_CODE
+        assert 'import czsc' not in CZSC_V41_INDICATOR_CODE
+
+    def test_v41_uses_bridge_v41_columns(self):
+        for col in (
+            'czsc_beichi', 'czsc_amp_narrow', 'czsc_vol_surge',
+            'czsc_vol_shrink', 'czsc_prior_low_ok', 'czsc_ml_align',
+            'czsc_trend_continue',
+        ):
+            assert col in CZSC_V41_INDICATOR_CODE, f"missing {col}"
+
+    def test_v41_has_1_2_3_buy_sell(self):
+        for mark in ('1buy', '2buy', '3buy', '1sell', '2sell', '3sell'):
+            assert mark in CZSC_V41_INDICATOR_CODE
+
+    def test_v41_validates(self):
+        from app.services.indicator_validation import validate_indicator_code
+        result = validate_indicator_code(CZSC_V41_INDICATOR_CODE)
+        assert result["success"] is True, (
+            f"V4.1 validation failed: {result.get('msg')} | {result.get('details')}"
+        )
+
+    def test_v41_mock_execution(self):
+        df = _make_ohlcv_df(200)
+        df_mock = add_mock_czsc_columns(df)
+        exec_globals = {
+            "df": df_mock.copy(),
+            "pd": pd,
+            "np": np,
+            "params": {
+                "trend_filter": 1, "quality_bs": 1, "require_beichi": 1,
+                "vol_confirm": 1, "amp_narrow": 1, "prior_low": 1,
+                "ml_align": 0, "range_trade": 0, "divergence_filter": 1,
+            },
+            "output": None,
+        }
+        for col in ("open", "high", "low", "close", "volume"):
+            exec_globals[col] = exec_globals["df"][col]
+        exec(CZSC_V41_INDICATOR_CODE, exec_globals)
+        out_df = exec_globals["df"]
+        for col in ("open_long", "close_long", "open_short", "close_short"):
+            assert col in out_df.columns
+        assert exec_globals["output"] is not None
+        assert exec_globals["output"]["name"] == "CZSC v4.1 Multi-Resonance"

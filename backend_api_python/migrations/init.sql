@@ -1596,6 +1596,41 @@ CREATE INDEX IF NOT EXISTS idx_agent_paper_orders_token ON qd_agent_paper_orders
 ALTER TABLE qd_agent_jobs ADD COLUMN IF NOT EXISTS progress JSONB;
 
 -- =============================================================================
+-- 31. K-line Cache (persistent OHLCV cache for backtest)
+-- =============================================================================
+-- Historical OHLCV data is immutable once a candle closes.  We cache it in
+-- PostgreSQL so backtests don't need to re-fetch the same data from exchanges
+-- (especially important for batch backtests that hit rate limits).
+--
+-- The cache is transparent: consumers check it first, fall back to the live
+-- exchange, then store the result.  No TTL is needed for historical candles.
+
+CREATE TABLE IF NOT EXISTS kline_cache (
+    id BIGSERIAL PRIMARY KEY,
+    market VARCHAR(32) NOT NULL,
+    symbol VARCHAR(40) NOT NULL,
+    timeframe VARCHAR(8) NOT NULL,
+    market_type VARCHAR(16) NOT NULL DEFAULT '',
+    exchange_id VARCHAR(32) NOT NULL DEFAULT '',
+    candle_ts BIGINT NOT NULL,
+    open DOUBLE PRECISION NOT NULL,
+    high DOUBLE PRECISION NOT NULL,
+    low DOUBLE PRECISION NOT NULL,
+    close DOUBLE PRECISION NOT NULL,
+    volume DOUBLE PRECISION NOT NULL,
+    stored_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT kline_cache_unique UNIQUE(market, symbol, timeframe, market_type, exchange_id, candle_ts)
+);
+
+-- Lookup index omitted: UNIQUE(kline_cache_unique) already covers
+-- (market, symbol, timeframe, market_type, exchange_id, candle_ts).
+-- Existing deployments that created idx_kline_cache_lookup may drop it with:
+--   DROP INDEX IF EXISTS idx_kline_cache_lookup;
+
+CREATE INDEX IF NOT EXISTS idx_kline_cache_stored
+    ON kline_cache(stored_at);
+
+-- =============================================================================
 -- Completion Notice
 -- =============================================================================
 DO $$

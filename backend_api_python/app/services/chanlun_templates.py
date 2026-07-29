@@ -386,6 +386,239 @@ _register({
 
 
 # ---------------------------------------------------------------------------
+# Template 5: 真三买回踩确认 MVP (Leave-ZG pullback confirm)
+# ---------------------------------------------------------------------------
+# 窄场景：上涨语境 + 中枢离开后回踩不进中枢 + 可选收敛/放量。
+# 经典三买 ≠ czsc_bs_type=='3buy'，也 ≠ 简单 zs_pos=='above' 第一次离开。
+# 收敛/放量/前低在指标内自算，不依赖 bridge 扩列。
+
+_TRUE_3BUY_MVP_CODE = '''\
+# --- ChanQuant execution contract (v1) ---
+# signal_form: four_way
+# exit_owner: engine
+# flip_mode: R1
+# signal_mode: confirmed          # 入场仅认已收盘 K（与回测/实盘对齐）
+# exit_signal_mode: confirmed
+# 经典三买 ≠ czsc_bs_type=='3buy'，≠ 首次 zs_pos=='above'
+# 本模板：有效中枢 → 离开 ZG → 回踩低点仍 ≥ ZG（不进中枢）→ 下降笔确认结束 = 真三买
+# 退出负责人=engine：固定止损止盈由 @strategy；close_* 仅结构失效（跌回中枢），禁止指标内窄 TP/SL
+# @param trend_min int 0 上涨语境：czsc_trend >= 此值才允许三买（更严可设 1）
+# @param zs_min_level int 1 中枢最低级别
+# @param pullback_buffer float 0.02 回踩靠近 ZG 的缓冲（相对 ZG，0.02=2%）
+# @param require_amp_narrow int 0 可选：1=要求近期中枢振幅收敛
+# @param require_vol_surge int 0 可选：1=要求回踩确认棒放量
+# @param vol_ma int 20 放量均量周期
+# @param vol_mult float 1.5 放量倍数（volume > MA * mult）
+# @param amp_window int 20 振幅收敛回看窗口
+# @strategy entryPct 1
+# @strategy stopLossPct 0.03
+# @strategy takeProfitPct 0.06
+# @strategy trailingEnabled false
+# @strategy tradeDirection both
+
+my_indicator_name = "真三买回踩确认 MVP"
+my_indicator_description = (
+    "窄场景真三买：上涨语境+有效中枢+离开ZG后回踩不进中枢确认；"
+    "可选振幅收敛/放量；exit_owner=engine（结构失效才 close_long）"
+)
+
+df = df.copy()
+
+trend_min = int(params.get('trend_min', 0))
+zs_min_level = int(params.get('zs_min_level', 1))
+pullback_buffer = float(params.get('pullback_buffer', 0.02))
+require_amp_narrow = int(params.get('require_amp_narrow', 0))
+require_vol_surge = int(params.get('require_vol_surge', 0))
+vol_ma_n = int(params.get('vol_ma', 20))
+vol_mult = float(params.get('vol_mult', 1.5))
+amp_window = int(params.get('amp_window', 20))
+
+trend = df['czsc_trend'].fillna(0)
+zs_level = df['czsc_zs_level'].fillna(0)
+zs_zd = df['czsc_zs_zd']
+zs_zg = df['czsc_zs_zg']
+zs_pos = df['czsc_zs_position'].fillna('')
+bi_dir = df['czsc_bi_dir'].fillna(0)
+bi_dir_prev = bi_dir.shift(1).fillna(0)
+close = df['close']
+high = df['high']
+low = df['low']
+volume = df['volume']
+
+# ---------- 有效中枢 ----------
+has_zs = (
+    (zs_level >= zs_min_level)
+    & zs_zd.notna()
+    & zs_zg.notna()
+    & (zs_zg > zs_zd)
+)
+
+# ---------- 离开 / 回踩（真三买，非首次站上） ----------
+above_now = has_zs & (zs_pos == 'above') & (close > zs_zg)
+above_prev = above_now.shift(1).fillna(False).astype(bool)
+leave_above = above_now & (above_prev == False)
+# 跌回中枢 = 位置/收盘重新落入中枢（不用 low 影线杀状态；确认棒仍要求 hold_above）
+reenter_from_above = has_zs & (
+    (zs_pos == 'inside') | (zs_pos == 'below') | (close < zs_zg)
+)
+
+# 因果状态：离开 ZG 后、尚未跌回中枢 → left_active
+_left_flags = []
+_active = False
+for i in range(len(df)):
+    if bool(leave_above.iloc[i]):
+        _active = True
+    if bool(reenter_from_above.iloc[i]):
+        _active = False
+    _left_flags.append(_active)
+left_active = pd.Series(_left_flags, index=df.index, dtype=bool)
+
+# 下降笔确认结束 = 回踩底（与平台因果笔语义一致）
+bi_flip_dn = (bi_dir == -1) & (bi_dir_prev != -1)
+# 回踩靠近 ZG，且低点不进中枢（low >= ZG）
+near_zg = low <= (zs_zg * (1.0 + pullback_buffer))
+hold_above = low >= zs_zg
+
+up_ctx = trend >= trend_min
+# 离开当根不算三买；须在 left_active 内出现回踩确认
+raw_3buy = (
+    up_ctx
+    & has_zs
+    & above_now
+    & left_active
+    & (leave_above == False)
+    & bi_flip_dn
+    & near_zg
+    & hold_above
+)
+
+# ---------- 镜像：真三卖（下跌语境 + 离开 ZD 后反弹不进中枢） ----------
+below_now = has_zs & (zs_pos == 'below') & (close < zs_zd)
+below_prev = below_now.shift(1).fillna(False).astype(bool)
+leave_below = below_now & (below_prev == False)
+# 反弹回中枢 = 位置/收盘；不用 high 影线杀状态；确认棒仍要求 hold_below
+reenter_from_below = has_zs & (
+    (zs_pos == 'inside') | (zs_pos == 'above') | (close > zs_zd)
+)
+
+_left_dn_flags = []
+_active_dn = False
+for i in range(len(df)):
+    if bool(leave_below.iloc[i]):
+        _active_dn = True
+    if bool(reenter_from_below.iloc[i]):
+        _active_dn = False
+    _left_dn_flags.append(_active_dn)
+left_below_active = pd.Series(_left_dn_flags, index=df.index, dtype=bool)
+
+bi_flip_up = (bi_dir == 1) & (bi_dir_prev != 1)
+near_zd = high >= (zs_zd * (1.0 - pullback_buffer))
+hold_below = high <= zs_zd
+dn_ctx = trend <= -trend_min if trend_min > 0 else trend <= 0
+
+raw_3sell = (
+    dn_ctx
+    & has_zs
+    & below_now
+    & left_below_active
+    & (leave_below == False)
+    & bi_flip_up
+    & near_zd
+    & hold_below
+)
+
+# ---------- 可选：振幅收敛（指标内自算，不读 bridge 扩列） ----------
+center_amp = (zs_zg - zs_zd).where(has_zs)
+zs_changed = (zs_zd != zs_zd.shift(1)) | (zs_zg != zs_zg.shift(1))
+amp_narrowing = (center_amp < center_amp.shift(1)) & zs_changed & (center_amp > 0)
+amp_narrowed_recently = (
+    amp_narrowing.rolling(amp_window, min_periods=1).max().fillna(0).astype(bool)
+)
+if require_amp_narrow:
+    raw_3buy = raw_3buy & amp_narrowed_recently
+    raw_3sell = raw_3sell & amp_narrowed_recently
+
+# ---------- 可选：放量（volume 相对均量） ----------
+vol_ma = volume.rolling(vol_ma_n, min_periods=max(3, vol_ma_n // 4)).mean()
+vol_surge = volume > (vol_ma * vol_mult)
+if require_vol_surge:
+    raw_3buy = raw_3buy & vol_surge
+    raw_3sell = raw_3sell & vol_surge
+
+# ---------- 前低参考（仅作图；止损交给 engine stopLossPct，避免双重退出） ----------
+# 离开后至当前的回踩最低价 — 建议把引擎止损设在该前低 / ZG 下方
+_leave_grp = (left_active == False).cumsum()
+prior_low_since_leave = low.groupby(_leave_grp).cummin().where(left_active)
+_leave_dn_grp = (left_below_active == False).cumsum()
+prior_high_since_leave = high.groupby(_leave_dn_grp).cummax().where(left_below_active)
+
+# ---------- 结构离场：三买失效=跌回中枢；三卖失效=反弹回中枢 ----------
+# exit_owner=engine：此处只表达结构失效，不用指标内价格 TP/SL
+struct_fail_long = left_active.shift(1).fillna(False).astype(bool) & reenter_from_above
+struct_fail_short = left_below_active.shift(1).fillna(False).astype(bool) & reenter_from_below
+
+def edge(s):
+    s = s.fillna(False).astype(bool)
+    prev = s.shift(1).fillna(False).astype(bool)
+    return s & (prev == False)
+
+df['open_long'] = edge(raw_3buy).astype(bool)
+df['close_long'] = edge(struct_fail_long | raw_3sell).astype(bool)
+df['open_short'] = edge(raw_3sell).astype(bool)
+df['close_short'] = edge(struct_fail_short | raw_3buy).astype(bool)
+
+# ---------- 图表 ----------
+zg_plot = zs_zg.where(has_zs)
+zd_plot = zs_zd.where(has_zs)
+output = {
+    'name': my_indicator_name,
+    'plots': [
+        {'name': 'ZG', 'data': zg_plot.tolist(), 'color': '#ef5350', 'overlay': True, 'type': 'line'},
+        {'name': 'ZD', 'data': zd_plot.tolist(), 'color': '#26a69a', 'overlay': True, 'type': 'line'},
+        {
+            'name': '离开后前低',
+            'data': prior_low_since_leave.tolist(),
+            'color': '#ff9800',
+            'overlay': True,
+            'type': 'line',
+        },
+    ],
+    'signals': [
+        {
+            'type': 'buy',
+            'text': '真三买',
+            'color': '#26a69a',
+            'data': [
+                df['low'].iloc[i] * 0.995 if bool(df['open_long'].iloc[i]) else None
+                for i in range(len(df))
+            ],
+        },
+        {
+            'type': 'sell',
+            'text': '真三卖',
+            'color': '#ef5350',
+            'data': [
+                df['high'].iloc[i] * 1.005 if bool(df['open_short'].iloc[i]) else None
+                for i in range(len(df))
+            ],
+        },
+    ],
+}
+'''
+
+_register({
+    "id": "true_3buy_mvp",
+    "name": "真三买回踩确认 MVP",
+    "description": (
+        "窄场景真三买：上涨语境 + 有效中枢 + 离开 ZG 后回踩不进中枢确认；"
+        "可选振幅收敛/放量（指标内自算）。"
+        "four_way + exit_owner=engine；≠ bs_type 3buy，≠ 首次站上 above。"
+    ),
+    "code": _TRUE_3BUY_MVP_CODE,
+})
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 

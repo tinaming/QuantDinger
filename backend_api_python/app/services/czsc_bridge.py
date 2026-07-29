@@ -321,6 +321,10 @@ def _cache_ttl_for_freq(freq: str) -> int:
     return _CACHE_TTL_DAY
 
 
+# Bump when feature semantics change so in-process cache cannot serve stale columns.
+_FEATURE_CACHE_VERSION = "max_bi_full_v1"
+
+
 def _build_cache_key(df: pd.DataFrame, freq: str, symbol: str) -> Optional[tuple]:
     """Build a hashable cache key from DataFrame metadata.
 
@@ -342,7 +346,7 @@ def _build_cache_key(df: pd.DataFrame, freq: str, symbol: str) -> Optional[tuple
 
     if last_ts is None:
         return None
-    return (symbol, freq, bar_count, last_ts)
+    return (symbol, freq, bar_count, last_ts, _FEATURE_CACHE_VERSION)
 
 
 def _cache_get(key: tuple, ttl: int) -> Optional[pd.DataFrame]:
@@ -478,7 +482,10 @@ def _compute_features_inner(df: pd.DataFrame, freq: str, symbol: str = 'SYMBOL',
         return df
 
     try:
-        czsc_obj = _CZSC(bars)
+        # czsc defaults CZSC_MAX_BI_NUM=50 and drops older strokes. Long backtests
+        # then only see bi_dir near the window end (false "last-month only" edge).
+        # Keep the full stroke history for the bars we already fetched.
+        czsc_obj = _CZSC(bars, max_bi_num=len(bars))
     except Exception as e:
         logger.warning(f"czsc_bridge: CZSC analysis failed: {e}")
         return df
@@ -1065,7 +1072,9 @@ def _detect_buy_sell_points_v41(
         elif st['dir'] == 1 and last_up_force is not None and st['force'] < last_up_force * 0.95:
             beichi = -1  # 顶背驰
         if beichi != 0:
-            beichi_arr[e] = beichi
+            # Align with causal bi_dir confirmation (delay=2 bars after stroke end)
+            mark_i = min(e + 2, n - 1)
+            beichi_arr[mark_i] = beichi
 
         # Track leave-center for 3-class
         if zd is not None and zg is not None:
@@ -1115,7 +1124,9 @@ def _detect_buy_sell_points_v41(
                 mark = '3sell'
 
         if mark:
-            bs_type[e] = mark
+            # Stamp at causal confirmation bar so strategy bi_flip aligns with bs_type
+            mark_i = min(e + 2, n - 1)
+            bs_type[mark_i] = mark
 
         if st['dir'] == 1:
             last_up_force = st['force']

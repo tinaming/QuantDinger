@@ -23,6 +23,7 @@ from app.utils.logger import get_logger
 from app.utils.db import get_db_connection
 from app.utils.risk_guard import trailing_exit_locks_net_profit
 from app.services.backtest_cache import KlineCache
+from app.services.kline_cache_db import get_cached_kline, store_kline
 from app.services.indicator_params import IndicatorParamsParser, IndicatorCaller
 
 logger = get_logger(__name__)
@@ -2454,7 +2455,48 @@ class BacktestService:
         if cached is not None and not cached.empty:
             logger.info(f"K-line cache HIT for {cache_key} ({len(cached)} candles)")
             return cached
-        
+
+        # Check persistent DB cache before hitting the exchange.
+        # Historical candles are immutable; if we have them in PG we skip
+        # the CCXT call entirely — critical for batch backtests that would
+        # otherwise hit exchange rate limits.
+        # Query with the real backtest window (not ±1d exchange pad) so
+        # coverage / gap checks match the final filter bounds.
+        req_start_ts = int(pd.Timestamp(start_date).timestamp())
+        req_end_ts = int(pd.Timestamp(end_date).timestamp())
+        db_cached = get_cached_kline(
+            market=market, symbol=symbol, timeframe=timeframe,
+            market_type=mt_key, exchange_id=ex_key,
+            start_ts=req_start_ts, end_ts=req_end_ts,
+            tf_seconds=tf_seconds,
+        )
+        if db_cached is not None and not db_cached.empty:
+            # Align with miss-path filtering: only return [start_date, end_date].
+            rs = pd.Timestamp(start_date)
+            re = pd.Timestamp(end_date)
+            idx = db_cached.index
+            if getattr(idx, "tz", None) is not None:
+                if rs.tzinfo is None:
+                    rs = rs.tz_localize(idx.tz)
+                else:
+                    rs = rs.tz_convert(idx.tz)
+                if re.tzinfo is None:
+                    re = re.tz_localize(idx.tz)
+                else:
+                    re = re.tz_convert(idx.tz)
+            elif rs.tzinfo is not None:
+                rs = rs.tz_convert("UTC").tz_localize(None)
+                re = re.tz_convert("UTC").tz_localize(None)
+            df_hit = db_cached[(idx >= rs) & (idx <= re)].copy()
+            if df_hit.empty:
+                logger.debug(
+                    "DB kline cache hit but empty after [%s,%s] filter — refetch",
+                    start_date, end_date,
+                )
+            else:
+                _kline_cache.put(cache_key, df_hit, timeframe)
+                return df_hit
+
         # Fetch data. We deliberately swallow any upstream exception (CCXT
         # network/rate-limit errors, yfinance hiccups, etc.) and return an empty
         # DataFrame instead, so the MTF entry point then falls back to a standard
@@ -2598,6 +2640,13 @@ class BacktestService:
                 f"coverage={coverage_ratio*100:.1f}% | fallback={used_fallback}"
             )
             _kline_cache.put(cache_key, df_filtered, timeframe)
+            # Persist to DB cache so future backtests skip the exchange.
+            store_kline(
+                market=market, symbol=symbol, timeframe=timeframe,
+                market_type=mt_key, exchange_id=ex_key,
+                df=df_filtered,
+                tf_seconds=tf_seconds,
+            )
             return df_filtered
             
         except Exception as e:

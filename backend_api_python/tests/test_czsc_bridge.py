@@ -115,8 +115,8 @@ class TestCzscColumnsSchema:
             assert col["name"].startswith("czsc_"), f"Column name must start with czsc_: {col['name']}"
 
     def test_column_count(self):
-        # Plan specifies 12 columns
-        assert len(CZSC_COLUMNS) == 15
+        # Core 15 + v4.1 aux 9 = 24
+        assert len(CZSC_COLUMNS) == 24
 
     def test_column_names_are_unique(self):
         names = [col["name"] for col in CZSC_COLUMNS]
@@ -270,6 +270,29 @@ class TestComputeCzscFeatures:
         assert len(result) == len(df)
         for col in CZSC_COLUMNS:
             assert len(result[col["name"]]) == len(df)
+
+    @pytest.mark.skipif(not is_czsc_enabled(), reason="czsc not installed")
+    def test_long_window_keeps_early_bi_dir(self):
+        """CZSC defaults to max_bi_num=50; long windows must retain early strokes.
+
+        Without max_bi_num=len(bars), bi_dir stays 0 until roughly the last
+        ~50 strokes, which makes year-long H1/H4 backtests look like a
+        last-month-only strategy.
+        """
+        # Enough bars that the default 50-stroke cap would push all bi_dir
+        # into the trailing window if we forgot to raise max_bi_num.
+        df = _make_ohlcv_df(2500, freq="1h")
+        result = compute_czsc_features(df, freq="1H", causal=True, symbol="TEST")
+        bi = result["czsc_bi_dir"].fillna(0).astype(int)
+        nz = bi.ne(0)
+        assert int(nz.sum()) > 0, "expected confirmed strokes on long synthetic series"
+        first_nz = int(np.flatnonzero(nz.to_numpy())[0])
+        # Early structure should appear well before the final ~800 bars
+        # (≈50 long strokes). A regression to the default cap fails this.
+        assert first_nz < len(df) - 800, (
+            f"bi_dir only starts at bar {first_nz}/{len(df)}; "
+            "likely CZSC_MAX_BI_NUM=50 truncation"
+        )
 
 
 # ---------------------------------------------------------------------------
