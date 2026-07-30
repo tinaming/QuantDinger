@@ -1105,6 +1105,37 @@ class BacktestService:
                 }
         else:
             raise ValueError("Invalid signal format")
+
+        # CZSC synth parity with live (on signal TF bars, before queue mapping)
+        _mode_override = (strategy_config or {}).get('czscSynthMode') or (strategy_config or {}).get('czsc_synth_mode')
+        from app.services.czsc_synth import resolve_czsc_synth_mode, enrich_signals_with_czsc_synth
+        _resolved = resolve_czsc_synth_mode(signal_timeframe, _mode_override)
+        if _resolved:
+            if 'czsc_bi_dir' not in df_signal.columns:
+                from app.services.czsc_bridge import compute_czsc_features, is_czsc_enabled
+                if not is_czsc_enabled():
+                    raise RuntimeError("[CZSC_SYNTH] mtf enrich requires czsc but library unavailable")
+                df_czsc = compute_czsc_features(df_signal, freq=signal_timeframe, symbol='SYMBOL')
+                for col in df_czsc.columns:
+                    if str(col).startswith('czsc_'):
+                        df_signal[col] = df_czsc[col].values if len(df_czsc) == len(df_signal) else df_czsc[col]
+            _fill_lag = 1
+            _st = str(((strategy_config or {}).get('execution') or {}).get('signalTiming') or 'next_bar_open').lower()
+            if _st in ('bar_close', 'same_bar', 'close'):
+                _fill_lag = 0
+            norm_signals = enrich_signals_with_czsc_synth(
+                df_signal, norm_signals, signal_timeframe, trade_direction,
+                mode_override=_mode_override,
+                fill_lag=_fill_lag,
+            )
+            _meta = norm_signals.pop('_czsc_synth', None)
+            if _meta:
+                logger.info(
+                    f"[CZSC_SYNTH] mtf enrich mode={_meta.get('mode')} "
+                    f"opens+={_meta.get('opens')} closes+={_meta.get('closes')} "
+                    f"aw_blocks={_meta.get('anti_whipsaw_blocks')} fill_lag={_meta.get('fill_lag')} "
+                    f"tf={signal_timeframe}"
+                )
         
         logger.info("Signal normalization completed, starting signal queue building...")
         
@@ -1951,7 +1982,7 @@ class BacktestService:
         script_logs = signals.pop('logs', [])
         equity_curve, trades, total_commission = self._simulate_trading(
             df, signals, initial_capital, commission, slippage, leverage, trade_direction, strategy_config,
-            market=market, symbol=symbol,
+            market=market, symbol=symbol, timeframe=timeframe,
         )
         metrics = self._calculate_metrics(equity_curve, trades, initial_capital, timeframe, start_date, end_date, total_commission)
         result = self._format_result(metrics, equity_curve, trades, candles_df=df)
@@ -2259,7 +2290,7 @@ class BacktestService:
         # 3. Simulate trading
         equity_curve, trades, total_commission = self._simulate_trading(
             df, signals, initial_capital, commission, slippage, leverage, trade_direction, strategy_config,
-            market=market, symbol=symbol,
+            market=market, symbol=symbol, timeframe=timeframe,
         )
 
         exec_cfg = (strategy_config or {}).get('execution') or {}
@@ -2673,7 +2704,17 @@ class BacktestService:
             _tf = (backtest_params or {}).get('timeframe', '1H')
             _sym = str((backtest_params or {}).get('symbol', 'SYMBOL'))
             if is_czsc_enabled() and code_uses_czsc(code):
-                df = compute_czsc_features(df, freq=_tf, symbol=_sym)
+                df_czsc = compute_czsc_features(df, freq=_tf, symbol=_sym)
+                # Persist czsc_* onto the caller's frame so backtest CZSC_SYNTH
+                # enrich (live parity) can see bi_dir / zhongshu without recomputing.
+                if df_czsc is not df:
+                    for col in df_czsc.columns:
+                        if str(col).startswith('czsc_'):
+                            df[col] = df_czsc[col].values if len(df_czsc) == len(df) else df_czsc[col]
+                    df = df_czsc
+                else:
+                    # compute mutated in place; still ensure columns are visible
+                    pass
                 logger.info(f"CZSC features injected for timeframe={_tf} symbol={_sym}")
 
             # Reset DatetimeIndex to integer so user code can use df.at[0, ...] or df.iloc[0, ...]
@@ -3101,6 +3142,7 @@ class BacktestService:
         strategy_config: Optional[Dict[str, Any]] = None,
         market: str = '',
         symbol: str = '',
+        timeframe: str = '',
     ) -> tuple:
         """
         Simulate trading.
@@ -3111,6 +3153,7 @@ class BacktestService:
                 - 'long': Long only (buy->sell)
                 - 'short': Short only (sell->buy, reversed PnL)
                 - 'both': Both directions (buy->sell long + sell->buy short)
+            timeframe: Signal timeframe (for CZSC synth parity with live)
         """
         # Normalize supported signal formats into 4-way signals.
         if not isinstance(signals, dict):
@@ -3158,6 +3201,35 @@ class BacktestService:
                 }
         else:
             raise ValueError("signals dict must contain either 4-way keys or buy/sell keys.")
+
+        tf = str(timeframe or (strategy_config or {}).get('timeframe') or '').strip()
+        from app.services.czsc_synth import resolve_czsc_synth_mode, enrich_signals_with_czsc_synth
+        _mode_override = (strategy_config or {}).get('czscSynthMode') or (strategy_config or {}).get('czsc_synth_mode')
+        _resolved = resolve_czsc_synth_mode(tf, _mode_override)
+        if _resolved:
+            if 'czsc_bi_dir' not in df.columns:
+                # Indicator exec may have used a copy; recompute for synth parity.
+                from app.services.czsc_bridge import compute_czsc_features, is_czsc_enabled
+                if not is_czsc_enabled():
+                    raise RuntimeError("[CZSC_SYNTH] backtest enrich requires czsc but library unavailable")
+                df_czsc = compute_czsc_features(df, freq=tf, symbol=symbol or 'SYMBOL')
+                for col in df_czsc.columns:
+                    if str(col).startswith('czsc_'):
+                        df[col] = df_czsc[col].values if len(df_czsc) == len(df) else df_czsc[col]
+            _fill_lag = 1
+            _st = str(((strategy_config or {}).get('execution') or {}).get('signalTiming') or 'next_bar_open').lower()
+            if _st in ('bar_close', 'same_bar', 'close'):
+                _fill_lag = 0
+            norm = enrich_signals_with_czsc_synth(
+                df, norm, tf, trade_direction, mode_override=_mode_override, fill_lag=_fill_lag,
+            )
+            _meta = norm.pop('_czsc_synth', None)
+            if _meta:
+                logger.info(
+                    f"[CZSC_SYNTH] backtest enrich mode={_meta.get('mode')} "
+                    f"opens+={_meta.get('opens')} closes+={_meta.get('closes')} "
+                    f"aw_blocks={_meta.get('anti_whipsaw_blocks')} fill_lag={_meta.get('fill_lag')} tf={tf}"
+                )
 
         try:
             data_start = df.index.min()

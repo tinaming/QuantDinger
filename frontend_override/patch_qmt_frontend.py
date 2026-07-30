@@ -145,10 +145,20 @@ def patch_trading_assistant() -> int:
             'o=["Crypto","USStock"].includes(this.selectedMarketCategory),c=this.selectedMarketCategory==="USStock"',
             'o=["Crypto","USStock","CNStock"].includes(this.selectedMarketCategory),c=this.selectedMarketCategory==="USStock"||this.selectedMarketCategory==="CNStock"',
         ),
-        # When editing a live CNStock strategy, restore broker_id=qmt
+        # When editing a live CNStock strategy, restore broker_id=qmt.
+        # NOTE: opens `if(c){` — the closing `}` is added by the follow-up
+        # replacement below (`});else{` -> `})}else{`). Both must apply
+        # together or the chunk breaks with `SyntaxError: Unexpected token else`.
         (
             'if(n&&o)if(c)this.currentBrokerId=r||"ibkr",this.form.setFieldsValue({broker_id:r||"ibkr",ibkr_host:s.exchange_config.ibkr_host||"127.0.0.1",ibkr_port:s.exchange_config.ibkr_port||7497,ibkr_client_id:s.exchange_config.ibkr_client_id||1,ibkr_account:',
             'if(n&&o)if(c){if(this.selectedMarketCategory==="CNStock"){this.currentBrokerId=r||"qmt";try{this.form.setFieldsValue({broker_id:r||"qmt",trade_direction:"long",market_type:"spot",ibkr_account:(s.exchange_config.qmt_account_id||"")})}catch{}}else this.currentBrokerId=r||"ibkr",this.form.setFieldsValue({broker_id:r||"ibkr",ibkr_host:s.exchange_config.ibkr_host||"127.0.0.1",ibkr_port:s.exchange_config.ibkr_port||7497,ibkr_client_id:s.exchange_config.ibkr_client_id||1,ibkr_account:',
+        ),
+        # Close the `if(c){` block opened above (replace `;` with `}` before
+        # the outer else). Without this the whole /strategy-live chunk fails
+        # to parse and the strategy create form never renders.
+        (
+            'ibkr_account:s.exchange_config.ibkr_account||""});else{',
+            'ibkr_account:s.exchange_config.ibkr_account||""})}else{',
         ),
     ]
     return _patch_file(path, reps)
