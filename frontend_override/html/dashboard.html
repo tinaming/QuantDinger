@@ -15,8 +15,8 @@
   --text: #e2e8f0;
   --text-dim: #8b9dc3;
   --text-muted: #5a6a82;
-  --accent: #3b82f6;
-  --accent-glow: rgba(59,130,246,0.15);
+  --accent: #13C2C2;
+  --accent-glow: rgba(19,194,194,0.15);
   --green: #22c55e;
   --green-bg: rgba(34,197,94,0.1);
   --red: #ef4444;
@@ -519,7 +519,15 @@ async function loadData() {
   isRefreshing = true; renderHeader();
   try {
     const data = await api('/user/system-strategies?page=1&page_size=100');
-    if (data.code === 1) { allData = data.data; lastUpdate = new Date(); render() }
+    if (data.code === 1) {
+      allData = data.data;
+      lastUpdate = new Date();
+      render();
+      // Keep detail panels fresh while staying on a strategy
+      if (detailView && detailStrategyId != null) {
+        refreshDetailData(detailStrategyId);
+      }
+    }
     else { renderLogin(data.msg) }
   } catch (e) { renderLogin() }
   finally { isRefreshing = false; }
@@ -858,7 +866,7 @@ function render() {
           <th>ID</th><th>策略</th><th>品种</th><th>周期</th><th>模式</th><th>状态</th><th>资金</th><th>杠杆</th><th>盈亏</th><th>持仓</th>
         </tr></thead>
         <tbody>
-        ${filtered.map(i => `<tr class="clickable" onclick="showStrategyDetail(${i.id})">
+        ${filtered.map(i => `<tr class="clickable" data-strategy-id="${Number(i.id)}" onclick="showStrategyDetail(${Number(i.id)})">
           <td class="text-muted">#${i.id}</td>
           <td style="font-weight:500">${(i.strategy_name || i.indicator_name || '-').replace('CZSC v3 - ', '')}</td>
           <td>${i.symbol || '-'}</td>
@@ -912,8 +920,10 @@ function renderRankingSection(items) {
           const name = (r.strategy_name || r.indicator_name || '-').replace('CZSC v3 - ', '');
           const roi = r.roi || 0;
           const pnl = r.total_pnl || 0;
+          const ccy = r.market_category === 'Crypto' ? '$' : '¥';
+          const sid = Number(r.id);
           return `
-            <div class="rank-card" onclick="showStrategyDetail(${r.id})">
+            <div class="rank-card" data-strategy-id="${sid}" onclick="showStrategyDetail(${sid})">
               <div class="rank-badge">#${idx + 1}</div>
               <div class="rank-name">${name}</div>
               <div class="rank-meta">${r.symbol || '-'} · ${r.timeframe || '-'} · ${r.execution_mode === 'live' ? '实盘' : '模拟'}</div>
@@ -924,7 +934,7 @@ function renderRankingSection(items) {
                 </div>
                 <div>
                   <div class="rank-stat-label">盈亏</div>
-                  <div class="rank-stat-value ${pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${pnl >= 0 ? '+' : ''}$${fmt(pnl, 2)}</div>
+                  <div class="rank-stat-value ${pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${pnl >= 0 ? '+' : ''}${ccy}${fmt(pnl, 2)}</div>
                 </div>
                 <div>
                   <div class="rank-stat-label">交易</div>
@@ -938,27 +948,36 @@ function renderRankingSection(items) {
 }
 
 // ─── Strategy Detail ───
-window.showStrategyDetail = async function (id) {
-  detailView = true;
-  detailStrategyId = id;
-  detailTab = 'positions';
-  detailData = {};
-  detailLoading = true;
-  renderDetail();
+function sameStrategyId(a, b) {
+  const na = Number(a), nb = Number(b);
+  return Number.isFinite(na) && Number.isFinite(nb) && na === nb;
+}
 
-  // Update URL without reload
+function syncStrategyUrl(id, { replace = false } = {}) {
   const url = new URL(window.location);
-  url.searchParams.set('strategyId', id);
-  window.history.pushState({}, '', url);
+  const cur = url.searchParams.get('strategyId');
+  if (sameStrategyId(cur, id)) {
+    // Already on this strategy — avoid stacking duplicate history entries
+    if (replace) window.history.replaceState({}, '', url);
+    return;
+  }
+  url.searchParams.set('strategyId', String(id));
+  if (replace) window.history.replaceState({}, '', url);
+  else window.history.pushState({}, '', url);
+}
 
-  // Load performance + positions + trades + logs in parallel
+async function refreshDetailData(id) {
+  const reqId = Number(id);
+  if (!Number.isFinite(reqId)) return;
   try {
     const [perf, pos, trades, logs] = await Promise.all([
-      api('/strategies/performance?id=' + id).catch(() => ({ code: 0 })),
-      api('/strategies/positions?id=' + id).catch(() => ({ code: 0 })),
-      api('/strategies/trades?id=' + id).catch(() => ({ code: 0 })),
-      api('/strategies/logs?id=' + id).catch(() => ({ code: 0 })),
+      api('/strategies/performance?id=' + reqId).catch(() => ({ code: 0 })),
+      api('/strategies/positions?id=' + reqId).catch(() => ({ code: 0 })),
+      api('/strategies/trades?id=' + reqId).catch(() => ({ code: 0 })),
+      api('/strategies/logs?id=' + reqId).catch(() => ({ code: 0 })),
     ]);
+    // Drop stale responses after navigate-away / switch strategy
+    if (!detailView || !sameStrategyId(detailStrategyId, reqId)) return;
     detailData = {
       perf: perf.code === 1 ? perf.data : null,
       positions: pos.code === 1 ? (pos.data?.positions || []) : [],
@@ -967,15 +986,38 @@ window.showStrategyDetail = async function (id) {
     };
   } catch (e) {
     console.error('detail load error', e);
+    if (!detailView || !sameStrategyId(detailStrategyId, reqId)) return;
   }
+  if (!detailView || !sameStrategyId(detailStrategyId, reqId)) return;
   detailLoading = false;
   renderDetail();
+}
+
+window.showStrategyDetail = async function (id) {
+  const sid = Number(id);
+  if (!Number.isFinite(sid)) {
+    console.warn('showStrategyDetail: invalid id', id);
+    return;
+  }
+  detailView = true;
+  detailStrategyId = sid;
+  detailTab = 'positions';
+  detailData = {};
+  detailLoading = true;
+  renderDetail();
+
+  // Deep-link / same-id re-entry: replace; fresh navigation: push
+  const cur = new URL(window.location).searchParams.get('strategyId');
+  syncStrategyUrl(sid, { replace: sameStrategyId(cur, sid) });
+
+  await refreshDetailData(sid);
 };
 
 window.backToList = function () {
   detailView = false;
   detailStrategyId = null;
   detailData = {};
+  detailLoading = false;
   const url = new URL(window.location);
   url.searchParams.delete('strategyId');
   window.history.pushState({}, '', url);
@@ -989,12 +1031,29 @@ window.switchDetailTab = function (t) {
 
 function findStrategyById(id) {
   if (!allData || !allData.items) return null;
-  return allData.items.find(i => i.id === id) || null;
+  const nid = Number(id);
+  if (!Number.isFinite(nid)) return null;
+  return allData.items.find(i => Number(i.id) === nid) || null;
 }
 
 function renderDetail() {
   const st = findStrategyById(detailStrategyId);
-  if (!st) { document.getElementById('app').innerHTML = '<div class="content"><div class="empty-state">策略未找到</div></div>'; return; }
+  if (!st) {
+    document.getElementById('app').innerHTML = `
+    <div class="header">
+      <div class="header-left">
+        <h1><span>Chan</span>Quant</h1>
+      </div>
+      <div class="header-right">
+        <button class="btn-refresh" onclick="backToList()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          返回列表
+        </button>
+      </div>
+    </div>
+    <div class="content"><div class="empty-state">策略未找到</div></div>`;
+    return;
+  }
 
   const name = (st.strategy_name || st.indicator_name || '-').replace('CZSC v3 - ', '');
   const perf = detailData.perf || {};
@@ -1213,17 +1272,27 @@ function drawEquityChart(curve, isCrypto) {
 setInterval(() => { if (token) loadData() }, 30000);
 setInterval(() => { if (token) loadNotifications() }, 5000);
 
+// Event delegation: ranking cards / table rows (more reliable than inline onclick alone)
+document.addEventListener('click', (ev) => {
+  const el = ev.target && ev.target.closest && ev.target.closest('[data-strategy-id]');
+  if (!el) return;
+  const sid = Number(el.getAttribute('data-strategy-id'));
+  if (!Number.isFinite(sid)) return;
+  ev.preventDefault();
+  showStrategyDetail(sid);
+});
+
 // Handle browser back/forward
 window.addEventListener('popstate', () => {
   const sid = new URL(window.location).searchParams.get('strategyId');
-  if (sid && allData) { showStrategyDetail(parseInt(sid)); }
-  else if (detailView) { detailView = false; detailStrategyId = null; render(); }
+  if (sid && allData) { showStrategyDetail(Number(sid)); }
+  else if (detailView) { detailView = false; detailStrategyId = null; detailData = {}; detailLoading = false; render(); }
 });
 
 if (token) {
   loadData().then(() => {
     const sid = new URL(window.location).searchParams.get('strategyId');
-    if (sid && allData) { showStrategyDetail(parseInt(sid)); }
+    if (sid && allData) { showStrategyDetail(Number(sid)); }
   });
   loadNotifications();
 } else { renderLogin() }

@@ -533,11 +533,36 @@ def place_order():
     if lot_err is not None:
         return lot_err
     order_dir = xtconstant.STOCK_BUY if side == "buy" else xtconstant.STOCK_SELL
-    pt = xtconstant.FIX_PRICE if order_type == "limit" else xtconstant.LATEST_PRICE
+
+    # Always use FIX_PRICE (limit order) to avoid LATEST_PRICE rejection
+    # in QMT simulation / non-trading hours.  For "market" orders we fetch
+    # the latest quote and use it as the limit price.
+    pt = xtconstant.FIX_PRICE
     if order_type == "limit" and price <= 0:
         return _err(400, "price required for limit orders")
-    if order_type != "limit":
-        price = 0.0
+    if order_type != "limit" or price <= 0:
+        # Fetch latest price from quote for market orders
+        try:
+            from xtquant import xtdata as _xd
+            tick = _xd.get_full_tick([qmt_symbol])
+            if tick and qmt_symbol in tick:
+                lp = float(tick[qmt_symbol].get("lastPrice", 0) or 0)
+                if lp > 0:
+                    price = lp
+        except Exception:
+            pass
+        if price <= 0:
+            # Fallback: try get_market_data_ex
+            try:
+                from xtquant import xtdata as _xd
+                md = _xd.get_market_data_ex([], [qmt_symbol], period="1m", count=1)
+                if md and qmt_symbol in md and len(md[qmt_symbol]) > 0:
+                    price = float(md[qmt_symbol].iloc[-1].get("close", 0))
+            except Exception:
+                pass
+        if price <= 0:
+            return _err(400, f"Cannot determine price for {qmt_symbol}; market order needs a valid quote")
+        print(f"[Bridge] Market order converted to limit: {side} {volume} {qmt_symbol} @ {price}")
 
     try:
         order_id = _trader.order_stock(

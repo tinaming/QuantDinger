@@ -18,6 +18,24 @@ The backend is the primary codebase in this repo. The frontend source lives in a
 
 ---
 
+## Aliyun prod (ops inventory)
+
+Short host map for agents. Full FE/BE compose / Nginx / HTTPS flow: [`docs/CLOUD_DEPLOYMENT_CN.md`](docs/CLOUD_DEPLOYMENT_CN.md). Do **not** hardcode passwords, API keys, or other secrets.
+
+| Role | Host | Notes |
+|------|------|-------|
+| OpenIM | `121.199.15.56` | Ops via existing skill `openim-quick-deploy` |
+| ChanQuant | `220.167.103.213` | SSH port `10043`; remote dir `/root/chanquant` |
+
+**ChanQuant ports / health** (bind localhost on the host; public only via host Nginx `80`/`443`):
+
+- frontend → `127.0.0.1:8888` — `curl http://127.0.0.1:8888/health`
+- backend → `127.0.0.1:5000` — `curl http://127.0.0.1:5000/api/health`
+
+**Ops memory:** images may already be on disk pending `docker load` + `compose up` — confirm on host before re-uploading.
+
+---
+
 ## Common Commands
 
 ### Development (Local, without Docker)

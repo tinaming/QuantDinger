@@ -183,12 +183,37 @@ def patch_exchange_modal() -> int:
     ])
 
 
+def patch_dashboard_ranking_click() -> int:
+    """Make SPA dashboard strategy ranking cards navigate to strategy detail."""
+    path = ASSETS / "index-BwghvPsI.js"
+    if not path.exists():
+        print(f"missing {path}")
+        return 0
+    return _patch_file(path, [
+        (
+            'goToStrategyCreate(){this.$router.push({path:"/strategy-live",query:{tab:"strategy",mode:"create"}}).catch(()=>{})},async fetchData(){',
+            'goToStrategyCreate(){this.$router.push({path:"/strategy-live",query:{tab:"strategy",mode:"create"}}).catch(()=>{})},'
+            'goToRankedStrategy(s){const t=s&&s.strategy_id;if(!t)return;'
+            'this.$router.push({path:"/strategy-live",query:{tab:"strategy",strategy_id:String(t)}}).catch(()=>{})},'
+            'async fetchData(){',
+        ),
+        (
+            'return a("div",{key:e.strategy_id,staticClass:"ranking-card",class:{"rank-top":r<3}},[',
+            'return a("div",{key:e.strategy_id,staticClass:"ranking-card",class:{"rank-top":r<3},'
+            'style:{cursor:"pointer"},'
+            'attrs:{title:t.$t("dashboard.strategyRanking")||"策略排行榜"},'
+            'on:{click:function(){return t.goToRankedStrategy(e)}}},[',
+        ),
+    ])
+
+
 def main() -> int:
     print(f"Patching assets under {ASSETS}")
     total = 0
     total += patch_broker_panel()
     total += patch_trading_assistant()
     total += patch_exchange_modal()
+    total += patch_dashboard_ranking_click()
     # Verify qmt string present
     hits = 0
     for p in ASSETS.glob("*.js"):
