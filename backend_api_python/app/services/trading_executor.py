@@ -4361,8 +4361,15 @@ class TradingExecutor:
                     logger.info(f"[CZSC_SYNTH] {_note}")
 
                 def _append_synth(_stype: str) -> None:
-                    if any(s.get('type') == _stype for s in pending_signals):
-                        return
+                    # If indicator already has this signal type, upgrade it to synth
+                    # (synth represents the current state evaluation, more authoritative)
+                    for _existing in pending_signals:
+                        if _existing.get('type') == _stype:
+                            _existing['from_synth'] = True
+                            _existing['trigger_price'] = _last_close
+                            if _synth_ts > _existing.get('timestamp', 0):
+                                _existing['timestamp'] = _synth_ts
+                            return
                     pending_signals.append({
                         'type': _stype,
                         'trigger_price': _last_close,
