@@ -317,16 +317,16 @@ class EmailService:
         html_body = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #1890ff; margin: 0;">ChanQuant</h1>
-                <p style="color: #666; margin-top: 5px;">AI-Driven Quantitative Insights</p>
+                <h1 style="color: #13C2C2; margin: 0;">ChanQuant</h1>
+                <p style="color: #666; margin-top: 5px;">AI quantitative trading infrastructure</p>
             </div>
             
             <div style="background: #f5f5f5; border-radius: 8px; padding: 30px; text-align: center;">
                 <p style="color: #333; font-size: 16px; margin: 0 0 20px 0;">
                     Your verification code to {action_text} is:
                 </p>
-                <div style="background: #fff; border: 2px solid #1890ff; border-radius: 8px; padding: 20px; display: inline-block;">
-                    <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1890ff;">{code}</span>
+                <div style="background: #fff; border: 2px solid #13C2C2; border-radius: 8px; padding: 20px; display: inline-block;">
+                    <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #13C2C2;">{code}</span>
                 </div>
                 <p style="color: #999; font-size: 14px; margin-top: 20px;">
                     This code will expire in {self.code_expire_minutes} minutes.

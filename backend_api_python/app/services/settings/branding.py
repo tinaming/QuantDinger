@@ -9,6 +9,10 @@ from typing import Dict, List
 BRAND_DEFAULTS = {
     "app_name": "ChanQuant",
     "copyright": "© 2025-2026 ChanQuant. All rights reserved.",
+    "logo_light": "/chanquant-logo-light.svg",
+    "logo_dark": "/chanquant-logo-dark.svg",
+    "logo_collapsed": "/chanquant-logo-collapsed.svg",
+    "favicon": "/chanquant-favicon.svg",
     "contact_email": "",
     "contact_support_url": "",
     "contact_feature_request_url": "",
@@ -34,10 +38,10 @@ def build_brand_config(app_version: str) -> Dict[str, object]:
         "app_version": app_version,
         "copyright": brand_env("BRAND_COPYRIGHT", "copyright"),
         "logos": {
-            "light": brand_env("BRAND_LOGO_LIGHT_URL"),
-            "dark": brand_env("BRAND_LOGO_DARK_URL"),
-            "collapsed": brand_env("BRAND_LOGO_COLLAPSED_URL"),
-            "favicon": brand_env("BRAND_FAVICON_URL"),
+            "light": brand_env("BRAND_LOGO_LIGHT_URL", "logo_light"),
+            "dark": brand_env("BRAND_LOGO_DARK_URL", "logo_dark"),
+            "collapsed": brand_env("BRAND_LOGO_COLLAPSED_URL", "logo_collapsed"),
+            "favicon": brand_env("BRAND_FAVICON_URL", "favicon"),
         },
         "contact": {
             "email": brand_env("BRAND_CONTACT_EMAIL", "contact_email"),

@@ -4,11 +4,16 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <link rel="icon" href="./slogo.png">
+    <link rel="icon" href="./chanquant-favicon.svg" type="image/svg+xml">
     <title>ChanQuant</title>
     <style>
       :root {
         color-scheme: light dark;
+        --primary-color: #13C2C2;
+        --primary-color-hover: #36CFC9;
+        --primary-color-active: #08979C;
+        --primary-color-soft: rgba(19, 194, 194, 0.12);
+        --antd-wave-shadow-color: #13C2C2;
       }
 
       * {
@@ -20,6 +25,40 @@
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
+      /* ChanQuant theme for login/register before layout theme replacer runs */
+      .ant-btn-primary {
+        background-color: #13C2C2 !important;
+        border-color: #13C2C2 !important;
+      }
+      .ant-btn-primary:hover,
+      .ant-btn-primary:focus {
+        background-color: #36CFC9 !important;
+        border-color: #36CFC9 !important;
+      }
+      .ant-tabs-ink-bar,
+      .ant-tabs-nav .ant-tabs-ink-bar {
+        background: #13C2C2 !important;
+      }
+      .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+        color: #13C2C2 !important;
+      }
+      .ant-checkbox-checked .ant-checkbox-inner,
+      .ant-checkbox-indeterminate .ant-checkbox-inner {
+        background-color: #13C2C2 !important;
+        border-color: #13C2C2 !important;
+      }
+      .ant-checkbox-wrapper:hover .ant-checkbox-inner,
+      .ant-checkbox:hover .ant-checkbox-inner,
+      .ant-input:hover,
+      .ant-input:focus,
+      .ant-input-affix-wrapper:hover,
+      .ant-input-affix-wrapper-focused {
+        border-color: #13C2C2 !important;
+      }
+      a {
+        color: #13C2C2;
+      }
+
       .first-loading-wrp {
         min-height: 100vh;
         display: grid;
@@ -27,7 +66,7 @@
         padding: 32px;
         color: #111827;
         background:
-          linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(20, 184, 166, 0.08)),
+          linear-gradient(135deg, rgba(19, 194, 194, 0.10), rgba(26, 26, 46, 0.06)),
           #f8fbff;
       }
 
@@ -48,7 +87,7 @@
         width: 104px;
         height: 104px;
         object-fit: contain;
-        filter: drop-shadow(0 18px 32px rgba(37, 99, 235, 0.18));
+        filter: drop-shadow(0 18px 32px rgba(19, 194, 194, 0.22));
         animation: qdFloat 2.8s ease-in-out infinite;
       }
 
@@ -73,7 +112,7 @@
         height: 4px;
         overflow: hidden;
         border-radius: 999px;
-        background: rgba(37, 99, 235, 0.12);
+        background: rgba(19, 194, 194, 0.14);
       }
 
       .loading-line::before {
@@ -82,7 +121,7 @@
         width: 42%;
         height: 100%;
         border-radius: inherit;
-        background: linear-gradient(90deg, #1d4ed8, #14b8a6);
+        background: linear-gradient(90deg, #13C2C2, #08979C);
         animation: qdLoad 1.15s ease-in-out infinite;
       }
 
@@ -115,7 +154,7 @@
         .first-loading-wrp {
           color: #f8fafc;
           background:
-            linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(20, 184, 166, 0.12)),
+            linear-gradient(135deg, rgba(19, 194, 194, 0.16), rgba(26, 26, 46, 0.4)),
             #0b1120;
         }
 
@@ -168,7 +207,7 @@
     <div id="app">
       <div class="first-loading-wrp">
         <div class="first-loading-card">
-          <img class="brand-mark" src="./slogo.png" alt="ChanQuant">
+          <img class="brand-mark" src="./chanquant-logo-collapsed.svg" alt="ChanQuant">
           <h2 class="brand-title">ChanQuant</h2>
           <p class="brand-subtitle">AI quantitative trading infrastructure</p>
           <div class="loading-line" aria-hidden="true"></div>

@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40">
-  <text x="10" y="30" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#1a1a2e">ChanQuant</text>
-  <text x="155" y="30" font-family="Arial, sans-serif" font-size="12" fill="#666">缠量</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 48">
+  <rect x="0" y="4" width="40" height="40" rx="8" fill="#13C2C2"/>
+  <text x="20" y="33" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="700" fill="#1a1a2e" text-anchor="middle">C</text>
+  <text x="52" y="34" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" fill="#0f172a">ChanQuant</text>
+  <text x="230" y="34" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" fill="#64748b">缠量</text>
 </svg>
