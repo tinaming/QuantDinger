@@ -4387,6 +4387,16 @@ class TradingExecutor:
                 if _decision.open_short:
                     _append_synth('open_short')
 
+                # Flat-pos tag: when synthesis says pos=0 (no action needed),
+                # existing indicator close signals represent valid state transitions
+                # that the synthesis agrees with. Tag them so conflict resolution
+                # protects them from being overridden by stale indicator opens.
+                if _pos == 0:
+                    for _sig in pending_signals:
+                        if _sig.get('type') in ('close_long', 'close_short') and not _sig.get('from_synth'):
+                            _sig['from_synth'] = True
+                            logger.info(f"[CZSC_SYNTH] flat-pos tag: {_sig['type']} marked as synth (pos=0 confirms close)")
+
                 logger.info(
                     f"[CZSC_SYNTH] mode={_synth_mode} tf={_czsc_tf}, curr_bi={_curr_bi}, pos={_pos}, "
                     f"trade_dir={_trade_dir}, zs_pos={_zs_pos}, bi_len={_bi_len}, "
