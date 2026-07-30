@@ -4368,6 +4368,7 @@ class TradingExecutor:
                         'trigger_price': _last_close,
                         'position_size': 0.0,
                         'timestamp': _synth_ts,
+                        'from_synth': True,
                     })
 
                 if _decision.close_long:
@@ -4384,31 +4385,46 @@ class TradingExecutor:
                     f"trade_dir={_trade_dir}, zs_pos={_zs_pos}, bi_len={_bi_len}, "
                     f"pending_types={[s['type'] for s in pending_signals]}"
                 )
-            # 去重：每种 signal type 只保留最新的（timestamp 最大的），防止 lookback 窗口内同类型信号导致重复执行
+            # 去重：每种 signal type 只保留最新的，合成信号优先于指标信号
+            # 合成信号来自 czsc_synth 的当前状态评估，比 lookback 窗口中的旧指标信号更权威
             _deduped_signals = {}
-            for sig in sorted(pending_signals, key=lambda s: s.get('timestamp', 0), reverse=True):
+            for sig in sorted(pending_signals, key=lambda s: (
+                s.get('from_synth', False),          # synth wins over indicator
+                s.get('timestamp', 0),               # newer wins over older
+            ), reverse=True):
                 stype = sig.get('type')
                 if stype not in _deduped_signals:
                     _deduped_signals[stype] = sig
-            # Conflict resolution: when both close_X and open_X exist simultaneously
-            # (e.g. close_long + open_long from rapid bi_dir flips in lookback window),
-            # drop the entry signal ONLY IF the close is at the same time or later than the open.
-            # If the open is more recent (close already happened, new entry signal appeared),
-            # keep the entry — it represents the current market direction.
+            # Conflict resolution: when both close_X and open_X exist simultaneously.
+            # Safety rule: synthesis close signals (zs_stop / reverse) are NEVER dropped
+            # in favour of stale indicator entry signals from the lookback window.
+            # This prevents stop-loss exits from being silently suppressed by old edge() signals.
             _types_set = set(_deduped_signals.keys())
             if 'close_long' in _types_set and 'open_long' in _types_set:
+                _cl_syn = _deduped_signals['close_long'].get('from_synth', False)
+                _os_syn = _deduped_signals['open_long'].get('from_synth', False)
                 _cl_ts = _deduped_signals['close_long'].get('timestamp', 0)
                 _ol_ts = _deduped_signals['open_long'].get('timestamp', 0)
-                if _cl_ts >= _ol_ts:
+                if _cl_syn and not _os_syn:
+                    # Synthesis close always wins over stale indicator open
+                    del _deduped_signals['open_long']
+                    logger.info(f"[CZSC_SYNTH] conflict resolved: dropped indicator open_long (synth close_long takes priority, ts={_cl_ts} vs {_ol_ts})")
+                elif _cl_ts >= _ol_ts:
                     del _deduped_signals['open_long']
                     logger.info(f"[CZSC_SYNTH] conflict resolved: dropped open_long (close_long ts={_cl_ts} >= open_long ts={_ol_ts})")
                 else:
                     del _deduped_signals['close_long']
                     logger.info(f"[CZSC_SYNTH] conflict resolved: dropped close_long (open_long ts={_ol_ts} > close_long ts={_cl_ts}, keeping entry)")
             if 'close_short' in _types_set and 'open_short' in _types_set:
+                _cs_syn = _deduped_signals['close_short'].get('from_synth', False)
+                _os_syn2 = _deduped_signals['open_short'].get('from_synth', False)
                 _cs_ts = _deduped_signals['close_short'].get('timestamp', 0)
                 _os_ts = _deduped_signals['open_short'].get('timestamp', 0)
-                if _cs_ts >= _os_ts:
+                if _cs_syn and not _os_syn2:
+                    # Synthesis close always wins over stale indicator open
+                    del _deduped_signals['open_short']
+                    logger.info(f"[CZSC_SYNTH] conflict resolved: dropped indicator open_short (synth close_short takes priority, ts={_cs_ts} vs {_os_ts})")
+                elif _cs_ts >= _os_ts:
                     del _deduped_signals['open_short']
                     logger.info(f"[CZSC_SYNTH] conflict resolved: dropped open_short (close_short ts={_cs_ts} >= open_short ts={_os_ts})")
                 else:
