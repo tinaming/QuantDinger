@@ -4306,7 +4306,7 @@ class TradingExecutor:
             _pos = initial_position
             _last_close = 0.0
             if ('czsc_bi_dir' in executed_df.columns
-                    and _czsc_tf in ('10s', '1m', '3m', '5m')):
+                    and _czsc_tf in ('10s', '1m', '3m', '5m', '15m', '30m', '1H', '4H')):
                 _n = len(executed_df)
                 _bi = executed_df['czsc_bi_dir']
                 # Current bi_dir value at the last bar
