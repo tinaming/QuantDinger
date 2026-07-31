@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Indicator Dev Guide · Chan Theory First</title>
+  <link rel="icon" href="/chanquant-favicon.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      --bg: #0f1419; --panel: #161b22; --text: #e6edf3; --muted: #8b949e;
+      --accent: #13c2c2; --border: #30363d; --code-bg: #0d1117;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.65; }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
+    header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 28px; }
+    header h1 { margin: 0 0 8px; font-size: 1.75rem; }
+    header p, p, li { color: #d0d7de; }
+    nav.toc { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; margin-bottom: 28px; }
+    nav.toc a { color: var(--text); text-decoration: none; }
+    nav.toc a:hover { color: var(--accent); }
+    h2 { margin: 2rem 0 0.8rem; border-left: 3px solid var(--accent); padding-left: 10px; font-size: 1.3rem; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.92rem; }
+    th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; }
+    th { background: var(--panel); color: var(--accent); }
+    code, pre { font-family: ui-monospace, Consolas, monospace; font-size: 0.86rem; }
+    code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+    pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px; overflow-x: auto; }
+    pre code { border: 0; padding: 0; background: transparent; }
+    .callout { border: 1px solid var(--border); border-left: 3px solid var(--accent); background: var(--panel); border-radius: 8px; padding: 12px 14px; margin: 14px 0; }
+    .pill { display: inline-block; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: rgba(19,194,194,.15); color: var(--accent); }
+    footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <p><span class="pill">Indicator IDE</span> Dev Guide</p>
+      <h1>Chan theory (CZSC) first</h1>
+      <p>Server injects precomputed <code>czsc_*</code> columns. You write boolean execution columns. Do <strong>not</strong> <code>import czsc</code> in strategy code.</p>
+    </header>
+    <nav class="toc">
+      <strong>Contents</strong>
+      <ol>
+        <li><a href="#czsc">Structure → signals</a></li>
+        <li><a href="#contract">Contract (four-way + edge)</a></li>
+        <li><a href="#example">Minimal example</a></li>
+        <li><a href="#backtest">Backtest (secondary)</a></li>
+      </ol>
+    </nav>
+    <section id="czsc">
+      <h2>1. Structure → signals</h2>
+      <table>
+        <thead><tr><th>Structure</th><th>Columns</th></tr></thead>
+        <tbody>
+          <tr><td>Fractal</td><td><code>czsc_fx_mark</code> / <code>czsc_fx_price</code></td></tr>
+          <tr><td>Bi (stroke)</td><td><code>czsc_bi_dir</code> + start/end/length</td></tr>
+          <tr><td>Duan (segment)</td><td><code>czsc_duan_dir</code></td></tr>
+          <tr><td>Zhongshu</td><td><code>czsc_zs_zd</code> / <code>zg</code> / <code>position</code></td></tr>
+          <tr><td>Buy/sell points</td><td><code>czsc_bs_type</code> (<code>1buy</code>…<code>3sell</code>)</td></tr>
+          <tr><td>Multi-level</td><td><code>czsc_ml_align</code></td></tr>
+        </tbody>
+      </table>
+      <div class="callout">Sandbox cannot import <code>czsc</code>. Read injected columns only, then emit <code>open_long</code> / <code>close_*</code> etc.</div>
+    </section>
+    <section id="contract">
+      <h2>2. Contract</h2>
+      <ul>
+        <li>Prefer four-way columns + <strong>edge trigger</strong> (false→true only).</li>
+        <li>Declare <code># signal_form</code>, <code># exit_owner</code>, <code># flip_mode</code> in the header.</li>
+        <li><code>output['signals']</code> is display-only; fills use execution columns.</li>
+      </ul>
+      <pre><code>def edge(s):
+    s = s.fillna(False).astype(bool)
+    return s &amp; ~s.shift(1).fillna(False).astype(bool)</code></pre>
+    </section>
+    <section id="example">
+      <h2>3. Minimal example</h2>
+      <pre><code># signal_form: four_way
+# exit_owner: engine
+# flip_mode: R1
+# @strategy stopLossPct 0.03
+# @strategy takeProfitPct 0.06
+# @strategy tradeDirection both
+
+my_indicator_name = "CZSC bi flip"
+df = df.copy()
+bi = df["czsc_bi_dir"].fillna(0)
+bi_prev = bi.shift(1).fillna(0)
+flip_up = (bi == 1) &amp; (bi_prev != 1)
+flip_dn = (bi == -1) &amp; (bi_prev != -1)
+
+def edge(s):
+    s = s.fillna(False).astype(bool)
+    return s &amp; ~s.shift(1).fillna(False).astype(bool)
+
+df["open_long"] = edge(flip_up)
+df["close_long"] = edge(flip_dn)
+df["open_short"] = edge(flip_dn)
+df["close_short"] = edge(flip_up)
+output = {"name": my_indicator_name, "plots": [], "signals": []}</code></pre>
+    </section>
+    <section id="backtest">
+      <h2>4. Backtest (secondary)</h2>
+      <p>Enable <strong>strict mode</strong> before go-live: confirmed closed-bar signals, default next-bar open fills. Align <code>exit_owner</code> / <code>flip_mode</code> with live <code>trading_config</code>.</p>
+    </section>
+    <footer>
+      Opened from Indicator IDE 「Dev Guide」. Full SSOT: <code>docs/SIGNAL_EXECUTION_STANDARD_CN.md</code>.
+      Hosted locally at <code>/docs/</code> — no third-party brand links.
+    </footer>
+  </div>
+</body>
+</html>

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>指标开发教程 · 缠论优先</title>
+  <link rel="icon" href="/chanquant-favicon.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #161b22;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #13c2c2;
+      --border: #30363d;
+      --code-bg: #0d1117;
+      --ok: #3fb950;
+      --warn: #d29922;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+      margin-bottom: 28px;
+    }
+    header h1 { margin: 0 0 8px; font-size: 1.75rem; font-weight: 650; }
+    header p { margin: 0; color: var(--muted); }
+    nav.toc {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 32px;
+    }
+    nav.toc strong { color: var(--accent); }
+    nav.toc ol { margin: 8px 0 0; padding-left: 1.3rem; }
+    nav.toc a { color: var(--text); text-decoration: none; }
+    nav.toc a:hover { color: var(--accent); }
+    h2 {
+      margin: 2.2rem 0 0.8rem;
+      font-size: 1.35rem;
+      border-left: 3px solid var(--accent);
+      padding-left: 10px;
+    }
+    h3 { margin: 1.4rem 0 0.6rem; font-size: 1.1rem; color: #c9d1d9; }
+    p, li { color: #d0d7de; }
+    a { color: var(--accent); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px;
+      font-size: 0.92rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: var(--panel); color: var(--accent); }
+    code, pre {
+      font-family: ui-monospace, Consolas, "Cascadia Code", monospace;
+      font-size: 0.86rem;
+    }
+    code {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+    pre code { border: 0; padding: 0; background: transparent; }
+    .callout {
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin: 14px 0;
+    }
+    .callout.warn { border-left-color: var(--warn); }
+    .callout.ok { border-left-color: var(--ok); }
+    .pill {
+      display: inline-block;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(19, 194, 194, 0.15);
+      color: var(--accent);
+      margin-right: 6px;
+    }
+    footer {
+      margin-top: 48px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <p><span class="pill">指标 IDE</span> 开发教程</p>
+      <h1>用缠论写指标策略</h1>
+      <p>服务端预计算 <code>czsc_*</code> 列 → 你只写布尔信号 → 严格模式回测验证。禁止在策略里 <code>import czsc</code>。</p>
+    </header>
+
+    <nav class="toc" id="toc">
+      <strong>目录 · 共 7 节实用内容</strong>
+      <ol>
+        <li><a href="#czsc">缠论核心：结构 → 信号</a></li>
+        <li><a href="#columns">常用 czsc_* 列</a></li>
+        <li><a href="#contract">信号契约（四路 + 边缘触发）</a></li>
+        <li><a href="#example">最小可跑示例：笔翻转 + 买卖点</a></li>
+        <li><a href="#multilevel">多级别与内置模板</a></li>
+        <li><a href="#backtest">回测（辅）：严格模式怎么跑</a></li>
+        <li><a href="#checklist">上线前检查</a></li>
+      </ol>
+    </nav>
+    <div class="callout ok">
+      打开本页即表示 IDE「开发教程」已正确落到站内文档（不是 GitHub / 外链，也不是 AI 智能分析页）。
+      下面 7 节可直接照着写指标并跑严格回测。
+    </div>
+
+    <section id="czsc">
+      <h2>1. 缠论核心：结构 → 信号</h2>
+      <p>本平台在跑指标 / 回测 / 实盘前，会把缠论结构写成 <code>df</code> 上的列：</p>
+      <table>
+        <thead><tr><th>结构</th><th>你在策略里读什么</th><th>典型用法</th></tr></thead>
+        <tbody>
+          <tr><td>分型</td><td><code>czsc_fx_mark</code> / <code>czsc_fx_price</code></td><td>顶底确认、突破过滤</td></tr>
+          <tr><td>笔</td><td><code>czsc_bi_dir</code> 及起止价、长度</td><td>方向翻转开仓</td></tr>
+          <tr><td>线段</td><td><code>czsc_duan_dir</code> 及起止价</td><td>大级别方向过滤</td></tr>
+          <tr><td>中枢</td><td><code>czsc_zs_zd</code> / <code>zg</code> / <code>position</code></td><td>震荡区间、离开中枢</td></tr>
+          <tr><td>买卖点</td><td><code>czsc_bs_type</code>（如 <code>1buy</code>…<code>3sell</code>）</td><td>结构买点过滤</td></tr>
+          <tr><td>趋势 / 背驰</td><td><code>czsc_trend</code> / <code>czsc_beichi</code> / <code>czsc_bi_force</code></td><td>顺势、背驰确认</td></tr>
+          <tr><td>多级别代理</td><td><code>czsc_ml_align</code></td><td>笔/段同向共振</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <strong>硬性约束：</strong>指标沙箱<strong>不能</strong> <code>import czsc</code>（含原生扩展）。只读已注入的 <code>czsc_*</code> 列，再写出 <code>open_long</code> 等执行列。
+      </div>
+    </section>
+
+    <section id="columns">
+      <h2>2. 常用列速查</h2>
+      <table>
+        <thead><tr><th>列</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td><code>czsc_fx_mark</code></td><td><code>1</code> 顶分型，<code>-1</code> 底分型</td></tr>
+          <tr><td><code>czsc_bi_dir</code></td><td>笔方向：<code>1</code> 上，<code>-1</code> 下</td></tr>
+          <tr><td><code>czsc_duan_dir</code></td><td>线段方向</td></tr>
+          <tr><td><code>czsc_zs_position</code></td><td><code>above</code> / <code>below</code> / <code>inside</code></td></tr>
+          <tr><td><code>czsc_bs_type</code></td><td>买卖点字符串；无则为空</td></tr>
+          <tr><td><code>czsc_trend</code></td><td><code>1</code> 上涨，<code>-1</code> 下跌，<code>0</code> 盘整</td></tr>
+          <tr><td><code>czsc_ml_align</code></td><td><code>1</code> 笔段同向，<code>-1</code> 反向</td></tr>
+        </tbody>
+      </table>
+      <p>若列全为 0 / 空，先确认服务端缠论库可用；校验阶段可能注入 mock 列以防 <code>KeyError</code>。</p>
+    </section>
+
+    <section id="contract">
+      <h2>3. 信号契约（必须对齐）</h2>
+      <p>语义以平台<strong>信号与执行标准</strong>为准，不要自创列含义：</p>
+      <ul>
+        <li><span class="pill">推荐</span>形态 B 四路：<code>open_long</code> / <code>close_long</code> / <code>open_short</code> / <code>close_short</code></li>
+        <li><strong>边缘触发</strong>：只在 false→true 记一次信号（用 <code>edge()</code>）</li>
+        <li>头注释声明：<code># signal_form: four_way</code>、<code># exit_owner: engine|indicator</code>、<code># flip_mode: R1|R2</code></li>
+        <li><code>output['signals']</code> 只画图，<strong>成交只认执行列</strong></li>
+        <li><code>exit_owner: engine</code> → 可用引擎止盈止损；<code>indicator</code> → 用 <code>close_*</code> 自己平，并关掉 trailing</li>
+      </ul>
+      <pre><code>def edge(s):
+    s = s.fillna(False).astype(bool)
+    return s &amp; ~s.shift(1).fillna(False).astype(bool)</code></pre>
+      <div class="callout">
+        缠论「结构条件」先算成布尔序列，再 <code>edge(...)</code> 写入四路列——结构可持续成立，信号只在翻转瞬间触发。
+      </div>
+    </section>
+
+    <section id="example">
+      <h2>4. 最小可跑示例：笔翻转 + 买卖点</h2>
+      <pre><code># signal_form: four_way
+# exit_owner: engine
+# flip_mode: R1
+# @strategy stopLossPct 0.03
+# @strategy takeProfitPct 0.06
+# @strategy tradeDirection both
+
+my_indicator_name = "缠论笔翻转"
+my_indicator_description = "笔方向翻转，并用买卖点/趋势过滤"
+
+df = df.copy()
+
+bi = df["czsc_bi_dir"].fillna(0)
+bi_prev = bi.shift(1).fillna(0)
+bs = df["czsc_bs_type"].fillna("").astype(str)
+trend = df["czsc_trend"].fillna(0)
+
+flip_up = (bi == 1) &amp; (bi_prev != 1)
+flip_dn = (bi == -1) &amp; (bi_prev != -1)
+has_buy = bs.str.contains("buy", case=False, na=False) &amp; (bs != "")
+has_sell = bs.str.contains("sell", case=False, na=False) &amp; (bs != "")
+
+long_cond = flip_up &amp; (has_buy | (trend &gt;= 0)) &amp; (trend &gt;= 0)
+short_cond = flip_dn &amp; (has_sell | (trend &lt;= 0)) &amp; (trend &lt;= 0)
+
+def edge(s):
+    s = s.fillna(False).astype(bool)
+    return s &amp; ~s.shift(1).fillna(False).astype(bool)
+
+df["open_long"] = edge(long_cond)
+df["close_long"] = edge(short_cond)
+df["open_short"] = edge(short_cond)
+df["close_short"] = edge(long_cond)
+
+output = {
+    "name": my_indicator_name,
+    "plots": [],
+    "signals": [
+        {"type": "buy", "text": "OL", "color": "#00E676",
+         "data": [1 if x else None for x in df["open_long"]]},
+        {"type": "sell", "text": "OS", "color": "#FF5252",
+         "data": [1 if x else None for x in df["open_short"]]},
+    ],
+}</code></pre>
+      <h3>结构如何映射到进出场</h3>
+      <table>
+        <thead><tr><th>缠论事件</th><th>建议执行列</th></tr></thead>
+        <tbody>
+          <tr><td>向上笔确立 / 买点出现</td><td><code>open_long</code>（可同时 <code>close_short</code>）</td></tr>
+          <tr><td>向下笔确立 / 卖点出现</td><td><code>open_short</code>（可同时 <code>close_long</code>）</td></tr>
+          <tr><td>仅平仓不反手</td><td>只写对应 <code>close_*</code>，不要写对侧 <code>open_*</code></td></tr>
+          <tr><td>中枢内震荡</td><td>收紧开仓；或用 <code>position == "inside"</code> 过滤</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="multilevel">
+      <h2>5. 多级别与内置模板</h2>
+      <ul>
+        <li>同向过滤：要求 <code>czsc_ml_align == 1</code>，或 <code>czsc_duan_dir</code> 与 <code>czsc_bi_dir</code> 一致。</li>
+        <li>IDE 可选用缠论草稿模板，例如：分型突破、中枢震荡、买卖点趋势、多级别共振、真三买回踩。</li>
+        <li>模板已按四路 + 边缘触发写好；改完务必再跑<strong>严格模式</strong>回测。</li>
+      </ul>
+      <div class="callout">
+        Agent / 研究工具可分析缠论结构；<strong>落成可回测策略</strong>仍须写出完整 Python 指标代码（不能把自然语言塞进 <code>code</code>）。
+      </div>
+    </section>
+
+    <section id="backtest">
+      <h2>6. 回测（辅）：严格模式怎么跑</h2>
+      <p>回测用来验证缠论信号是否过密、成交时点是否合理，不是教程主体。</p>
+      <table>
+        <thead><tr><th>模式</th><th>行为</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td><strong>严格</strong></td><td>已收盘确认信号 → 默认下一根开盘成交</td><td>上线前必开，与默认实盘对齐</td></tr>
+          <tr><td>非严格</td><td>更激进（可当根收盘等）</td><td>盘感试探，不宜单独当上线依据</td></tr>
+        </tbody>
+      </table>
+      <ol>
+        <li>写好四路信号与契约头注释</li>
+        <li>选市场 / 标的 / 周期</li>
+        <li>打开<strong>严格模式</strong> → 运行回测</li>
+        <li>看资金曲线、回撤、成交明细；信号过密先查是否漏了 <code>edge()</code></li>
+        <li>满意后保存指标 → 保存为策略 → 再跑一次策略回测</li>
+      </ol>
+      <div class="callout ok">
+        缠论策略额外核对：<code>czsc_*</code> 非空、买卖点字符串符合预期、多级别过滤没有把有效信号滤光。
+      </div>
+    </section>
+
+    <section id="checklist">
+      <h2>7. 上线前检查</h2>
+      <ul>
+        <li>未使用 <code>import czsc</code> / <code>shift(-1)</code></li>
+        <li><code>df = df.copy()</code>；执行列为 bool 且已边缘触发</li>
+        <li><code>exit_owner</code> 与引擎 trailing / 止盈止损不冲突</li>
+        <li>严格模式回测通过；实盘 <code>trading_config.strict_mode: true</code></li>
+        <li><code>flip_mode</code> 回测与实盘一致</li>
+      </ul>
+    </section>
+
+    <footer>
+      本页由指标 IDE「开发教程」打开，内容侧重缠论指标写法。完整契约见仓库文档
+      <code>docs/SIGNAL_EXECUTION_STANDARD_CN.md</code> 与 <code>docs/STRATEGY_DEV_GUIDE_CN.md</code>。
+      <br />无第三方品牌外链；页面托管于本平台静态资源 <code>/docs/</code>。
+    </footer>
+  </div>
+</body>
+</html>

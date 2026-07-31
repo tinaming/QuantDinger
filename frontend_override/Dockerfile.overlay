@@ -14,4 +14,12 @@
 FROM ghcr.io/brokermr810/quantdinger-frontend:latest
 
 # Overlay brand-replaced files (overwrites matching paths, adds new logo SVGs)
+# Includes /docs/dev-guide[-cn].html for Indicator IDE 「开发教程」 (no external GitHub).
 COPY frontend_override/html /usr/share/nginx/html
+
+# COPY cannot delete upstream hashed chunks. Remove superseded immutable names so
+# browsers cannot keep forever-cached importers that never discover -cq1.
+RUN rm -f \
+      /usr/share/nginx/html/assets/index-DvAGmmZH.js \
+      /usr/share/nginx/html/assets/index-Bv_zhOcS.js \
+      /usr/share/nginx/html/assets/index-CpKYkjon.js
