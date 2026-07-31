@@ -32,6 +32,7 @@ wheels/
 
 # Logs
 *.log
+scripts/logs/
 
 # Environment variables
 .env

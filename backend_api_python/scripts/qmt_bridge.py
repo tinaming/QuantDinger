@@ -8,6 +8,8 @@ when xtquant is not available locally.
 
 Usage:
     python scripts/qmt_bridge.py
+    # Prefer (idempotent + logs): powershell -File scripts/start_qmt_bridge.ps1
+    # Autostart watchdog:       powershell -File scripts/install_qmt_bridge_autostart.ps1
 
 Requires:
     - Windows

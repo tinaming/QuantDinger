@@ -227,15 +227,32 @@ class EmailService:
         Returns:
             (success, message)
         """
+        # Reload env in case admin updated SMTP settings since process start
+        # (singleton may have been reset via refresh_runtime_services).
+        self._load_config()
+
         if not self.email_enabled:
             logger.warning(f"Email not sent (service disabled): {subject} to {to_email}")
-            return False, 'Email service is not configured'
+            return (
+                False,
+                'Email service is not configured. Set SMTP_HOST, SMTP_USER, and '
+                'SMTP_PASSWORD in Admin → Settings → Email (or backend .env), then retry.',
+            )
         
+        server = None
         try:
             msg = MIMEMultipart('alternative')
             msg['Subject'] = subject
             msg['From'] = self.smtp_from
             msg['To'] = to_email
+            # Improve deliverability to consumer mailboxes (QQ/163/Gmail).
+            try:
+                import uuid
+                domain = (self.smtp_from or self.smtp_user or "chanquant.local").split("@")[-1]
+                msg['Message-ID'] = f"<{uuid.uuid4().hex}@{domain}>"
+            except Exception:
+                pass
+            msg['X-Mailer'] = 'ChanQuant'
             
             # Plain text version (fallback)
             text_body = html_body.replace('<br>', '\n').replace('<br/>', '\n')
@@ -248,31 +265,55 @@ class EmailService:
             
             msg.attach(part1)
             msg.attach(part2)
+
+            # Avoid hanging request workers when SMTP is unreachable (was uncapped).
+            smtp_timeout = int(os.getenv('SMTP_TIMEOUT_SECONDS', '20') or '20')
+            smtp_timeout = max(5, min(smtp_timeout, 60))
+            use_ssl = bool(self.smtp_use_ssl) or int(self.smtp_port or 0) == 465
             
             # Connect and send
-            if self.smtp_use_ssl:
-                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
+            if use_ssl:
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=smtp_timeout)
             else:
-                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=smtp_timeout)
                 if self.smtp_use_tls:
                     server.starttls()
             
             server.login(self.smtp_user, self.smtp_password)
             server.sendmail(self.smtp_from, to_email, msg.as_string())
-            server.quit()
             
             logger.info(f"Email sent successfully: {subject} to {to_email}")
             return True, 'sent'
             
         except smtplib.SMTPAuthenticationError as e:
             logger.error(f"SMTP authentication failed: {e}")
-            return False, 'Email authentication failed'
+            return (
+                False,
+                'Email authentication failed. Check SMTP_USER / SMTP_PASSWORD '
+                '(use the mailbox auth code, not the login password).',
+            )
+        except (TimeoutError, OSError) as e:
+            logger.error(f"SMTP connection error: {e}")
+            return (
+                False,
+                'Failed to connect to SMTP server. Check SMTP_HOST / SMTP_PORT / '
+                'SMTP_USE_SSL and network access from the backend host.',
+            )
         except smtplib.SMTPException as e:
             logger.error(f"SMTP error: {e}")
-            return False, 'Failed to send email'
+            return False, f'Failed to send email: {e}'
         except Exception as e:
             logger.error(f"Email error: {e}")
-            return False, 'Failed to send email'
+            return False, f'Failed to send email: {e}'
+        finally:
+            if server is not None:
+                try:
+                    server.quit()
+                except Exception:
+                    try:
+                        server.close()
+                    except Exception:
+                        pass
     
     def send_verification_code(self, email: str, code_type: str, 
                                 ip_address: str = None) -> Tuple[bool, str]:
@@ -296,23 +337,23 @@ class EmailService:
         
         # Prepare email content based on type
         if code_type == 'register':
-            subject = 'ChanQuant - Verification Code for Registration'
-            action_text = 'complete your registration'
+            subject = 'ChanQuant 注册验证码 / Verification Code'
+            action_text = '完成注册 / complete your registration'
         elif code_type == 'login':
-            subject = 'ChanQuant - Quick Login Verification Code'
-            action_text = 'log in to your account'
+            subject = 'ChanQuant 登录验证码 / Login Verification Code'
+            action_text = '登录账户 / log in to your account'
         elif code_type == 'reset_password':
-            subject = 'ChanQuant - Password Reset Verification Code'
-            action_text = 'reset your password'
+            subject = 'ChanQuant 重置密码验证码 / Password Reset Code'
+            action_text = '重置密码 / reset your password'
         elif code_type == 'change_password':
-            subject = 'ChanQuant - Verification Code for Password Change'
-            action_text = 'change your password'
+            subject = 'ChanQuant 修改密码验证码 / Password Change Code'
+            action_text = '修改密码 / change your password'
         elif code_type == 'change_email':
-            subject = 'ChanQuant - Verification Code for Email Change'
-            action_text = 'change your email address'
+            subject = 'ChanQuant 修改邮箱验证码 / Email Change Code'
+            action_text = '修改邮箱 / change your email address'
         else:
-            subject = 'ChanQuant - Verification Code'
-            action_text = 'complete the verification'
+            subject = 'ChanQuant 验证码 / Verification Code'
+            action_text = '完成验证 / complete the verification'
         
         html_body = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">

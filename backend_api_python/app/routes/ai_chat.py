@@ -16,6 +16,49 @@ from typing import Any
 
 from flask import Response, g, jsonify, request, stream_with_context
 
+# #region agent log
+def _agent_dbg(hypothesis_id: str, location: str, message: str, data: dict | None = None, run_id: str = "pre") -> None:
+    """Debug-mode NDJSON + ingest (no secrets)."""
+    import urllib.request
+    payload = {
+        "sessionId": "a57f3c",
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data or {},
+        "timestamp": int(time.time() * 1000),
+    }
+    line = json.dumps(payload, ensure_ascii=False) + "\n"
+    for path in (
+        "/app/scripts/debug-a57f3c.log",
+        "D:/aaron/miniso/chanquant/debug-a57f3c.log",
+        "debug-a57f3c.log",
+    ):
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(line)
+            break
+        except Exception:
+            pass
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    for url in (
+        "http://host.docker.internal:7696/ingest/2fabae30-f301-4342-ba0a-734b1a78cebc",
+        "http://127.0.0.1:7696/ingest/2fabae30-f301-4342-ba0a-734b1a78cebc",
+    ):
+        try:
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={"Content-Type": "application/json", "X-Debug-Session-Id": "a57f3c"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=1).read()
+            break
+        except Exception:
+            pass
+# #endregion
+
 from app.openapi.blueprint import HumanBlueprint as Blueprint
 from app.services.billing_service import get_billing_service
 from app.services.ai_skill_registry import (
@@ -313,7 +356,20 @@ def _classify_agent_intent(message: str, attachments: list[dict], context: dict,
         "available_target_types": ["none", "indicator", "script", "bot", "monitor", "research"],
     })
     try:
+        _t_intent = time.perf_counter()
         raw = LLMService().safe_call_llm(system_prompt, user_prompt, schema.copy())
+        # #region agent log
+        _agent_dbg(
+            "A",
+            "ai_chat.py:_classify_agent_intent",
+            "intent_llm_done",
+            {
+                "ms": int((time.perf_counter() - _t_intent) * 1000),
+                "intent": str(raw.get("intent") or ""),
+                "has_error_report": str(raw.get("report") or "").startswith(("Analysis failed:", "Failed to parse")),
+            },
+        )
+        # #endregion
         plan = _normalize_agent_intent(raw, message, has_image, context, language)
         report = str(raw.get("report") or "")
         if report.startswith("Analysis failed:") or report.startswith("Failed to parse"):
@@ -321,14 +377,37 @@ def _classify_agent_intent(message: str, attachments: list[dict], context: dict,
             return fallback
         return plan
     except Exception as exc:
+        # #region agent log
+        _agent_dbg("A", "ai_chat.py:_classify_agent_intent", "intent_llm_failed", {"error": str(exc)[:200]})
+        # #endregion
         fallback["error"] = str(exc)
         return fallback
+
+
+def _looks_like_executable_workflow(message: str) -> bool:
+    text = (message or "").lower()
+    markers = (
+        "创建策略", "写策略", "生成策略", "回测", "实盘", "挂单", "创建机器人", "定时分析",
+        "build strategy", "create strategy", "backtest", "trading bot", "deploy",
+        "优化策略", "改策略", "hyperopt",
+    )
+    return any(m in text for m in markers)
 
 
 def _get_or_classify_agent_intent(message: str, attachments: list[dict], context: dict, language: str) -> dict:
     existing = context.get("agent_intent") if isinstance(context, dict) else None
     if isinstance(existing, dict) and existing.get("intent"):
         return _normalize_agent_intent(existing, message, bool(attachments), context, language)
+    # Fast path: skip ~10s LLM router for clear analysis intents (runtime: intent=10.1s).
+    heuristic = _detect_intent(message, bool(attachments))
+    if heuristic in {"market_analysis", "chart_image_analysis"} and not _looks_like_executable_workflow(message):
+        plan = _fallback_agent_intent(message, bool(attachments), context)
+        plan["source"] = "heuristic_fast"
+        plan["reason"] = "Skipped LLM intent router for clear analysis request."
+        # #region agent log
+        _agent_dbg("A", "ai_chat.py:_get_or_classify_agent_intent", "intent_fast_path", {"intent": heuristic})
+        # #endregion
+        return plan
     return _classify_agent_intent(message, attachments, context, language)
 
 
@@ -638,7 +717,8 @@ def _build_market_snapshot(context: dict) -> dict | None:
     }
     snapshot["data_warnings"].append("Latest candle may be still forming; prefer prev_closed_volume_ratio_vs_avg20 for volume confirmation.")
     try:
-        price = service.get_realtime_price(market, symbol, force_refresh=True)
+        # Prefer cache for Copilot latency (force_refresh=True was a major enrich cost).
+        price = service.get_realtime_price(market, symbol, force_refresh=False)
         if price and _to_float(price.get("price")):
             snapshot["price"] = {
                 "last": _round_num(price.get("price"), 6),
@@ -652,7 +732,22 @@ def _build_market_snapshot(context: dict) -> dict | None:
     except Exception as e:
         snapshot["data_warnings"].append(f"price unavailable: {e}")
 
-    for timeframe, limit in (("1H", 120), ("4H", 120), ("1D", 120)):
+    # Chat enrich previously fetched 1H+4H+1D x120 serially (~5s+).
+    # Match requested TF; default to 1H + light 1D when unspecified.
+    msg = str(context.get("user_message") or "").lower()
+    frames: list[tuple[str, int]] = []
+    wants_1h = any(k in msg for k in ("1h", "1小时", "小时", "60m", "60分钟"))
+    wants_4h = any(k in msg for k in ("4h", "4小时", "4 小时"))
+    wants_1d = any(k in msg for k in ("日线", "1d", "daily", "天图", "周线", "多周期"))
+    if wants_1h or not (wants_4h or wants_1d):
+        frames.append(("1H", 80))
+    if wants_4h:
+        frames.append(("4H", 60))
+    if wants_1d or not wants_1h:
+        frames.append(("1D", 60))
+    # Hard cap: at most two TFs for chat latency.
+    frames = frames[:2]
+    for timeframe, limit in frames:
         try:
             klines = service.get_kline(market, symbol, timeframe, limit)
             snapshot["timeframes"][timeframe] = _summarize_klines(klines, timeframe)
@@ -875,20 +970,29 @@ def _search_intelligence(message: str, candidates: list[dict], language: str) ->
     entity = ""
     if candidates:
         entity = candidates[0].get("name") or candidates[0].get("symbol") or candidates[0].get("match") or ""
-    query = f"{entity} {query_base} latest market news".strip() if entity else f"{query_base} latest market news"
+    # Keep queries short — long user prompts were previously embedded into DDG URLs and timed out.
+    compact = re.sub(r"\s+", " ", query_base)[:120]
+    query = f"{entity} {compact} latest market news".strip() if entity else f"{compact} latest market news"
     queries = [query]
-    ticker_query = f"{entity or query_base} stock ticker symbol exchange".strip()
-    if ticker_query not in queries:
-        queries.append(ticker_query)
+    # Only add ticker discovery when we have no local symbol candidates.
+    if not candidates:
+        ticker_query = f"{(entity or compact)[:80]} stock ticker symbol exchange".strip()
+        if ticker_query not in queries:
+            queries.append(ticker_query)
     if "spacex" in query_base.lower() and "SpaceX valuation public stock ticker latest" not in queries:
         queries.append("SpaceX valuation public stock ticker latest")
 
     web_results: list[dict] = []
     provider_status: list[dict] = []
+    # Hard budget: enrich alone was 44.6s with serial DDG timeouts (runtime evidence).
+    search_deadline = time.perf_counter() + 5.0
     try:
         service = get_search_service()
         provider_status = service.provider_status() if hasattr(service, "provider_status") else []
-        for q in queries[:3]:
+        for q in queries[:2]:
+            if time.perf_counter() >= search_deadline:
+                logger.warning("[search_intelligence] budget exhausted; stopping further queries")
+                break
             try:
                 for item in service.search(q, num_results=5, days=14):
                     web_results.append({
@@ -900,13 +1004,28 @@ def _search_intelligence(message: str, candidates: list[dict], language: str) ->
                         "query": q,
                     })
             except Exception as search_err:
-                logger.warning("[search_intelligence] query=%r failed: %s", q, search_err)
-                web_results.append({"error": str(search_err), "query": q})
+                logger.warning("[search_intelligence] query=%r failed: %s", q[:80], search_err)
+            usable = [r for r in web_results if r.get("title") or r.get("snippet")]
+            if len(usable) >= 3:
+                break
         if not web_results:
             logger.warning("[search_intelligence] all %d queries returned empty for message=%r", len(queries), message[:80])
     except Exception as e:
         logger.error("[search_intelligence] service init failed: %s", e, exc_info=True)
         web_results.append({"error": str(e), "query": query})
+
+    # #region agent log
+    _agent_dbg(
+        "B",
+        "ai_chat.py:_search_intelligence",
+        "search_done",
+        {
+            "query_count": len(queries[:2]),
+            "result_count": len([r for r in web_results if r.get("title") or r.get("snippet")]),
+            "elapsed_ms": int((5.0 - (search_deadline - time.perf_counter())) * 1000),
+        },
+    )
+    # #endregion
 
     return {
         "web_results": web_results[:8],
@@ -1374,7 +1493,11 @@ def _snapshot_for_candidate(candidate: dict | None) -> dict | None:
     if not market or not symbol or market in {"private_company", "private_business_unit"}:
         return None
     try:
-        return _build_market_snapshot({"market": market, "symbol": symbol})
+        return _build_market_snapshot({
+            "market": market,
+            "symbol": symbol,
+            "user_message": str((candidate or {}).get("user_message") or ""),
+        })
     except Exception as e:
         return {"market": market, "symbol": symbol, "available": False, "error": str(e)}
 
@@ -1395,8 +1518,8 @@ def _research_task_flags(message: str, intent: str, has_image: bool = False) -> 
         "needs_news": any(k in text for k in (
             "latest", "news", "headline", "event", "ipo", "spac", "spacex",
             "新闻", "消息", "事件", "上市", "影响",
-            # Search verbs — user asking to search/research means they want web results
-            "搜索", "搜一下", "查一下", "查找", "看看", "研究", "了解",
+            # Explicit search verbs only — avoid "看看/研究/了解" (too broad, forced enrich).
+            "搜索", "搜一下", "查一下", "查找",
             "search", "look up", "find out", "research",
         )),
         "needs_macro": wants_macro,
@@ -1462,27 +1585,69 @@ def _build_research_context(context: dict, has_image: bool = False) -> dict:
         return {}
 
     candidates = _local_symbol_candidates(message)
+    # Prefer explicit UI/context symbol so we don't pay GDELT/DDG for discovery.
+    ctx_symbol = str(context.get("symbol") or context.get("resolved_symbol") or "").strip()
+    ctx_market = str(context.get("market") or "").strip()
+    if ctx_symbol and not any(
+        str(c.get("symbol") or "").upper() == ctx_symbol.upper() for c in candidates
+    ):
+        candidates.insert(0, {
+            "symbol": ctx_symbol,
+            "market": ctx_market,
+            "name": ctx_symbol,
+            "match": ctx_symbol,
+            "source": "context",
+        })
     needs_symbol_discovery = flags["needs_market_data"] and not candidates
-    search_context = _search_intelligence(message, candidates, language) if (flags["needs_news"] or flags["needs_fundamentals"] or flags["needs_market_data"] or needs_symbol_discovery) else {
+    # Web search is for news/fundamentals/symbol discovery only.
+    # Quote/K-line snapshots already cover needs_market_data — do not pay GDELT/DDG cost.
+    should_web_search = bool(
+        flags["needs_news"] or flags["needs_fundamentals"] or needs_symbol_discovery
+    )
+    _t_search = time.perf_counter()
+    search_context = _search_intelligence(message, candidates, language) if should_web_search else {
         "web_results": [],
         "news_results": [],
         "search_queries": [],
         "language": language,
     }
+    search_ms = int((time.perf_counter() - _t_search) * 1000)
     if not candidates and search_context.get("web_results"):
         candidates.extend(_discover_symbol_candidates_from_search(search_context, candidates))
     primary = candidates[0] if candidates else None
+    _t_macro = time.perf_counter()
     raw_macro_context = _macro_intelligence(message) if flags["needs_macro"] else {}
+    macro_ms = int((time.perf_counter() - _t_macro) * 1000)
     macro_context = raw_macro_context if isinstance(raw_macro_context, dict) else {}
 
     selected_snapshot = context.get("market_snapshot")
     primary_snapshot = None
     conflict = _selected_context_conflict(context, primary)
+    _t_snap2 = time.perf_counter()
     if flags["needs_market_data"]:
         if selected_snapshot and not conflict.get("has_conflict"):
             primary_snapshot = selected_snapshot
         else:
+            if primary and isinstance(primary, dict):
+                primary = dict(primary)
+                primary["user_message"] = message
             primary_snapshot = _snapshot_for_candidate(primary)
+    snap2_ms = int((time.perf_counter() - _t_snap2) * 1000)
+    # #region agent log
+    _agent_dbg(
+        "B",
+        "ai_chat.py:_build_research_context",
+        "research_breakdown",
+        {
+            "search_ms": search_ms,
+            "macro_ms": macro_ms,
+            "primary_snapshot_ms": snap2_ms,
+            "flags": flags,
+            "web_results": len(search_context.get("web_results") or []),
+            "queries": len(search_context.get("search_queries") or []),
+        },
+    )
+    # #endregion
 
     data_gaps = []
     if flags["needs_market_data"] and not (selected_snapshot or primary_snapshot):
@@ -1661,14 +1826,36 @@ def _agent_usage_action(agent_plan: dict | None, context: dict, language: str) -
 
 def _enrich_context(context: dict, has_image: bool = False) -> dict:
     enriched = dict(context or {})
+    _t0 = time.perf_counter()
+    snap_ms = 0
     if "market_snapshot" not in enriched:
+        _ts = time.perf_counter()
         snapshot = _build_market_snapshot(enriched)
+        snap_ms = int((time.perf_counter() - _ts) * 1000)
         if snapshot:
             enriched["market_snapshot"] = snapshot
+    _tr = time.perf_counter()
     research = _build_research_context(enriched, has_image=has_image)
+    research_ms = int((time.perf_counter() - _tr) * 1000)
     if research:
         enriched["research_context"] = research
         enriched["intelligence_context"] = _legacy_intelligence_context(research)
+    # #region agent log
+    _agent_dbg(
+        "B",
+        "ai_chat.py:_enrich_context",
+        "enrich_breakdown",
+        {
+            "snapshot_ms": snap_ms,
+            "research_ms": research_ms,
+            "total_ms": int((time.perf_counter() - _t0) * 1000),
+            "has_snapshot": bool(enriched.get("market_snapshot")),
+            "has_research": bool(research),
+            "news_count": len(((research or {}).get("news") or {}).get("web_results") or []),
+            "intent": str(enriched.get("intent") or ""),
+        },
+    )
+    # #endregion
     return enriched
 
 
@@ -1997,14 +2184,32 @@ def _build_preflight(user_id: int) -> dict:
     provider = llm.provider.value
     api_key = llm.get_api_key(llm.provider)
     custom_base_ok = provider == "custom" and bool(llm.get_base_url(llm.provider))
+    # System-wide LLM keys (env / addon) are enough — users should not need per-user keys.
     llm_ready = bool(api_key) or custom_base_ok or provider == "litellm"
+    if not llm_ready:
+        # Double-check any configured provider key in case auto-detect fell through.
+        try:
+            from app.services.llm import LLMProvider
+            for p in LLMProvider:
+                if llm.get_api_key(p):
+                    provider = p.value
+                    api_key = llm.get_api_key(p)
+                    llm_ready = True
+                    break
+        except Exception:
+            pass
     billing_enabled = bool(billing.is_billing_enabled())
     credits = float(billing.get_user_credits(user_id))
+    try:
+        from app.services.llm import LLMProvider as _LP
+        _prov_enum = _LP(provider)
+    except Exception:
+        _prov_enum = llm.provider
     result = {
         "llm": {
             "ready": bool(llm_ready),
             "provider": provider,
-            "model": llm.get_default_model(llm.provider),
+            "model": llm.get_default_model(_prov_enum),
             "action": {"path": "/settings", "query": {"section": "ai-llm"}},
         },
         "credits": {
@@ -2409,6 +2614,25 @@ def chat_message():
                 t_build - t_enrich, t_llm - t_build,
                 is_follow_up, intent,
             )
+            # #region agent log
+            _agent_dbg(
+                "C",
+                "ai_chat.py:chat_message",
+                "chat_timing",
+                {
+                    "total_s": round(t_total - t0, 2),
+                    "session_s": round(t_session - t0, 2),
+                    "intent_s": round(t_intent - t_session, 2),
+                    "enrich_s": round(t_enrich - t_intent, 2),
+                    "build_s": round(t_build - t_enrich, 2),
+                    "llm_s": round(t_llm - t_build, 2),
+                    "follow_up": is_follow_up,
+                    "intent": intent,
+                    "fe_timeout_s": 180,
+                    "would_fe_timeout": (t_total - t0) > 180,
+                },
+            )
+            # #endregion
 
         return jsonify({
             "code": 1,
@@ -2428,6 +2652,9 @@ def chat_message():
             },
         })
     except Exception as e:
+        # #region agent log
+        _agent_dbg("D", "ai_chat.py:chat_message", "chat_message_failed", {"error": str(e)[:300]})
+        # #endregion
         logger.error(f"chat_message failed: {e}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
 

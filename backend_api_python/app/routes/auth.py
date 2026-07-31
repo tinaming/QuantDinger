@@ -578,13 +578,18 @@ def send_verification_code():
     ip_address = _get_client_ip()
     
     try:
+        from werkzeug.exceptions import BadRequest
         from app.services.security_service import get_security_service
         from app.services.email_service import get_email_service
         
         security = get_security_service()
         email_service = get_email_service()
-        
-        data = request.get_json()
+
+        try:
+            data = request.get_json(silent=True)
+        except BadRequest as e:
+            logger.warning(f"send_verification_code bad request body: {e}")
+            return jsonify({'code': 0, 'msg': 'Invalid request body', 'data': None}), 400
         if not data:
             return jsonify({'code': 0, 'msg': 'No data provided', 'data': None}), 400
         
@@ -595,6 +600,16 @@ def send_verification_code():
         # Validate email
         if not email or not email_service.is_valid_email(email):
             return jsonify({'code': 0, 'msg': 'Invalid email address', 'data': None}), 400
+
+        if not email_service.is_configured():
+            return jsonify({
+                'code': 0,
+                'msg': (
+                    'Email service is not configured. Set SMTP_HOST, SMTP_USER, and '
+                    'SMTP_PASSWORD in Admin → Settings → Email (or backend .env), then retry.'
+                ),
+                'data': None,
+            }), 503
         
         # For change_password type with logged-in user, skip Turnstile verification
         # because user already authenticated
@@ -652,6 +667,10 @@ def send_verification_code():
             
     except Exception as e:
         logger.error(f"send_verification_code error: {e}")
+        # Prefer actionable SMTP/config messages over a generic fallback when available.
+        err_msg = str(e).strip() if e else ''
+        if err_msg and ('SMTP' in err_msg or 'Email' in err_msg or 'smtp' in err_msg.lower()):
+            return jsonify({'code': 0, 'msg': err_msg, 'data': None}), 500
         return jsonify({'code': 0, 'msg': 'Failed to send verification code', 'data': None}), 500
 
 

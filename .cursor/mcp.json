@@ -9,10 +9,11 @@
       }
     },
     "quantdinger": {
-      "command": "C:\\Users\\aaron\\AppData\\Roaming\\Python\\Python313\\Scripts\\quantdinger-mcp.exe",
+      "command": "python",
+      "args": ["-m", "chanquant_mcp.server"],
       "env": {
         "CHANQUANT_BASE_URL": "http://localhost:5000",
-        "CHANQUANT_AGENT_TOKEN": "qd_agent_0m7iCb06EDi6zIigxQm2CYO_ayUEnR2NUB5ZC6J23mA"
+        "CHANQUANT_AGENT_TOKEN": "qd_agent_REPLACE_ME"
       }
     }
   }

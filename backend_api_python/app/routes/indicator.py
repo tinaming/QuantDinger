@@ -109,6 +109,9 @@ def _row_to_indicator(row: Dict[str, Any], user_id: int) -> Dict[str, Any]:
         # Local mode: encryption is not supported; keep field for frontend compatibility (always 0).
         "is_encrypted": 0,
         "preview_image": row.get("preview_image") or "",
+        "review_status": row.get("review_status"),
+        "review_note": row.get("review_note") or "",
+        "asset_type": row.get("asset_type") or "indicator",
         # Prefer MySQL-like time fields; fallback to legacy local columns.
         "createtime": row.get("createtime") or row.get("created_at"),
         "updatetime": row.get("updatetime") or row.get("updated_at"),
@@ -302,6 +305,7 @@ def get_indicators():
                   id, user_id, is_buy, end_time, name, code, description,
                   publish_to_community, pricing_type, price, is_encrypted, preview_image, vip_free,
                   COALESCE(asset_type, 'indicator') as asset_type,
+                  review_status, review_note,
                   createtime, updatetime, created_at, updated_at
                 FROM qd_indicator_codes
                 WHERE user_id = ?
@@ -548,7 +552,22 @@ def save_indicator():
             except Exception as _e:
                 logger.warning(f"save_indicator: i18n translation skipped: {_e}")
 
-        return jsonify({"code": 1, "msg": "success", "data": {"id": indicator_id, "userid": user_id}})
+        return jsonify({
+            "code": 1,
+            "msg": (
+                "published_pending_review"
+                if publish_to_community and not is_admin
+                else ("published" if publish_to_community else "success")
+            ),
+            "data": {
+                "id": indicator_id,
+                "userid": user_id,
+                "publish_to_community": bool(publish_to_community),
+                "review_status": (
+                    ("approved" if is_admin else "pending") if publish_to_community else None
+                ),
+            },
+        })
     except Exception as e:
         logger.error(f"save_indicator failed: {str(e)}", exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500

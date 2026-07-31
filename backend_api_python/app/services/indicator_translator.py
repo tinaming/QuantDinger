@@ -171,9 +171,16 @@ def translate_indicator(
         return None, None, src
 
     try:
+        # Skip LLM when no provider key — publishing must not hang/timeout for authors.
+        llm = LLMService()
+        if not (llm.get_api_key(llm.provider) or "").strip() and llm.provider.value != "litellm":
+            logger.info("translate_indicator: skipped (LLM not configured)")
+            name_i18n = {src: name} if name else None
+            desc_i18n = {src: description} if description else None
+            return name_i18n, desc_i18n, src
+
         system_prompt, user_prompt = _build_prompt(name, description, src)
 
-        llm = LLMService()
         result = llm.safe_call_llm(
             system_prompt=system_prompt,
             user_prompt=user_prompt,

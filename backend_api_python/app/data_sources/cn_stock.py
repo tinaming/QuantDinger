@@ -2,11 +2,11 @@
 中国A股数据源 — 多层 fallback
 
 有 TWELVE_DATA_API_KEY:
-  所有周期 → Twelve Data（主） → 腾讯日/周线 → yfinance → AkShare
+  所有周期 → Twelve Data（主） → 腾讯（日/周 + 分钟 mkline） → yfinance → 东方财富直连 → AkShare
 
 无 API Key:
-  分钟/小时 → yfinance → AkShare
-  日/周线 → 腾讯 fqkline → yfinance → AkShare
+  分钟/小时 → 腾讯 mkline → yfinance → 东方财富直连（带正确 headers） → AkShare
+  日/周线 → 腾讯 fqkline → yfinance → 东方财富直连 → AkShare
 """
 
 from __future__ import annotations
@@ -17,11 +17,19 @@ import time as _time
 from typing import Dict, List, Any, Optional
 
 from app.data_sources.base import BaseDataSource
-from app.data_sources.tencent import normalize_cn_code, fetch_quote, parse_quote_to_ticker, fetch_kline, tencent_kline_rows_to_dicts
+from app.data_sources.tencent import (
+    normalize_cn_code,
+    fetch_quote,
+    parse_quote_to_ticker,
+    fetch_kline,
+    fetch_minute_klines,
+    tencent_kline_rows_to_dicts,
+)
 from app.data_sources.asia_stock_kline import (
     normalize_chart_timeframe,
     fetch_twelvedata_klines,
     fetch_yfinance_klines,
+    fetch_eastmoney_klines,
     fetch_akshare_minute_klines,
     fetch_akshare_weekly_klines,
 )
@@ -88,6 +96,7 @@ class _CircuitBreaker:
 _twelve_data_breaker = _CircuitBreaker("twelve_data")
 _tencent_breaker = _CircuitBreaker("tencent")
 _yfinance_breaker = _CircuitBreaker("yfinance")
+_eastmoney_breaker = _CircuitBreaker("eastmoney")
 _akshare_breaker = _CircuitBreaker("akshare")
 
 
@@ -156,7 +165,7 @@ class CNStockDataSource(BaseDataSource):
                 _twelve_data_breaker.record_failure()
                 logger.warning("twelve_data kline fetch failed: %s", e)
 
-        # Tier 2: Tencent for daily/weekly (fast, free)
+        # Tier 2: Tencent — daily/weekly via fqkline; minutes via mkline (free, no key)
         if tf in ("1D", "1W"):
             if _tencent_breaker.is_open():
                 logger.debug("Circuit breaker OPEN for tencent, skipping")
@@ -178,6 +187,24 @@ class CNStockDataSource(BaseDataSource):
                 except Exception as e:
                     _tencent_breaker.record_failure()
                     logger.warning("tencent kline fetch failed: %s", e)
+        elif tf in ("1m", "3m", "5m", "15m", "30m", "1H", "4H"):
+            if _tencent_breaker.is_open():
+                logger.debug("Circuit breaker OPEN for tencent, skipping")
+            else:
+                try:
+                    out = fetch_minute_klines(code, timeframe=tf, count=lim)
+                    if out:
+                        _tencent_breaker.record_success()
+                        return self.filter_and_limit(
+                            out,
+                            limit=lim,
+                            before_time=before_time,
+                            after_time=after_time,
+                            truncate=(after_time is None),
+                        )
+                except Exception as e:
+                    _tencent_breaker.record_failure()
+                    logger.warning("tencent minute kline fetch failed: %s", e)
 
         # Tier 3: yfinance (works when Yahoo not rate-limited)
         if _yfinance_breaker.is_open():
@@ -200,10 +227,31 @@ class CNStockDataSource(BaseDataSource):
                 _yfinance_breaker.record_failure()
                 logger.warning("yfinance kline fetch failed: %s", e)
 
+        # Tier 3.5: East Money direct API (sends proper headers — fixes Docker RemoteDisconnected)
+        if _eastmoney_breaker.is_open():
+            logger.debug("Circuit breaker OPEN for eastmoney, skipping")
+        else:
+            try:
+                rows = fetch_eastmoney_klines(
+                    is_hk=False, tencent_code=code, timeframe=tf, limit=lim, before_time=before_time
+                )
+                if rows:
+                    _eastmoney_breaker.record_success()
+                    return self.filter_and_limit(
+                        rows,
+                        limit=lim,
+                        before_time=before_time,
+                        after_time=after_time,
+                        truncate=(after_time is None),
+                    )
+            except Exception as e:
+                _eastmoney_breaker.record_failure()
+                logger.warning("eastmoney direct kline fetch failed: %s", e)
+
         # Tier 4: AkShare (fragile overseas, last resort)
+        rows: List[Dict[str, Any]] = []
         if _akshare_breaker.is_open():
             logger.debug("Circuit breaker OPEN for akshare, skipping")
-            rows = []
         else:
             try:
                 if tf in ("1m", "5m", "15m", "30m", "1H", "4H"):
@@ -214,8 +262,6 @@ class CNStockDataSource(BaseDataSource):
                     rows = fetch_akshare_weekly_klines(
                         is_hk=False, tencent_code=code, limit=lim, before_time=before_time
                     )
-                else:
-                    rows = []
                 if rows:
                     _akshare_breaker.record_success()
             except Exception as e:
@@ -223,13 +269,22 @@ class CNStockDataSource(BaseDataSource):
                 logger.warning("akshare kline fetch failed: %s", e)
                 rows = []
 
-        return self.filter_and_limit(
+        result = self.filter_and_limit(
             rows,
             limit=lim,
             before_time=before_time,
             after_time=after_time,
             truncate=(after_time is None),
         )
+        if not result:
+            logger.warning(
+                "CNStock/multi-source: all providers returned 0 bars for %s tf=%s "
+                "(configure TWELVE_DATA_API_KEY, ensure QMT/Bridge is up, or check "
+                "Tencent/yfinance/AkShare reachability)",
+                code,
+                tf,
+            )
+        return result
 
     @classmethod
     def get_data_source_status(cls) -> dict:
@@ -276,7 +331,8 @@ class CNStockDataSource(BaseDataSource):
             _rec("twelvedata", bool(os.environ.get("TWELVE_DATA_API_KEY")), 1),
             _rec("tencent", True, 2),
             _rec("yfinance", True, 3),
-            _rec("akshare", _check_akshare_available(), 4),
+            _rec("eastmoney", True, 4),
+            _rec("akshare", _check_akshare_available(), 5),
         ]
         total_errors = sum(s["recent_error_count"] for s in sources)
         return {

@@ -208,15 +208,172 @@ def _convert_usdt_to_base_qty(client, symbol: str, usdt_amount: float, market_ty
 
 
 def _reject_quick_trade_if_desktop_broker(exchange_id: str):
-    """Quick Trade is USDT-centric and only wired to crypto exchange clients."""
-    if not is_supported_crypto_exchange(exchange_id):
-        return jsonify(
-            {
-                "code": 0,
-                "msg": "Quick Trade currently supports crypto exchange API keys only.",
-            }
-        ), 400
-    return None
+    """Quick Trade is USDT-centric for crypto; QMT A-share flash trade is also allowed."""
+    eid = (exchange_id or "").strip().lower()
+    if eid == "qmt" or is_supported_crypto_exchange(eid):
+        return None
+    return jsonify(
+        {
+            "code": 0,
+            "msg": "Quick Trade currently supports crypto exchange API keys and QMT (A-shares) only.",
+        }
+    ), 400
+
+
+def _normalize_cn_stock_symbol(symbol: str) -> str:
+    """Normalize A-share codes to QMT form (e.g. 600519.SH / 300750.SZ)."""
+    raw = (symbol or "").strip().upper()
+    if not raw:
+        return ""
+    if "." in raw:
+        return raw
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if len(digits) != 6:
+        return raw
+    if digits.startswith(("5", "6", "9")):
+        return f"{digits}.SH"
+    if digits.startswith(("4", "8")):
+        return f"{digits}.BJ"
+    return f"{digits}.SZ"
+
+
+def _place_qmt_quick_order(
+    *,
+    user_id: int,
+    credential_id: int,
+    exchange_config: Dict[str, Any],
+    symbol: str,
+    side: str,
+    order_type: str,
+    amount: float,
+    price: float,
+    source: str,
+):
+    """Place an A-share flash order via QMT. ``amount`` is share count (lot 100)."""
+    from app.services.live_trading.factory import create_qmt_client
+    from app.services.live_trading.base import LiveTradingError
+
+    qmt_symbol = _normalize_cn_stock_symbol(symbol)
+    if not qmt_symbol:
+        return jsonify({"code": 0, "msg": "Missing A-share symbol"}), 400
+
+    # Treat amount as share count for A-shares (frontend sends shares when market=CNStock).
+    try:
+        volume = int(round(float(amount or 0)))
+    except Exception:
+        volume = 0
+    if volume <= 0:
+        return jsonify({"code": 0, "msg": "A-share amount must be share count > 0"}), 400
+    if volume % 100 != 0:
+        return jsonify({"code": 0, "msg": "A-share volume must be a multiple of 100 shares"}), 400
+    if side not in ("buy", "sell"):
+        return jsonify({"code": 0, "msg": "side must be 'buy' or 'sell'"}), 400
+    if order_type == "limit" and float(price or 0) <= 0:
+        return jsonify({"code": 0, "msg": "price required for limit orders"}), 400
+
+    try:
+        client = create_qmt_client(exchange_config)
+        if hasattr(client, "connect"):
+            try:
+                client.connect()
+            except Exception as ce:
+                logger.warning("QMT connect best-effort failed: %s", ce)
+
+        if hasattr(client, "place_order"):
+            raw = client.place_order(
+                symbol=qmt_symbol,
+                side=side,
+                volume=volume,
+                order_type=order_type if order_type in ("market", "limit") else "market",
+                price=float(price or 0),
+                comment="ChanQuant QuickTrade",
+            )
+        elif order_type == "limit" and hasattr(client, "place_limit_order"):
+            raw = client.place_limit_order(qmt_symbol, side, volume, float(price))
+            raw = raw.__dict__ if hasattr(raw, "__dict__") else (raw or {})
+        elif hasattr(client, "place_market_order"):
+            raw = client.place_market_order(qmt_symbol, side, volume)
+            raw = raw.__dict__ if hasattr(raw, "__dict__") else (raw or {})
+        else:
+            return jsonify({"code": 0, "msg": "QMT client does not support place_order"}), 500
+
+        if isinstance(raw, dict):
+            exchange_order_id = str(raw.get("order_id") or raw.get("exchange_order_id") or "")
+            filled = float(raw.get("filled") or raw.get("traded_volume") or 0 or 0)
+            avg_fill = float(raw.get("price") or raw.get("avg_price") or price or 0 or 0)
+            status = str(raw.get("status") or "submitted")
+            raw_result = raw
+        else:
+            exchange_order_id = str(getattr(raw, "order_id", "") or getattr(raw, "exchange_order_id", "") or "")
+            filled = float(getattr(raw, "filled", 0) or 0)
+            avg_fill = float(getattr(raw, "avg_price", 0) or getattr(raw, "price", 0) or price or 0)
+            status = str(getattr(raw, "status", "submitted") or "submitted")
+            raw_result = getattr(raw, "raw", None) or {"result": str(raw)}
+
+        trade_id = _record_quick_trade(
+            user_id=user_id,
+            credential_id=credential_id,
+            exchange_id="qmt",
+            symbol=qmt_symbol,
+            side=side,
+            order_type=order_type,
+            amount=float(volume),
+            price=float(price or 0),
+            leverage=1,
+            market_type="spot",
+            tp_price=0,
+            sl_price=0,
+            status=status,
+            exchange_order_id=exchange_order_id,
+            filled=filled,
+            avg_price=avg_fill,
+            error_msg="",
+            source=source,
+            raw_result=raw_result if isinstance(raw_result, dict) else {"raw": raw_result},
+        )
+        return jsonify({
+            "code": 1,
+            "msg": "success",
+            "data": {
+                "id": trade_id,
+                "exchange_order_id": exchange_order_id,
+                "symbol": qmt_symbol,
+                "side": side,
+                "amount": volume,
+                "filled": filled,
+                "avg_price": avg_fill,
+                "status": status,
+                "market_type": "spot",
+                "exchange_id": "qmt",
+            },
+        })
+    except LiveTradingError as e:
+        logger.error("QMT quick trade failed: %s", e)
+        _record_quick_trade(
+            user_id=user_id,
+            credential_id=credential_id,
+            exchange_id="qmt",
+            symbol=qmt_symbol,
+            side=side,
+            order_type=order_type,
+            amount=float(volume),
+            price=float(price or 0),
+            leverage=1,
+            market_type="spot",
+            tp_price=0,
+            sl_price=0,
+            status="failed",
+            exchange_order_id="",
+            filled=0,
+            avg_price=0,
+            error_msg=str(e),
+            source=source,
+            raw_result={"error": str(e)},
+        )
+        return jsonify({"code": 0, "msg": str(e)}), 400
+    except Exception as e:
+        logger.error("QMT quick trade error: %s", e, exc_info=True)
+        return jsonify({"code": 0, "msg": f"QMT order failed: {e}"}), 500
 
 
 def _record_quick_trade(
@@ -353,6 +510,20 @@ def place_order():
         qt_rej = _reject_quick_trade_if_desktop_broker(exchange_id)
         if qt_rej is not None:
             return qt_rej
+
+        # ---- QMT A-share flash trade (shares, lot 100, long-only) ----
+        if exchange_id == "qmt":
+            return _place_qmt_quick_order(
+                user_id=user_id,
+                credential_id=credential_id,
+                exchange_config=exchange_config,
+                symbol=symbol,
+                side=side,
+                order_type=order_type,
+                amount=usdt_amount,
+                price=price,
+                source=source,
+            )
 
         client = create_exchange_client(exchange_config, market_type=market_type)
 

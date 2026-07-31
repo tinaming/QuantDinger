@@ -484,6 +484,125 @@ def fetch_yfinance_klines(
 
 
 # ---------------------------------------------------------------------------
+# East Money direct API (bypasses AkShare — sends proper HTTP headers)
+# ---------------------------------------------------------------------------
+
+_EM_KLT_MAP = {
+    "1m": "1", "5m": "5", "15m": "15", "30m": "30", "1H": "60", "4H": "60",
+    "1D": "101", "1W": "102",
+}
+
+_EM_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "https://quote.eastmoney.com/",
+    "Accept": "application/json, text/plain, */*",
+}
+
+
+def _em_secid(tencent_code: str, is_hk: bool) -> str:
+    """Convert tencent code to East Money secid.
+    SH → 1.XXXXXX, SZ → 0.XXXXXX, HK → 116.XXXXX
+    """
+    if is_hk:
+        raw = ak_hk_code_from_tencent(tencent_code)
+        return f"116.{raw}"
+    c = (tencent_code or "").strip().lower()
+    if c.startswith("sh"):
+        return f"1.{c[2:]}"
+    elif c.startswith("sz"):
+        return f"0.{c[2:]}"
+    # bare numeric code: guess by prefix
+    if c.startswith("6"):
+        return f"1.{c}"
+    return f"0.{c}"
+
+
+def _parse_em_kline_row(row: str) -> Optional[Dict[str, Any]]:
+    """Parse a single East Money kline row: 'datetime,open,close,high,low,volume,...'"""
+    parts = row.split(",")
+    if len(parts) < 7:
+        return None
+    try:
+        t = pd.Timestamp(parts[0])
+        ts = int(t.timestamp())
+        return {
+            "time": ts,
+            "open": round(float(parts[1]), 4),
+            "close": round(float(parts[2]), 4),
+            "high": round(float(parts[3]), 4),
+            "low": round(float(parts[4]), 4),
+            "volume": round(float(parts[5]), 2),
+        }
+    except Exception:
+        return None
+
+
+def fetch_eastmoney_klines(
+    *,
+    is_hk: bool,
+    tencent_code: str,
+    timeframe: str,
+    limit: int,
+    before_time: Optional[int],
+) -> List[Dict[str, Any]]:
+    """Fetch K-lines directly from East Money push2his API with proper headers.
+
+    This avoids AkShare which does not send User-Agent/Referer, causing
+    RemoteDisconnected errors from East Money's CDN in server environments.
+    """
+    klt = _EM_KLT_MAP.get(timeframe)
+    if klt is None:
+        return []
+
+    secid = _em_secid(tencent_code, is_hk)
+    # For minute bars, request a recent window; for daily/weekly, go wide.
+    if timeframe in ("1D", "1W"):
+        beg, end = "0", "20500101"
+    else:
+        end_dt = datetime.fromtimestamp(int(before_time)) if before_time else datetime.now()
+        start_dt = end_dt - timedelta(days=30)
+        beg = start_dt.strftime("%Y%m%d")
+        end = end_dt.strftime("%Y%m%d")
+
+    url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    params = {
+        "secid": secid,
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+        "klt": klt,
+        "fqt": "0" if timeframe == "1m" else "1",
+        "beg": beg,
+        "end": end,
+    }
+
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            r = requests.get(url, params=params, headers=_EM_HEADERS, timeout=15)
+            r.raise_for_status()
+            data = r.json()
+            klines_raw = (data.get("data") or {}).get("klines") or []
+            bars = [b for row in klines_raw if (b := _parse_em_kline_row(row)) is not None]
+            bars.sort(key=lambda x: x["time"])
+            # Merge bars for 3m / 4H
+            merge_factor = _MERGE_FACTOR_MAP.get(timeframe, 1)
+            if merge_factor > 1 and bars:
+                bars = _merge_every_n_sorted_bars(bars, merge_factor)
+            return bars
+        except Exception as e:
+            if attempt + 1 < _MAX_ATTEMPTS and _is_transient(e):
+                delay = min(_BACKOFF_CAP_SEC, _BACKOFF_BASE_SEC * (2 ** attempt))
+                logger.debug(
+                    "EastMoney direct transient error %s tf=%s (attempt %s/%s): %s",
+                    tencent_code, timeframe, attempt + 1, _MAX_ATTEMPTS, e,
+                )
+                time.sleep(delay)
+                continue
+            logger.warning("EastMoney direct kline failed %s tf=%s: %s", tencent_code, timeframe, e)
+            return []
+    return []
+
+
+# ---------------------------------------------------------------------------
 # AkShare helpers (Eastmoney — unreliable from overseas, used as last resort)
 # ---------------------------------------------------------------------------
 

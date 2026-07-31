@@ -161,6 +161,64 @@ def _df_records(df) -> list:
         return []
 
 
+def _search_cn_tencent(keyword: str, limit: int) -> list:
+    """Fast A-share suggest via Tencent smartbox (~200ms). Prefer over AkShare."""
+    if limit <= 0:
+        return []
+    kw = (keyword or "").strip()
+    if not kw:
+        return []
+    try:
+        import requests
+
+        resp = requests.get(
+            "https://smartbox.gtimg.cn/s3/",
+            params={"v": 2, "q": kw, "t": "gp"},
+            timeout=3,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        if resp.status_code != 200:
+            return []
+        # Format: v_hint="sh~601888~中国中免~zgzm~GP-A^sz~300750~..."
+        text = (resp.text or "").strip()
+        if "v_hint=" not in text:
+            return []
+        payload = text.split("v_hint=", 1)[1].strip().strip('"').strip("'")
+        out = []
+        for part in payload.split("^"):
+            fields = part.split("~")
+            if len(fields) < 3:
+                continue
+            exchange, symbol, name = fields[0], fields[1], fields[2]
+            symbol = re.sub(r"[^0-9]", "", str(symbol or "")).zfill(6)
+            name = str(name or "").strip()
+            # Tencent may return JS-style escapes: \u4e2d\u56fd...
+            if "\\u" in name:
+                try:
+                    name = name.encode("utf-8").decode("unicode_escape")
+                except Exception:
+                    try:
+                        name = bytes(name, "utf-8").decode("unicode_escape")
+                    except Exception:
+                        pass
+            # Only A-share cash equities (GP-A); skip index/fund noise.
+            kind = (fields[4] if len(fields) > 4 else "").upper()
+            if kind and kind not in {"GP-A", "A"}:
+                continue
+            if not symbol or not name:
+                continue
+            if exchange.lower() not in {"sh", "sz", "bj"}:
+                continue
+            out.append({"market": "CNStock", "symbol": symbol, "name": name})
+            persist_seed_name("CNStock", symbol, name)
+            if len(out) >= limit:
+                break
+        return out
+    except Exception as exc:
+        logger.debug("CN Tencent symbol search failed: %s", exc)
+        return []
+
+
 def _search_cn_akshare(keyword: str, limit: int) -> list:
     if limit <= 0:
         return []
@@ -255,7 +313,10 @@ def _search_external_symbols(market: str, keyword: str, limit: int, existing: se
         return [r for r in cached if r.get("symbol") not in existing][:limit]
 
     if market == "CNStock":
-        rows = _search_cn_akshare(keyword, limit)
+        # Tencent suggest first (fast); AkShare full table as fallback.
+        rows = _search_cn_tencent(keyword, limit)
+        if not rows:
+            rows = _search_cn_akshare(keyword, limit)
     elif market == "HKStock":
         rows = _search_hk_akshare(keyword, limit)
     elif market == "USStock":

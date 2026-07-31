@@ -17,8 +17,14 @@ CRYPTO_EXCHANGES = {
 
 
 def is_supported_crypto_exchange(exchange_id: str) -> bool:
-    """Return whether Quick Trade supports this exchange id."""
+    """Return whether Quick Trade supports this crypto exchange id."""
     return (exchange_id or "").strip().lower() in CRYPTO_EXCHANGES
+
+
+def is_supported_quick_trade_exchange(exchange_id: str) -> bool:
+    """Crypto venues plus QMT (A-share flash trade)."""
+    eid = (exchange_id or "").strip().lower()
+    return eid == "qmt" or eid in CRYPTO_EXCHANGES
 
 
 def symbols_match(user_symbol: str, position_symbol: str) -> bool:

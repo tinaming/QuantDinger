@@ -7,6 +7,7 @@ Kept separate from AnalysisService to avoid circular imports.
 """
 import json
 import os
+import time
 import requests
 from typing import Dict, Any, Optional, List
 from enum import Enum
@@ -81,8 +82,9 @@ PROVIDER_CONFIGS = {
     },
     LLMProvider.BAILIAN: {
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "default_model": "qwen-max",
-        "fallback_model": "qwen-plus",
+        # token-plan often only lists qwen3.7-max; override via BAILIAN_MODEL.
+        "default_model": "qwen3.7-max",
+        "fallback_model": "qwen3.7-max",
     },
 }
 
@@ -273,6 +275,24 @@ class LLMService:
             session.close()
         return response
 
+    def _bailian_request_extras(self, base_url: str, model: str) -> dict:
+        """DashScope/token-plan extras. qwen3.7-max thinking defaults ON and dominates latency."""
+        url_l = (base_url or "").lower()
+        model_l = (model or "").lower()
+        is_bailian = (
+            self.provider == LLMProvider.BAILIAN
+            or "dashscope" in url_l
+            or "token-plan" in url_l
+            or "bailian" in url_l
+        )
+        if not is_bailian:
+            return {}
+        # Hybrid thinking models (qwen3.x): disable unless explicitly opted in.
+        if not (model_l.startswith("qwen3") or "qwen3." in model_l):
+            return {}
+        enable = self._truthy(os.getenv("BAILIAN_ENABLE_THINKING", "false"))
+        return {"enable_thinking": bool(enable)}
+
     def _call_openai_compatible(self, messages: list, model: str, temperature: float, 
                                  api_key: str, base_url: str, timeout: int,
                                  use_json_mode: bool = True) -> str:
@@ -293,6 +313,7 @@ class LLMService:
             "messages": messages,
             "temperature": temperature,
         }
+        data.update(self._bailian_request_extras(base_url, model))
         
         # AtlasCloud documents the OpenAI-compatible ChatCompletion shape, but
         # its public parameter table currently lists model/messages/temperature/
@@ -599,6 +620,7 @@ class LLMService:
             "temperature": temperature,
             "stream": True,
         }
+        data.update(self._bailian_request_extras(base_url, model))
         response = self._llm_post(url, headers=headers, json_payload=data, timeout=timeout, stream=True)
         if response.status_code >= 400:
             err_text = ""
@@ -843,33 +865,83 @@ class LLMService:
         
         last_error = None
         last_status_code = None
+        _t_call = time.time()
         
         for current_model in models_to_try:
             try:
                 if p == LLMProvider.LITELLM:
-                    return self._call_litellm(
+                    result = self._call_litellm(
                         messages, current_model, temperature,
                         api_key, base_url, timeout,
                         use_json_mode=use_json_mode
                     )
                 elif p == LLMProvider.GOOGLE:
-                    return self._call_google_gemini(
+                    result = self._call_google_gemini(
                         messages, current_model, temperature,
                         api_key, base_url, timeout
                     )
                 elif p == LLMProvider.CUSTOM and self._get_custom_format() == "anthropic":
-                    return self._call_anthropic_compatible(
+                    result = self._call_anthropic_compatible(
                         messages, current_model, temperature,
                         api_key, base_url, timeout,
                         use_json_mode=use_json_mode
                     )
                 else:
                     # OpenAI-compatible providers
-                    return self._call_openai_compatible(
+                    result = self._call_openai_compatible(
                         messages, current_model, temperature,
                         api_key, base_url, timeout,
                         use_json_mode=use_json_mode
                     )
+                # #region agent log
+                try:
+                    import json as _json
+                    import urllib.request as _ur
+                    _payload = {
+                        "sessionId": "a57f3c",
+                        "runId": "pre",
+                        "hypothesisId": "C",
+                        "location": "llm.py:call_llm_api",
+                        "message": "llm_http_ok",
+                        "data": {
+                            "provider": p.value,
+                            "model": current_model,
+                            "timeout_cfg": timeout,
+                            "ms": int((time.time() - _t_call) * 1000),
+                            "msg_count": len(messages or []),
+                            "use_json_mode": use_json_mode,
+                            "chars_out": len(result or ""),
+                        },
+                        "timestamp": int(time.time() * 1000),
+                    }
+                    _line = _json.dumps(_payload, ensure_ascii=False) + "\n"
+                    for _path in ("/app/scripts/debug-a57f3c.log", "debug-a57f3c.log"):
+                        try:
+                            with open(_path, "a", encoding="utf-8") as _f:
+                                _f.write(_line)
+                            break
+                        except Exception:
+                            pass
+                    _body = _json.dumps(_payload, ensure_ascii=False).encode("utf-8")
+                    for _url in (
+                        "http://host.docker.internal:7696/ingest/2fabae30-f301-4342-ba0a-734b1a78cebc",
+                        "http://127.0.0.1:7696/ingest/2fabae30-f301-4342-ba0a-734b1a78cebc",
+                    ):
+                        try:
+                            _req = _ur.Request(
+                                _url,
+                                data=_body,
+                                headers={"Content-Type": "application/json", "X-Debug-Session-Id": "a57f3c"},
+                                method="POST",
+                            )
+                            _ur.urlopen(_req, timeout=1).read()
+                            break
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                # #endregion
+                return result
                     
             except requests.exceptions.HTTPError as e:
                 error_detail = e.response.text if e.response else str(e)

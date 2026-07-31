@@ -422,7 +422,9 @@ class GDELTSearchProvider(BaseSearchProvider):
                 "maxrecords": min(max(max_results, 1), 50),
                 "timespan": f"{max(1, min(int(days or 7), 90))}d",
             }
-            response = requests.get(GDELTConfig.BASE_URL, params=params, timeout=GDELTConfig.TIMEOUT)
+            # Cap per-call wait so GDELT cannot starve DuckDuckGo 兜底.
+            gdelt_timeout = min(float(GDELTConfig.TIMEOUT or 12), 2.5)
+            response = requests.get(GDELTConfig.BASE_URL, params=params, timeout=gdelt_timeout)
             response.raise_for_status()
             data = response.json()
             articles = data.get("articles") if isinstance(data, dict) else []
@@ -620,7 +622,7 @@ class DuckDuckGoSearchProvider(BaseSearchProvider):
                 'skip_disambig': 1
             }
             
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params, timeout=3)
             response.raise_for_status()
             data = response.json()
             
@@ -656,14 +658,15 @@ class DuckDuckGoSearchProvider(BaseSearchProvider):
                     source='DuckDuckGo',
                 ))
             
-            if not results:
-                results = self._search_html(query, max_results)
+            # Skip HTML fallback: another 10s round-trip after Instant Answer miss
+            # was a major contributor to enrich=44.6s (runtime evidence).
             
             return SearchResponse(
                 query=query,
                 results=results[:max_results],
                 provider=self.name,
                 success=len(results) > 0,
+                error_message=None if results else "DuckDuckGo Instant Answer empty",
             )
             
         except Exception as e:
@@ -870,17 +873,32 @@ class SearchService:
         Returns:
             SearchResponse 对象
         """
+        # Keep total fallback chain short. Keyed providers first; DuckDuckGo last.
+        # Reserve ~1.2s so a slow GDELT cannot starve the DuckDuckGo兜底.
+        deadline = time.time() + 5.0
+        has_ddg = any(p.name == "DuckDuckGo" for p in self._providers)
         for provider in self._providers:
+            remaining = deadline - time.time()
+            if remaining < 0.8:
+                logger.warning("Search budget exhausted before provider=%s", provider.name)
+                break
+            if (
+                has_ddg
+                and provider.name == "GDELT"
+                and remaining < 2.2
+            ):
+                logger.warning("Skipping GDELT to reserve budget for DuckDuckGo (remaining=%.1fs)", remaining)
+                continue
             if not provider.is_available:
                 continue
-            
+
             response = provider.search(query, max_results, days)
-            
+
             if response.success and response.results:
                 return response
             else:
                 logger.warning(f"{provider.name} 搜索失败: {response.error_message}，尝试下一个引擎")
-        
+
         return SearchResponse(
             query=query,
             results=[],

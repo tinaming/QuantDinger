@@ -3248,6 +3248,14 @@ class BacktestService:
             f"signals open_long={ol} close_long={cl} open_short={os_} close_short={cs}, "
             f"direction={trade_direction}"
         )
+        # A-shares (cash account): long-only, no short selling in standard QMT path.
+        if str(market or "").strip() in ("CNStock", "cnstock", "CN_STOCK", "a_stock", "astock"):
+            if str(trade_direction or "").lower() != "long":
+                logger.info(
+                    "CNStock backtest forcing trade_direction=long (was %s) — A-share cash rules",
+                    trade_direction,
+                )
+            trade_direction = "long"
         return self._simulate_trading_new_format(df, norm, initial_capital, commission, slippage, leverage, trade_direction, strategy_config, market=market, symbol=symbol)
 
     def _simulate_trading_new_format(
@@ -3269,6 +3277,15 @@ class BacktestService:
         Args:
             trade_direction: Trade direction ('long', 'short', 'both')
         """
+        # A-share cash equities: forbid short / leverage > 1 for rule alignment with live QMT.
+        _cn_market = str(market or "").strip() in ("CNStock", "cnstock", "CN_STOCK", "a_stock", "astock")
+        if _cn_market:
+            trade_direction = "long"
+            try:
+                leverage = 1
+            except Exception:
+                pass
+
         equity_curve = []
         trades = []
         total_commission_paid = 0
