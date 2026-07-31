@@ -488,7 +488,8 @@ class TradingExecutor:
                     "AND status IN ('sent', 'pending')",
                     (strategy_id, symbol, sig_type),
                 )
-                count = cur.fetchone()[0]
+                _row = cur.fetchone()
+                count = _row[0] if isinstance(_row, (list, tuple)) else list(_row.values())[0] if _row else 0
                 return int(count or 0)
         except Exception:
             return 0
@@ -2556,6 +2557,21 @@ class TradingExecutor:
                                                 pending_signals = [s for s in pending_signals if s.get('type') != 'open_long']
                                             if 'close_short' in _types and 'open_short' in _types:
                                                 pending_signals = [s for s in pending_signals if s.get('type') != 'open_short']
+                                            # Post-merge: restore exit signals that were active
+                                            # but dropped by the indicator recompute (edge signals
+                                            # may not appear every cycle). Prevents stuck positions.
+                                            if initial_position != 0:
+                                                _want_close = 'close_long' if initial_position > 0 else 'close_short'
+                                                _has_close = any(s.get('type') == _want_close for s in pending_signals)
+                                                if not _has_close:
+                                                    pending_signals.append({
+                                                        'type': _want_close,
+                                                        'trigger_price': current_price,
+                                                        'position_size': 0,
+                                                        'timestamp': _now_ts,
+                                                        'from_synth': True,
+                                                    })
+                                                    logger.info(f"[merge-guard] strategy={strategy_id} restored {_want_close} (pos={initial_position}, indicator dropped it)")
                                             # DIAG: log signal merge result for short timeframes
                                             if timeframe in ('10s', '1m', '3m'):
                                                 _diag = [(s.get('type'), round(s.get('trigger_price',0),6), s.get('timestamp',0)) for s in pending_signals[:6]]
@@ -2773,9 +2789,19 @@ class TradingExecutor:
                                         if _ns.get('type') not in _exit_types and _ns.get('timestamp', 0) > 0 and (_now_ts - _ns.get('timestamp', 0)) > _exp_thresh:
                                             _ns['timestamp'] = _now_ts
                                     _new_signal_types = {s.get('type') for s in _new_signals}
+                                    # Preserve exit signals: if we have an active position and a close
+                                    # signal existed, keep it even if the new indicator result doesn't
+                                    # include it (indicator may intermittently not emit edge signals).
+                                    _exit_types_set = {'close_long', 'close_short'}
+                                    _old_exit_types = {
+                                        s.get('type') for s in (pending_signals or [])
+                                        if s.get('type') in _exit_types_set
+                                    }
+                                    _missing_exit = _old_exit_types - _new_signal_types
                                     _merged = [
                                         s for s in (pending_signals or [])
-                                        if s.get('type') not in _new_signal_types
+                                        if (s.get('type') not in _new_signal_types
+                                            or s.get('type') in _missing_exit)
                                         and (s.get('timestamp', 0) == 0 or (_now_ts - s.get('timestamp', 0)) < _exp_thresh)
                                     ]
                                     # Add new signals, but filter out stale exit signals
@@ -2801,6 +2827,21 @@ class TradingExecutor:
                                         pending_signals = [s for s in pending_signals if s.get('type') != 'open_long']
                                     if 'close_short' in _types and 'open_short' in _types:
                                         pending_signals = [s for s in pending_signals if s.get('type') != 'open_short']
+                                    # Post-merge: restore exit signals that were active
+                                    # but dropped by the indicator recompute (edge signals
+                                    # may not appear every cycle). Prevents stuck positions.
+                                    if initial_position != 0:
+                                        _want_close = 'close_long' if initial_position > 0 else 'close_short'
+                                        _has_close = any(s.get('type') == _want_close for s in pending_signals)
+                                        if not _has_close:
+                                            pending_signals.append({
+                                                'type': _want_close,
+                                                'trigger_price': current_price,
+                                                'position_size': 0,
+                                                'timestamp': _now_ts,
+                                                'from_synth': True,
+                                            })
+                                            logger.info(f"[merge-guard] strategy={strategy_id} restored {_want_close} (pos={initial_position}, indicator dropped it)")
                                     new_hp = indicator_result.get('new_highest_price', 0)
                                     if indicator_result.get('indicator_both_mode'):
                                         indicator_both_mode = True
@@ -3058,6 +3099,38 @@ class TradingExecutor:
                                         continue
                                 except Exception:
                                     pass  # non-critical, proceed to execute
+                                # Circuit breaker: stop retrying after consecutive failed orders
+                                # (e.g. INSUFFICIENT_AVAILABLE margin). Prevents infinite order spam.
+                                try:
+                                    from app.utils.db import get_db_connection as _cb_conn
+                                    with _cb_conn() as _cb_c:
+                                        _cb_cur = _cb_c.cursor()
+                                        _cb_cur.execute(
+                                            "SELECT status, last_error FROM pending_orders "
+                                            "WHERE strategy_id = %s AND symbol = %s AND signal_type = %s "
+                                            "ORDER BY created_at DESC LIMIT 5",
+                                            (strategy_id, symbol, signal_type),
+                                        )
+                                        _cb_rows = _cb_cur.fetchall()
+                                        _fail_count = 0
+                                        for _r in _cb_rows:
+                                            _st = _r.get('status', _r['status']) if isinstance(_r, dict) else _r[0]
+                                            if _st == 'failed':
+                                                _fail_count += 1
+                                            else:
+                                                break
+                                        if _fail_count >= 5:
+                                            _err_sample = ''
+                                            for _r in _cb_rows[:1]:
+                                                _err_sample = _r.get('last_error', '') if isinstance(_r, dict) else str(_r[1] or '')
+                                            logger.warning(
+                                                f"Strategy {strategy_id}: circuit breaker — "
+                                                f"{_fail_count} consecutive failed {signal_type} orders, "
+                                                f"skipping (last error: {_err_sample[:80]})"
+                                            )
+                                            continue
+                                except Exception:
+                                    pass  # non-critical, proceed
 
                             if not self._is_signal_allowed(
                                 self._effective_position_state(strategy_id, symbol, current_positions),
