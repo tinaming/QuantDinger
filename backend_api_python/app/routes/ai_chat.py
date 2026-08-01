@@ -14,6 +14,7 @@ from collections import Counter
 from datetime import date, datetime
 from typing import Any
 
+import requests
 from flask import Response, g, jsonify, request, stream_with_context
 
 # #region agent log
@@ -695,6 +696,121 @@ def _summarize_klines(klines: list[dict], timeframe: str) -> dict:
     }
 
 
+def _fetch_crypto_derivatives_snapshot(symbol: str) -> dict[str, Any]:
+    """Fetch crypto derivatives metrics from Binance public API (no key required).
+
+    Returns funding rate, open interest, OI 24h change, and long/short ratio.
+    Designed as a lightweight standalone helper for the chat snapshot path.
+    """
+    raw = str(symbol or "").strip().upper()
+    if not raw:
+        return {"funding_rate": None, "open_interest": None, "open_interest_change_24h": None, "long_short_ratio": None, "source": "none"}
+    if "/" in raw:
+        raw = raw.split("/", 1)[0]
+    if ":" in raw:
+        raw = raw.split(":", 1)[0]
+    raw = raw.replace("-USD", "").replace("-USDT", "")
+    pair = f"{raw}USDT"
+
+    result: dict[str, Any] = {
+        "funding_rate": None,
+        "open_interest": None,
+        "open_interest_change_24h": None,
+        "long_short_ratio": None,
+        "source": "binance_public",
+    }
+
+    # Funding rate
+    try:
+        resp = requests.get(
+            "https://fapi.binance.com/fapi/v1/fundingRate",
+            params={"symbol": pair, "limit": 1},
+            timeout=6,
+        )
+        resp.raise_for_status()
+        items = resp.json() or []
+        if items and isinstance(items[-1], dict):
+            fr = items[-1].get("fundingRate")
+            if fr is not None:
+                result["funding_rate"] = float(fr)
+    except Exception:
+        pass
+
+    # Open interest (with 24h change)
+    try:
+        resp = requests.get(
+            "https://fapi.binance.com/futures/data/openInterestHist",
+            params={"symbol": pair, "period": "1d", "limit": 2},
+            timeout=6,
+        )
+        resp.raise_for_status()
+        items = resp.json() or []
+        if items and isinstance(items[-1], dict):
+            latest_val = float(items[-1].get("sumOpenInterestValue", 0))
+            if latest_val:
+                result["open_interest"] = latest_val
+            if len(items) >= 2:
+                prev_val = float(items[-2].get("sumOpenInterestValue", 0))
+                if prev_val > 0 and latest_val:
+                    result["open_interest_change_24h"] = ((latest_val - prev_val) / prev_val) * 100.0
+    except Exception:
+        pass
+
+    # Long/short ratio
+    try:
+        resp = requests.get(
+            "https://fapi.binance.com/futures/data/globalLongShortAccountRatio",
+            params={"symbol": pair, "period": "1d", "limit": 1},
+            timeout=6,
+        )
+        resp.raise_for_status()
+        items = resp.json() or []
+        if items and isinstance(items[-1], dict):
+            lsr = items[-1].get("longShortRatio")
+            if lsr is not None:
+                result["long_short_ratio"] = float(lsr)
+    except Exception:
+        pass
+
+    return result
+
+
+def _fetch_key_macro_events() -> list[dict[str, Any]]:
+    """Return upcoming CPI / FOMC / GDP / PCE events for the market snapshot.
+
+    Lightweight wrapper around the economic calendar that filters for the four
+    highest-impact US macro releases.  Returns at most 6 events.
+    """
+    _MACRO_HINTS = ("cpi", "fomc", "fed interest", "federal funds", "gdp", "pce", "consumer price")
+    try:
+        payload = get_economic_calendar_payload()
+        events = payload.get("events") if isinstance(payload, dict) else []
+        if not isinstance(events, list):
+            return []
+        matched: list[dict[str, Any]] = []
+        for ev in events:
+            haystack = " ".join(
+                str(ev.get(k) or "")
+                for k in ("name", "name_en", "event", "event_en")
+            ).lower()
+            if any(hint in haystack for hint in _MACRO_HINTS):
+                matched.append({
+                    "name": ev.get("name") or ev.get("name_en") or "",
+                    "date": ev.get("date") or "",
+                    "time": ev.get("time") or "",
+                    "country": ev.get("country") or "",
+                    "importance": ev.get("importance") or "medium",
+                    "actual": ev.get("actual"),
+                    "forecast": ev.get("forecast"),
+                    "previous": ev.get("previous"),
+                    "is_released": ev.get("is_released", False),
+                    "expected_impact": ev.get("expected_impact") or "neutral",
+                })
+        return matched[:6]
+    except Exception:
+        return []
+
+
 def _build_market_snapshot(context: dict) -> dict | None:
     market = (context.get("market") or "").strip()
     symbol = (context.get("symbol") or "").strip()
@@ -709,9 +825,11 @@ def _build_market_snapshot(context: dict) -> dict | None:
         "price": None,
         "timeframes": {},
         "derivatives": {
-            "funding_rate": "unavailable",
-            "open_interest": "unavailable",
-            "note": "Funding rate and open interest are not available from the current public snapshot provider.",
+            "funding_rate": None,
+            "open_interest": None,
+            "open_interest_change_24h": None,
+            "long_short_ratio": None,
+            "source": "none",
         },
         "data_warnings": [],
     }
@@ -753,6 +871,56 @@ def _build_market_snapshot(context: dict) -> dict | None:
             snapshot["timeframes"][timeframe] = _summarize_klines(klines, timeframe)
         except Exception as e:
             snapshot["timeframes"][timeframe] = {"timeframe": timeframe, "available": False, "error": str(e)}
+
+    # --- Crypto derivatives: funding rate, OI, long/short ratio ---
+    if market == "Crypto":
+        try:
+            deriv = _fetch_crypto_derivatives_snapshot(symbol)
+            snapshot["derivatives"] = {
+                "funding_rate": _round_num(deriv.get("funding_rate"), 6) if deriv.get("funding_rate") is not None else None,
+                "open_interest": _round_num(deriv.get("open_interest"), 2) if deriv.get("open_interest") is not None else None,
+                "open_interest_change_24h": _round_num(deriv.get("open_interest_change_24h"), 2) if deriv.get("open_interest_change_24h") is not None else None,
+                "long_short_ratio": _round_num(deriv.get("long_short_ratio"), 4) if deriv.get("long_short_ratio") is not None else None,
+                "source": deriv.get("source") or "binance_public",
+            }
+            # Derive leverage sentiment summary
+            fr = deriv.get("funding_rate")
+            oi_chg = deriv.get("open_interest_change_24h")
+            lsr = deriv.get("long_short_ratio")
+            if fr is not None or oi_chg is not None or lsr is not None:
+                parts: list[str] = []
+                if fr is not None:
+                    if fr > 0.001:
+                        parts.append("funding elevated (longs pay)")
+                    elif fr < -0.001:
+                        parts.append("funding negative (shorts pay)")
+                    else:
+                        parts.append("funding neutral")
+                if oi_chg is not None:
+                    if oi_chg > 5:
+                        parts.append(f"OI +{oi_chg:.1f}% (leverage building)")
+                    elif oi_chg < -5:
+                        parts.append(f"OI {oi_chg:.1f}% (leverage unwinding)")
+                    else:
+                        parts.append(f"OI chg {oi_chg:.1f}%")
+                if lsr is not None:
+                    if lsr > 1.5:
+                        parts.append(f"L/S {lsr:.2f} (crowded long)")
+                    elif lsr < 0.7:
+                        parts.append(f"L/S {lsr:.2f} (crowded short)")
+                    else:
+                        parts.append(f"L/S {lsr:.2f}")
+                snapshot["derivatives"]["leverage_sentiment"] = "; ".join(parts)
+        except Exception as e:
+            snapshot["data_warnings"].append(f"derivatives unavailable: {e}")
+
+    # --- Key macro calendar events (CPI / FOMC / GDP / PCE) ---
+    try:
+        macro_events = _fetch_key_macro_events()
+        if macro_events:
+            snapshot["macro_calendar"] = macro_events
+    except Exception:
+        pass
 
     return snapshot
 
@@ -1190,6 +1358,34 @@ def _macro_release_lookup(message: str, profile: dict, events: list[dict], paylo
             return result
         result["provider_status"]["akshare_non_farm"] = akshare_value
 
+    # --- AkShare fallbacks for GDP / PCE / FOMC ---
+    if indicator == "GDP":
+        akshare_value = _fetch_akshare_macro_event("macro_usa_gdp", "GDP")
+        result["source_chain"].append("akshare_macro_usa_gdp")
+        if akshare_value.get("status") == "ok":
+            result.update(akshare_value)
+            result["answerable"] = True
+            return result
+        result["provider_status"]["akshare_gdp"] = akshare_value
+
+    if indicator == "US_PCE":
+        akshare_value = _fetch_akshare_macro_event("macro_usa_pce_monthly", "PCE")
+        result["source_chain"].append("akshare_macro_usa_pce")
+        if akshare_value.get("status") == "ok":
+            result.update(akshare_value)
+            result["answerable"] = True
+            return result
+        result["provider_status"]["akshare_pce"] = akshare_value
+
+    if indicator == "FOMC_RATE_DECISION":
+        akshare_value = _fetch_akshare_macro_event("macro_usa_fed_funds_rate", "FOMC/Fed Funds Rate")
+        result["source_chain"].append("akshare_fed_funds_rate")
+        if akshare_value.get("status") == "ok":
+            result.update(akshare_value)
+            result["answerable"] = True
+            return result
+        result["provider_status"]["akshare_fed_funds"] = akshare_value
+
     search_value = _macro_search_lookup(message, profile)
     result["source_chain"].append("web_search")
     if search_value.get("evidence"):
@@ -1388,6 +1584,89 @@ def _fetch_akshare_nonfarm_payrolls() -> dict:
             return payload
         payload["status"] = "ok"
         return payload
+    except Exception as exc:
+        return {"status": "unavailable", "message": str(exc)}
+
+
+def _fetch_akshare_macro_event(akshare_func_name: str, event_label: str) -> dict:
+    """Generic AkShare macro event fetcher.
+
+    Calls ``ak.<func_name>()``, picks the latest row, and returns a dict
+    compatible with ``_macro_release_lookup``.
+    """
+    try:
+        import akshare as ak
+        import pandas as pd
+
+        func = getattr(ak, akshare_func_name, None)
+        if func is None:
+            return {"status": "unavailable", "message": f"akshare.{akshare_func_name} not found"}
+
+        df = func()
+        if df is None or df.empty:
+            return {"status": "empty", "message": f"akshare.{akshare_func_name} returned no rows"}
+
+        # Try common column names
+        date_candidates = ["\u65e5\u671f", "date", "Date", "time", "Time"]
+        actual_candidates = ["\u4eca\u503c", "\u5b9e\u9645\u503c", "actual", "Actual", "value", "Value"]
+        forecast_candidates = ["\u9884\u671f", "\u9884\u6d4b\u503c", "forecast", "Forecast"]
+        previous_candidates = ["\u524d\u503c", "\u4e0a\u6b21", "previous", "Previous", "prior"]
+
+        date_col = next((c for c in date_candidates if c in df.columns), None)
+        actual_col = next((c for c in actual_candidates if c in df.columns), None)
+        forecast_col = next((c for c in forecast_candidates if c in df.columns), None)
+        previous_col = next((c for c in previous_candidates if c in df.columns), None)
+
+        if date_col is None or actual_col is None:
+            return {
+                "status": "schema_mismatch",
+                "message": f"Columns: {[str(c) for c in df.columns]}",
+            }
+
+        clean = df.copy()
+        clean[date_col] = pd.to_datetime(clean[date_col], errors="coerce")
+        clean = clean.dropna(subset=[date_col]).sort_values(date_col)
+        released = clean[clean[actual_col].notna()]
+
+        if released.empty:
+            latest = clean.iloc[-1].to_dict()
+            return {
+                "status": "unreleased",
+                "message": f"AkShare {akshare_func_name} has a row but no actual value yet.",
+                "period": str(latest.get(date_col).date()) if latest.get(date_col) is not None else "",
+                "forecast": _safe_scalar(latest.get(forecast_col)) if forecast_col else None,
+                "previous": _safe_scalar(latest.get(previous_col)) if previous_col else None,
+            }
+
+        latest = released.iloc[-1].to_dict()
+        release_date = latest.get(date_col)
+        days_old = (_now_utc().date() - release_date.date()).days if release_date is not None else 9999
+
+        payload: dict = {
+            "actual": _safe_scalar(latest.get(actual_col)),
+            "forecast": _safe_scalar(latest.get(forecast_col)) if forecast_col else None,
+            "previous": _safe_scalar(latest.get(previous_col)) if previous_col else None,
+            "period": str(release_date.date()) if release_date is not None else "",
+            "release_time": "",
+            "unit": event_label,
+            "evidence": [{
+                "source": f"AkShare {akshare_func_name}",
+                "title": event_label,
+                "snippet": f"actual={_safe_scalar(latest.get(actual_col))}, date={str(release_date.date()) if release_date is not None else ''}",
+            }],
+        }
+
+        if days_old > 90:
+            payload.update({
+                "status": "stale",
+                "message": f"Latest {event_label} actual is {days_old} days old.",
+            })
+            return payload
+
+        payload["status"] = "ok"
+        return payload
+    except ImportError:
+        return {"status": "unavailable", "message": "akshare not installed"}
     except Exception as exc:
         return {"status": "unavailable", "message": str(exc)}
 
@@ -2247,7 +2526,8 @@ def _build_system_prompt(language: str, context: dict, intent: str, has_image: b
         "If symbol, interval, notification preference, and focus conditions are already clear, include an action with type=create_monitor_task and payload "
         "{\"target\":{\"market\":\"...\",\"symbol\":\"...\"},\"interval_min\":60,\"notify_channels\":[\"browser\"],\"focus_conditions\":\"...\",\"name\":\"...\"}. "
         "Never create tasks silently; the UI will ask the user to confirm the returned action. "
-        "If funding/open interest or other data is unavailable, say unavailable and do not invent it. "
+        "If funding/open interest data is present in market_snapshot.derivatives, use the actual values and the leverage_sentiment summary for derivatives positioning analysis. If any field is null, say unavailable and do not invent it. "
+        "If macro_calendar is present in market_snapshot, reference the upcoming CPI/FOMC/GDP/PCE events and their expected_impact when discussing macro risk. "
         "If evidence is insufficient, still provide a conditional plan using available data and list what is missing.\n"
     )
     base += _copilot_chan_theory_guidance(language)
