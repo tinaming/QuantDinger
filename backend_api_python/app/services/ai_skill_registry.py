@@ -74,7 +74,7 @@ def _s(zh: str, en: str) -> SkillText:
     return SkillText(zh=zh, en=en)
 
 
-REGISTRY_VERSION = "2026.06.15.2"
+REGISTRY_VERSION = "2026.07.31.2"
 USER_SKILLS_DIR = Path("/app/data/ai_skills")
 _SKILL_ID_RE = re.compile(r"^[a-z][a-z0-9_\-]{2,63}$")
 
@@ -96,6 +96,92 @@ _SKILLS: tuple[SkillDefinition, ...] = (
         produces=("market_report", "risk_plan"),
         priority=100,
         ui={"tone": "analysis"},
+    ),
+    SkillDefinition(
+        id="czsc_analysis",
+        category="trading",
+        icon="apartment",
+        label=_s("缠论结构", "Chan structure"),
+        description=_s(
+            "交易分析：笔/线段/中枢、买卖点与多级别联立（非系统运维技能）",
+            "Trading analysis: bi/duan/zhongshu, BS points, multilevel — not an ops skill",
+        ),
+        prompt_template=_s(
+            "请对 {symbol_label} 做缠论结构复盘：明确级别，标出笔/线段/中枢与位置，判断一类/二类/三类买卖点（若有），"
+            "区分中枢震荡与趋势延伸，给出失效条件与仓位/等待建议。"
+            "若用户要求多级别，可用 30 分钟 + 5 分钟联立（大级别定方向，小级别找点）。"
+            "必须优先使用 research_context.czsc_structure 或 mcp.czsc_analyze / mcp.czsc_multilevel，不要凭空画结构。"
+            "若趋势极明确，可说明是否更适合简洁趋势跟随（如 5 分钟布林带）。",
+            "Run a Chan/CZSC structure review for {symbol_label}: state timeframe, bi/duan/zhongshu, "
+            "class-1/2/3 buy/sell points if any, range vs trend extension, invalidation, and wait-or-act guidance. "
+            "For multilevel asks, prefer 30m + 5m (HTF direction, LTF entry). "
+            "Prefer research_context.czsc_structure or mcp.czsc_analyze / mcp.czsc_multilevel — do not invent structure. "
+            "If trend is obvious, optionally note whether a simple 5m Bollinger trend-follow fits better.",
+        ),
+        system_instruction=(
+            "This is a trading/Chan analysis skill, not a system-admin skill. "
+            "Ground every Chan claim in CZSC tool output or research_context.czsc_structure. "
+            "If unavailable, say so and give a conditional plan from the snapshot only."
+        ),
+        keywords=(
+            "缠论", "分型", "中枢", "线段", "买卖点", "背驰", "多级别", "一类", "二类", "三类",
+            "czsc", "chanlun", "zhongshu", "短线",
+        ),
+        requires=("market_data",),
+        produces=("czsc_report", "risk_plan"),
+        priority=99,
+        ui={
+            "tone": "analysis",
+            "workflow": "czsc",
+            "domain": "trading",
+            "example_prompts": [
+                "请分析当前标的笔/线段/中枢与买卖点，并给出失效条件",
+                "请对当前标的做 30m + 5m 多级别联立，大级别定方向、小级别找点",
+                "判断当前是中枢震荡还是趋势延伸，并给出对应操作建议",
+            ],
+        },
+    ),
+    SkillDefinition(
+        id="chan_short_strategy",
+        category="trading",
+        icon="thunderbolt",
+        label=_s("短线策略", "Short-term strategy"),
+        description=_s(
+            "交易策略：一二三类买卖点短线，或趋势明确时用 5m 布林",
+            "Trading strategy: class 1/2/3 Chan short-term, or 5m Bollinger when trend is clear",
+        ),
+        prompt_template=_s(
+            "请为 {symbol_label} 设计可执行短线策略：优先一类/二类/三类买卖点或中枢进出；"
+            "若趋势极明确可用 5 分钟布林等简洁趋势跟随。"
+            "输出需对齐 SIGNAL_EXECUTION_STANDARD（默认四路 open_*/close_* + 边缘触发，声明 signal_form/exit_owner/flip_mode；"
+            "优先预计算 czsc_* 列，禁止 import czsc）。先澄清周期与风控，再给代码草稿与回测步骤。不要输出 Pine。",
+            "Design an executable short-term strategy for {symbol_label}: prefer class-1/2/3 Chan BS or zhongshu entries; "
+            "if trend is obvious, a simple 5m Bollinger approach is OK. Follow SIGNAL_EXECUTION_STANDARD "
+            "(four_way + edge; declare signal_form/exit_owner/flip_mode; prefer czsc_* columns; never import czsc). "
+            "Clarify timeframe/risk first, then draft code and backtest steps. No Pine unless asked.",
+        ),
+        system_instruction=(
+            "Trading strategy authoring skill (not ops). Follow SIGNAL_EXECUTION_STANDARD_CN.md. "
+            "Default four_way + edge; prefer czsc_*; never import czsc in sandbox."
+        ),
+        keywords=("短线", "缠论策略", "布林", "bollinger", "写策略", "生成策略", "一二三类", "czsc", "chan strategy"),
+        requires=("market_data", "strategy_requirements"),
+        produces=("indicator_code", "backtest_plan"),
+        route="/indicator-ide",
+        action_type="strategy",
+        risk_level="write_draft",
+        read_only=False,
+        priority=97,
+        ui={
+            "tone": "strategy",
+            "workflow": "chan_short",
+            "domain": "trading",
+            "example_prompts": [
+                "基于一类/二类/三类买卖点写短线策略草稿（四路+边缘触发）",
+                "趋势明确时用 5 分钟布林带辅助，说明为何可不强依赖缠论结构",
+                "写出符合平台信号标准的缠论短线策略草稿与回测步骤",
+            ],
+        },
     ),
     SkillDefinition(
         id="chart_review",
@@ -913,6 +999,13 @@ def match_skills(message: str, intent: str = "", limit: int = 5) -> list[SkillDe
     wants_news = any(token in text for token in ("新闻", "消息", "事件", "影响", "为什么", "latest", "news", "headline", "event"))
     wants_macro = any(token in text for token in ("非农", "cpi", "fomc", "fed", "利率", "pce", "gdp", "就业", "失业", "宏观", "nfp", "payroll", "inflation"))
     wants_entity = any(token in text for token in ("spac", "spacex", "ipo", "上市", "私有", "未上市", "ticker", "symbol", "多少钱", "估值"))
+    wants_czsc = any(
+        token in text
+        for token in ("czsc", "chanlun", "chan theory", "fenxing", "zhongshu")
+    ) or any(
+        token in (message or "")
+        for token in ("缠论", "分型", "中枢", "线段", "买卖点", "背驰", "一买", "二买", "三买")
+    )
     scored: list[tuple[int, SkillDefinition]] = []
     for skill, _ in _all_skill_entries(include_disabled=False):
         score = 0
@@ -921,23 +1014,29 @@ def match_skills(message: str, intent: str = "", limit: int = 5) -> list[SkillDe
         if wants_trade_plan and skill.id == "trade_plan":
             score += 30
         for keyword in skill.keywords:
-            if keyword.lower() in text:
+            if keyword.lower() in text or keyword in (message or ""):
                 score += 10
-        if intent == "market_analysis" and skill.id in {"market_diagnosis", "opportunity_radar"}:
+        if intent == "market_analysis" and skill.id in {"market_diagnosis", "opportunity_radar", "czsc_analysis"}:
             score += 8
-        if intent == "strategy_build" and skill.category == "strategy":
+        if intent == "strategy_build" and skill.category in {"strategy", "trading"}:
             score += 8
         if intent == "diagnosis" and skill.id in {"debug_logs", "setup_doctor"}:
             score += 8
+        if wants_czsc and skill.id == "czsc_analysis":
+            score += 32
+        if wants_czsc and skill.id == "chan_short_strategy":
+            score += 24
+        if wants_strategy and skill.id == "chan_short_strategy" and wants_czsc:
+            score += 18
         if wants_strategy and skill.id == "strategy_requirements_interview":
             score += 22
-        if wants_strategy and skill.id in {"indicator_strategy", "script_strategy", "trading_bot_plan"}:
+        if wants_strategy and skill.id in {"indicator_strategy", "script_strategy", "trading_bot_plan", "chan_short_strategy"}:
             score += 14
-        if wants_code and skill.id in {"indicator_strategy", "script_strategy", "indicator_authoring", "indicator_validation"}:
+        if wants_code and skill.id in {"indicator_strategy", "script_strategy", "indicator_authoring", "indicator_validation", "chan_short_strategy"}:
             score += 12
         if wants_market_data and skill.id == "market_data_lookup":
             score += 24
-        if wants_market_data and skill.id in {"market_diagnosis", "symbol_resolver", "data_source_doctor"}:
+        if wants_market_data and skill.id in {"market_diagnosis", "symbol_resolver", "data_source_doctor", "czsc_analysis"}:
             score += 8
         if wants_news and skill.id == "news_research":
             score += 24

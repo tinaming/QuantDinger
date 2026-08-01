@@ -1,21 +1,36 @@
-﻿# ChanQuant v3 Python Strategy Development Guide
+﻿# Strategy Development Guide (Chan theory first)
 
-> **Platform contract (required reading)**: [Signal & Execution Standard v1](./SIGNAL_EXECUTION_STANDARD.md) — backtest/live alignment, two-way vs four-way signals, exit ownership, and release checklist. This guide focuses on tutorials and examples.
+> **Platform contract (required)**: [Signal & Execution Standard v1](./SIGNAL_EXECUTION_STANDARD.md) — two-way/four-way, edge trigger, exit owner, backtest/live alignment.  
+> **In-app IDE page**: `/docs/dev-guide.html` (static, no third-party brand links). CN: `/docs/dev-guide-cn.html`.
 
-This guide is written from a **developer** point of view. Its goal is not only to list the current contracts, but to answer the practical question:
+This guide is organized as **CZSC indicators → signal contract → backtest checks**. Default path: read precomputed `czsc_*` → emit four-way bools → strict backtest → save as strategy.
 
-**How do I build an indicator strategy that is clear, backtestable, and ready to become a saved trading strategy?**
+## Suggested reading order
 
-ChanQuant currently supports two Python authoring models:
+1. **[§0 CZSC quickstart](#0-czsc-quickstart)** + **[§5.2](#52-chan-theory-czsc-indicator-strategies)**  
+2. IndicatorStrategy contract / `edge()` in §3  
+3. **[§7.3–7.5 strict backtest](#73-indicator-backtest-strict-mode-and-live-alignment)** (secondary)  
+4. ScriptStrategy (§6) only when you need runtime state
 
-- **IndicatorStrategy**: dataframe-based code for indicator research, chart rendering, and signal-style backtests.
-- **ScriptStrategy**: event-driven code for runtime execution, strategy backtests, and live trading.
+Two Python models:
 
-If you are starting a new strategy, the default recommendation is:
+- **IndicatorStrategy** — dataframe signals (IDE / charts / signal backtests); **default for Chan theory**  
+- **ScriptStrategy** — `on_init` / `on_bar` for stateful / bot execution
 
-1. Start with `IndicatorStrategy`.
-2. Prove the signal logic visually and in backtests.
-3. Move to `ScriptStrategy` only if you need bar-by-bar state, dynamic position management, or execution control.
+---
+
+## 0. CZSC quickstart
+
+The platform injects `czsc_*` before indicator / backtest / live runs. **Do not** `import czsc` in strategy code.
+
+| Goal | Approach |
+|------|----------|
+| Read structure | `czsc_bi_dir`, `czsc_bs_type`, `czsc_zs_position`, `czsc_ml_align`, … |
+| Entries/exits | Four-way columns + **edge trigger** |
+| Contract header | `# signal_form` / `# exit_owner` / `# flip_mode` |
+| Validate | IDE **strict mode**; live `trading_config.strict_mode: true` |
+
+Details and templates: **[§5.2](#52-chan-theory-czsc-indicator-strategies)**. Short IDE tutorial: `/docs/dev-guide.html`.
 
 ---
 
@@ -643,6 +658,79 @@ Why this example maps cleanly to the UI:
 - `tradeDirection both` makes it obvious that the code is designed for long and short signals
 - leverage is still controlled in the product panel instead of being hidden inside source code
 
+### 5.2 Chan Theory (CZSC) indicator strategies
+
+ChanQuant **precomputes** Chan structures and injects `czsc_*` columns into `df`. The indicator sandbox **must not** `import czsc`. Scripts only read columns and emit boolean signals. Still follow the [Signal & Execution Standard](./SIGNAL_EXECUTION_STANDARD.md): prefer form B four-way + edge triggers.
+
+#### 5.2.1 Why precomputed columns
+
+| Stage | Behavior |
+|-------|----------|
+| Backtest / validate / live | Backend injects `czsc_*` before running the script (validation may use mock columns) |
+| Indicator script | Read `df['czsc_bi_dir']` etc.; **never** `import czsc` |
+| Agent / MCP | Use `czsc_status` → `analyze_czsc` / `list_czsc_signals` for research; strategies still consume `czsc_*` |
+
+#### 5.2.2 Common columns
+
+| Column | Meaning (short) |
+|--------|-----------------|
+| `czsc_fx_mark` / `czsc_fx_price` | Fractal: `1` top, `-1` bottom |
+| `czsc_bi_dir` / `czsc_bi_*` | Stroke direction and prices |
+| `czsc_duan_dir` / `czsc_duan_*` | Segment direction and prices |
+| `czsc_zs_zd` / `czsc_zs_zg` / `czsc_zs_position` | Center band and relative position |
+| `czsc_bs_type` | Buy/sell point: `1buy`…`3sell`, or `''` |
+| `czsc_trend` | `1` up, `-1` down, `0` range |
+| `czsc_beichi` / `czsc_ml_align` | Divergence; bi/duan alignment proxy |
+
+#### 5.2.3 Authoring rules
+
+1. `df = df.copy()`; declare `# signal_form: four_way`, `# exit_owner`, `# flip_mode`.
+2. Combine columns, then **edge-trigger** into `open_*` / `close_*`.
+3. `output['signals']` is chart-only — it does not place orders.
+4. Multilevel: prefer `czsc_ml_align` / `czsc_duan_dir` with `czsc_bi_dir`; MCP multilevel analysis is separate from fill semantics.
+5. Pick one exit owner: indicator `close_*` vs engine TP/SL/trailing.
+
+#### 5.2.4 Minimal example
+
+```python
+# signal_form: four_way
+# exit_owner: engine
+# flip_mode: R1
+# @strategy stopLossPct 0.03
+# @strategy takeProfitPct 0.06
+# @strategy tradeDirection both
+
+my_indicator_name = "Chan bi flip"
+my_indicator_description = "Stroke flip filtered by czsc_bs_type / czsc_trend"
+
+df = df.copy()
+bi = df['czsc_bi_dir'].fillna(0)
+bi_prev = bi.shift(1).fillna(0)
+bs = df['czsc_bs_type'].fillna('').astype(str)
+trend = df['czsc_trend'].fillna(0)
+
+flip_up = (bi == 1) & (bi_prev != 1)
+flip_dn = (bi == -1) & (bi_prev != -1)
+has_buy = bs.str.contains('buy', case=False, na=False) & (bs != '')
+has_sell = bs.str.contains('sell', case=False, na=False) & (bs != '')
+long_cond = flip_up & (has_buy | (trend >= 0)) & (trend >= 0)
+short_cond = flip_dn & (has_sell | (trend <= 0)) & (trend <= 0)
+
+def edge(s):
+    s = s.fillna(False).astype(bool)
+    return s & ~s.shift(1).fillna(False).astype(bool)
+
+df['open_long'] = edge(long_cond)
+df['close_long'] = edge(short_cond)
+df['open_short'] = edge(short_cond)
+df['close_short'] = edge(long_cond)
+output = {'name': my_indicator_name, 'plots': [], 'signals': []}
+```
+
+Built-in drafts live in `chanlun_templates` (`fx_breakout`, `zs_oscillation`, `bsp_trend`, `multi_level_resonance`, `true_3buy_mvp`). After edits, re-run a **strict-mode** backtest (§7.3).
+
+Agent path: authoring-contract → full Python → validate → save → `submit_backtest` with `strict_mode=true`. See [AGENT_QUICKSTART.md](./agent/AGENT_QUICKSTART.md).
+
 ---
 
 ## 6. When You Should Switch to ScriptStrategy
@@ -905,6 +993,27 @@ Script backtests have **no** indicator IDE strict/non-strict toggle. The UI labe
 - **Grid bots** ship a placeholder script (`on_bar: pass`); the editor may look nearly empty by design.
 - **Martingale / trend / DCA** bots generate full Python templates.
 - If code is missing after clone, refresh and edit again — the app fetches `/api/strategies/detail` for the full `strategy_code`.
+
+### 7.3 Indicator backtest: strict mode vs live alignment
+
+The Indicator IDE strict toggle maps to `strictMode` / `strict_mode` (same field on Agent submit):
+
+| Mode | Signal confirm | Default fill | Live relation |
+|------|----------------|--------------|---------------|
+| **Strict** `true` (recommended before go-live) | Closed bar | **Next-bar open** | Aligns with confirmed live fills |
+| **Non-strict** `false` | Same-bar; may use MTF path | More aggressive | IDE feel only — not a release gate |
+
+Also set `signal_mode` / `exit_signal_mode` to `confirmed` when aligning with backtests (§3.6.1), and keep `# exit_owner` consistent with engine TP/SL/trailing.
+
+### 7.4 Submitting backtests (IDE / Agent / MCP)
+
+**IDE:** write four-way signals → pick symbol/TF → enable strict mode → run → inspect equity/trades → save indicator → save as strategy → run strategy backtest again.
+
+**Agent / MCP:** `get_indicator_authoring_contract` → full Python → `validate_indicator_code` → `save_indicator` → `submit_backtest` with `strictMode: true` → poll/stream the job. `code` must be Python, never natural language. See [AGENT_QUICKSTART.md](./agent/AGENT_QUICKSTART.md).
+
+### 7.5 Reading results
+
+Check equity / max drawdown, trade count (dense trades often mean missing edge triggers), fill timing vs signal bar under strict mode, fees/slippage/leverage, and optional `strictModeAligned` metadata. For Chan strategies, also verify `czsc_*` columns are populated and filters did not wipe all signals.
 
 ---
 

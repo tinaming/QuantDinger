@@ -1,21 +1,45 @@
-﻿# ChanQuant Python v3 策略开发指南
+﻿# 策略开发指南（缠论优先）
 
-> **平台级契约（必读）**：[信号与执行标准 v1](./SIGNAL_EXECUTION_STANDARD_CN.md) — 适用于所有指标策略的回测/实盘对齐、两路/四路选型、退出负责人与上线清单。本指南侧重教程与示例。
+> **平台级契约（必读）**：[信号与执行标准 v1](./SIGNAL_EXECUTION_STANDARD_CN.md) — 两路/四路、边缘触发、退出负责人、回测/实盘对齐。  
+> **IDE 精简页**（产品内「开发教程」打开）：`/docs/dev-guide-cn.html`（静态托管，无第三方品牌外链）。
 
-这份指南不是单纯罗列接口，而是站在**策略开发者**视角，回答一个更实际的问题：
+本指南按**缠论指标 → 信号契约 → 回测校验**组织。默认路径：读预计算 `czsc_*` → 写四路布尔信号 → 严格模式回测 → 保存为策略。
 
-**到底应该怎么写一个结构清晰、能回测、能落地成平台策略的指标策略？**
+## 阅读顺序（推荐）
 
-ChanQuant 当前支持两条 Python 开发路径：
+1. **[§0 缠论速通](#0-缠论速通推荐起点)**（本页开头）+ **[§5.2 缠论详解](#52-缠论czsc指标策略)**  
+2. **[§3 IndicatorStrategy](#3-如何开发一个-indicatorstrategy)** / 契约头注释与 `edge()`  
+3. **[§7.3–7.5 回测](#73-指标回测严格模式与实盘对齐)**（辅：严格模式怎么跑、怎么读结果）  
+4. 需要状态机/分批时再看 **[§6 ScriptStrategy](#6-什么时候该切到-scriptstrategy)**
 
-- **IndicatorStrategy**：基于 `df` 的指标/信号脚本，用于 Indicator IDE、图表渲染和信号型回测。
-- **ScriptStrategy**：基于 `on_init / on_bar` 的事件驱动脚本，用于策略运行时、策略回测与实盘执行。
+两条 Python 路径：
 
-如果你要从零开始开发一个策略，默认建议是：
+- **IndicatorStrategy**：`df` 信号脚本（指标 IDE / 图表 / 信号回测）— **缠论默认走这条**  
+- **ScriptStrategy**：`on_init` / `on_bar` 事件驱动（运行时状态、分批、bot）
 
-1. 先用 `IndicatorStrategy` 把信号逻辑跑通。
-2. 先验证图表、信号和回测语义。
-3. 只有当你需要运行时状态、动态仓位管理或执行控制时，再升级为 `ScriptStrategy`。
+产品总览见 [README_CN.md §策略开发模式](./README_CN.md#策略开发模式)。
+
+---
+
+## 0. 缠论速通（推荐起点）
+
+平台在跑指标 / 回测 / 实盘前注入 `czsc_*`（分型 / 笔 / 段 / 中枢 / 买卖点等）。**禁止**在策略里 `import czsc`。
+
+| 你要做的事 | 做法 |
+|------------|------|
+| 读结构 | `df['czsc_bi_dir']`、`czsc_bs_type`、`czsc_zs_position`、`czsc_ml_align`… |
+| 写进出场 | 四路 `open_long` / `close_long` / `open_short` / `close_short` + **边缘触发** |
+| 声明契约 | `# signal_form: four_way`、`# exit_owner: …`、`# flip_mode: …` |
+| 验证 | IDE **严格模式**回测；上线 `trading_config.strict_mode: true` |
+
+结构 → 执行列映射（简）：
+
+- 向上笔 / 买点 → `open_long`（可同时 `close_short`）  
+- 向下笔 / 卖点 → `open_short`（可同时 `close_long`）  
+- 只平不反手 → 只写 `close_*`  
+- 多级别过滤 → `czsc_ml_align == 1` 或笔段同向  
+
+完整列说明、模板与示例见 **[§5.2](#52-缠论czsc指标策略)**。可跑最小示例亦收录于 IDE 页 `/docs/dev-guide-cn.html`。
 
 ---
 
@@ -643,6 +667,109 @@ output = {
 - `tradeDirection both` 让人一眼看出这份代码本身就是为多空双向设计的
 - 杠杆继续交给产品配置层，不会被藏进源码里造成误解
 
+### 5.2 缠论（CZSC）指标策略
+
+ChanQuant 把缠论结构**预计算**后注入 `df` 的 `czsc_*` 列。指标沙箱**不能** `import czsc`（底层含原生扩展）；策略只读列、写布尔信号。契约仍遵循 [信号与执行标准](./SIGNAL_EXECUTION_STANDARD_CN.md)：推荐形态 B 四路 + 边缘触发。
+
+#### 5.2.1 为什么是「预计算列」
+
+| 环节 | 行为 |
+|------|------|
+| 回测 / 校验 / 实盘 | 后端在跑指标前注入 `czsc_*`（校验阶段可用 mock 列防 `KeyError`） |
+| 指标脚本 | 直接读 `df['czsc_bi_dir']` 等，**禁止** `import czsc` |
+| Agent / MCP | 分析用 `czsc_status` → `analyze_czsc` / `list_czsc_signals`；写策略仍只消费 `czsc_*` |
+
+若服务端未安装 czsc，列可能全为 0 / 空；先确认环境可用再解读结构。
+
+#### 5.2.2 常用 `czsc_*` 列（速查）
+
+| 列 | 含义（简） |
+|----|------------|
+| `czsc_fx_mark` / `czsc_fx_price` | 分型：`1` 顶、`-1` 底；对应价 |
+| `czsc_bi_dir` / `czsc_bi_*` | 笔方向与起止价、长度 |
+| `czsc_duan_dir` / `czsc_duan_*` | 线段方向与起止价 |
+| `czsc_zs_zd` / `czsc_zs_zg` / `czsc_zs_position` | 中枢区间与相对位置（`above` / `below` / `inside`） |
+| `czsc_bs_type` | 买卖点：`1buy`…`3sell`，无则为 `''` |
+| `czsc_trend` | `1` 上涨、`-1` 下跌、`0` 盘整 |
+| `czsc_beichi` / `czsc_bi_force` | 背驰与笔力度 |
+| `czsc_ml_align` | 笔/段同向代理：`1` 同向、`-1` 反向 |
+
+完整 dtype 说明以服务端 `get_czsc_column_docs()` / AI 提示注入为准。
+
+#### 5.2.3 写法约定
+
+1. `df = df.copy()`，声明 `# signal_form: four_way`、`# exit_owner: ...`、`# flip_mode: ...`。
+2. 用列组合条件，再 **边缘触发** 写入 `open_long` / `close_long` / `open_short` / `close_short`。
+3. `output['signals']` 只做图标注，**不下单**。
+4. 多级别：优先 `czsc_ml_align`、`czsc_duan_dir` 与 `czsc_bi_dir`；更细的 MCP 多级别分析与指标成交是两条路径，不要混用语义。
+5. 退出负责人仍二选一：指标内 `close_*` → `# exit_owner: indicator`；引擎止盈止损 → `# exit_owner: engine`（见标准文档）。
+
+#### 5.2.4 最小示例：笔翻转 + 买卖点过滤
+
+```python
+# signal_form: four_way
+# exit_owner: engine
+# flip_mode: R1
+# @strategy stopLossPct 0.03
+# @strategy takeProfitPct 0.06
+# @strategy tradeDirection both
+
+my_indicator_name = "缠论笔翻转"
+my_indicator_description = "笔方向翻转，并用 czsc_bs_type / czsc_trend 过滤"
+
+df = df.copy()
+
+bi = df['czsc_bi_dir'].fillna(0)
+bi_prev = bi.shift(1).fillna(0)
+bs = df['czsc_bs_type'].fillna('').astype(str)
+trend = df['czsc_trend'].fillna(0)
+
+flip_up = (bi == 1) & (bi_prev != 1)
+flip_dn = (bi == -1) & (bi_prev != -1)
+has_buy = bs.str.contains('buy', case=False, na=False) & (bs != '')
+has_sell = bs.str.contains('sell', case=False, na=False) & (bs != '')
+
+long_cond = flip_up & (has_buy | (trend >= 0)) & (trend >= 0)
+short_cond = flip_dn & (has_sell | (trend <= 0)) & (trend <= 0)
+
+def edge(s):
+    s = s.fillna(False).astype(bool)
+    return s & ~s.shift(1).fillna(False).astype(bool)
+
+df['open_long'] = edge(long_cond)
+df['close_long'] = edge(short_cond)
+df['open_short'] = edge(short_cond)
+df['close_short'] = edge(long_cond)
+
+output = {
+    'name': my_indicator_name,
+    'plots': [],
+    'signals': [
+        {'type': 'buy', 'text': 'OL', 'color': '#00E676',
+         'data': [1 if x else None for x in df['open_long']]},
+        {'type': 'sell', 'text': 'OS', 'color': '#FF5252',
+         'data': [1 if x else None for x in df['open_short']]},
+    ],
+}
+```
+
+#### 5.2.5 内置缠论模板
+
+后端 `chanlun_templates` 提供可直接进指标 IDE 的草稿，例如：
+
+- `fx_breakout` 分型突破
+- `zs_oscillation` 中枢震荡
+- `bsp_trend` 买卖点趋势跟踪
+- `multi_level_resonance` 多级别共振
+- `true_3buy_mvp` 真三买回踩确认
+
+模板已按四路 + 边缘触发编写；改逻辑后务必再跑 **严格模式** 回测（§7.3）。
+
+#### 5.2.6 Agent / MCP 与缠论
+
+研究结构时可用 MCP：`czsc_status` → `analyze_czsc` / `czsc_multilevel` / `list_czsc_signals` / `compute_czsc_signals`。  
+**落成可回测策略**仍走：`get_indicator_authoring_contract` → 写完整 Python → `validate_indicator` → `save_indicator` → `submit_backtest`（`strict_mode=true` 与实盘对齐）。`code` 必须是 Python，不能是自然语言。
+
 ---
 
 ## 6. 什么时候该切到 ScriptStrategy
@@ -909,6 +1036,63 @@ def on_bar(ctx, bar):
 - **网格机器人** 的 `strategy_code` 只是占位脚本（`on_bar: pass`），真实逻辑在 Live 挂单引擎；克隆后编辑器里看起来「几乎为空」是预期行为，不是 bug。
 - **马丁 / 趋势 / DCA** 等机器人会生成完整 Python 模板，克隆后应能看到可编辑代码。
 - 若克隆后在策略工作室仍看不到代码，请刷新页面；新版本会在编辑时调用 `/api/strategies/detail` 拉取完整 `strategy_code`。
+
+### 7.3 指标回测：严格模式与实盘对齐
+
+> 回测是校验手段，不是教程主体。缠论写法见 [§0](#0-缠论速通推荐起点) / [§5.2](#52-缠论czsc指标策略)；IDE 精简页：`/docs/dev-guide-cn.html#backtest`。
+
+指标 IDE 右侧有「严格 / 非严格」开关，对应后端 `strictMode` / `strict_mode`（Agent 提交字段同名）。映射关系（实现见 `backtest_execution.merge_strict_mode_into_strategy_config`）：
+
+| 模式 | 信号确认 | 默认成交 | 与实盘关系 |
+|------|----------|----------|------------|
+| **严格** `strictMode=true`（推荐上线前） | 已收盘 K 确认信号 | **下一根开盘** `next_bar_open` | 与默认「确认后再成交」实盘语义对齐 |
+| **非严格** `false` | 当根确认；可走 MTF/子周期近似 | `same_bar_close` 等更激进路径 | 更接近盘中轮询观感，**不宜**单独作为上线依据 |
+
+要点：
+
+1. 上线对照请以 **严格模式** + 保存后的策略回测为准（不只看编辑器临时跑一次）。
+2. `signal_mode` / `exit_signal_mode` 建议 `confirmed`，减少未收盘 K 重绘（见 §3.6.1）。
+3. `# exit_owner` 必须与是否启用引擎 `stopLossPct` / `trailing*` 一致，避免双重平仓。
+4. 脚本策略回测**没有**该开关（见 §7.1），不要拿脚本路径的结果去解释指标严格模式。
+
+### 7.4 在 IDE / Agent / MCP 中提交回测
+
+**指标 IDE（人机）**
+
+1. 写好四路信号与 `# @strategy` / 契约头注释。  
+2. 选市场、标的、周期、资金与杠杆。  
+3. 打开 **严格模式** → 运行回测。  
+4. 看资金曲线、回撤、成交明细；信号过密或成交时点异常时回到 §9.6 / 标准文档排查。  
+5. 满意后保存指标 →「保存为策略」→ 再跑一次**策略回测**。
+
+**Agent Gateway / MCP（机器）**
+
+推荐顺序（与 authoring-contract / MCP 说明一致）：
+
+1. `get_indicator_authoring_contract`  
+2. 编写完整 Python（可含 `czsc_*`，禁止自然语言塞进 `code`）  
+3. `validate_indicator_code`  
+4. `save_indicator`（scope W）  
+5. `submit_backtest` / `POST /api/agent/v1/backtests`，`strictMode: true`  
+6. `wait_for_job` / `stream_job_until_done` 取结果  
+
+最小请求字段示例：`code`、`market`、`symbol`、`timeframe`、`start_date`、`end_date`、`strictMode`。长任务用 `Idempotency-Key` 防重复提交。细节见 [AGENT_QUICKSTART.md](./agent/AGENT_QUICKSTART.md) 与 [MCP_SETUP.md](./agent/MCP_SETUP.md)。
+
+本地批量产物约定：写 `backtest_*.json` 后再走 Agent API（见仓库 Agent 工作流说明）。
+
+### 7.5 如何读回测结果
+
+优先看这些字段（名称以 API / 面板为准）：
+
+| 关注点 | 建议解读 |
+|--------|----------|
+| 资金曲线 / 最大回撤 | 曲线是否平滑；回撤是否可接受 |
+| 成交笔数与胜率 | 过密往往是未边缘触发或条件过宽 |
+| 成交时间 vs 信号 K | 严格模式下多为「信号 K 收盘 → 下一根开盘」；若期望当根成交却看到 next-bar，属模式差异而非引擎 bug |
+| 手续费 / 滑点 / 杠杆 | 未计入或过高杠杆会虚增收益 |
+| `strictModeAligned` 等元数据 | 确认这次 run 是否按严格语义落地 |
+
+缠论策略额外检查：`czsc_*` 非空、买卖点字符串是否符合预期、多级别过滤是否把有效信号滤光。结构研究用 MCP 分析，**成交对账仍以回测明细为准**。
 
 ---
 
@@ -1426,11 +1610,11 @@ output = {
 
 ## 13. 推荐开发流程
 
-1. 先用 `IndicatorStrategy` 把想法原型化。
-2. 先验证图表、信号密度和 next-bar-open 的回测语义。
-3. 把 `# @param` 和 `# @strategy` 元数据补完整。
+1. 先用 `IndicatorStrategy` 把想法原型化（均线类或缠论 `czsc_*` 均可）。
+2. 先验证图表、信号密度和 next-bar-open 的回测语义（**严格模式**）。
+3. 把 `# @param` 和 `# @strategy` 元数据补完整；缠论策略确认未 `import czsc`。
 4. 明确写清楚：退出到底是“信号负责”还是“引擎负责”。
-5. 保存策略后，再从持久化记录跑策略回测。
+5. 保存策略后，再从持久化记录跑策略回测；Agent 路径用 `submit_backtest` + `strictMode=true`。
 6. 只有在确实需要运行时仓位管理时，再迁移到 `ScriptStrategy`。
 7. 确认配置、凭证和市场语义都正确后，再进入模拟盘或实盘。
 

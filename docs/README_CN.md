@@ -644,12 +644,20 @@ ChanQuant 当前支持两种主要策略开发模式：
 - 通过 `open_long`、`close_long`、`open_short`、`close_short` 生成四向信号
 - 适合图表渲染、信号型回测和指标研究
 - 更适合原型验证和可视化策略开发
+- **缠论（CZSC）**：服务端预计算 `czsc_*`（分型 / 笔 / 段 / 中枢 / 买卖点等）注入 `df`；脚本直接读列写信号，**不要** `import czsc`。写法、模板与 Agent 流程见 [策略开发指南 §5.2](STRATEGY_DEV_GUIDE_CN.md#52-缠论czsc指标策略)。
 
 ### ScriptStrategy（脚本策略）
 
 - 基于 `on_init(ctx)` / `on_bar(ctx, bar)` 的事件驱动脚本
 - 通过 `ctx.buy()`、`ctx.sell()`、`ctx.close_position()` 显式表达交易动作
 - 更适合有状态策略、执行导向逻辑和实盘对齐
+
+### 回测要点（与实盘对齐）
+
+- 指标 IDE：**严格模式**（`strictMode=true`）= 已收盘确认 + 默认下一根开盘成交，上线前请以此为准。
+- 非严格模式更接近盘中观感，不适合单独作为上线依据。
+- Agent / MCP：`submit_backtest` 时同样传 `strictMode`；完整 Python 进 `code`，禁止自然语言。
+- 信号形态、退出负责人、边缘触发：[信号与执行标准](SIGNAL_EXECUTION_STANDARD_CN.md)；教程展开：[策略开发指南 §7](STRATEGY_DEV_GUIDE_CN.md#7-回测持久化与当前限制)。
 
 完整开发说明见：
 

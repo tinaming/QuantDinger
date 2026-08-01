@@ -17,6 +17,8 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent
 ASSETS = ROOT / "html" / "assets"
+sys.path.insert(0, str(ROOT))
+from _ide_chunk import resolve_ide_chunk, resolve_main_entry  # noqa: E402
 
 
 def _read_text_lf(path: pathlib.Path) -> str:
@@ -61,7 +63,10 @@ def _patch_file(path: pathlib.Path, replacements: list[tuple[str, str]]) -> int:
 
 def patch_ide_ashare_flash_trade() -> int:
     """Allow opening flash trade for CNStock (not only Crypto)."""
-    path = ASSETS / "index-DvAGmmZH.js"
+    path = resolve_ide_chunk()
+    if path is None:
+        print("missing IDE chunk")
+        return 0
     return _patch_file(path, [
         (
             'toggleQuickTradeDrawer(){if(!this.quickTradeDrawerVisible&&this.market!=="Crypto"){this.$message.warning(this.$t("quickTrade.cryptoOnly"));return}this.quickTradeDrawerVisible=!this.quickTradeDrawerVisible}',
@@ -128,18 +133,25 @@ def patch_i18n_publish_pending() -> int:
         ),
     ])
     # English locale bundle (fallback / en UI)
-    total += _patch_file(ASSETS / "index-Bv_zhOcS.js", [
-        (
-            '"dashboard.indicator.publish.unpublish":"Unpublish","dashboard.indicator.publish.success":"Published successfully"',
-            '"dashboard.indicator.publish.unpublish":"Unpublish","dashboard.indicator.publish.pending":"Submitted for review","dashboard.indicator.publish.success":"Published successfully"',
-        ),
-    ])
+    main_entry = resolve_main_entry()
+    if main_entry is None:
+        print("missing main entry")
+    else:
+        total += _patch_file(main_entry, [
+            (
+                '"dashboard.indicator.publish.unpublish":"Unpublish","dashboard.indicator.publish.success":"Published successfully"',
+                '"dashboard.indicator.publish.unpublish":"Unpublish","dashboard.indicator.publish.pending":"Submitted for review","dashboard.indicator.publish.success":"Published successfully"',
+            ),
+        ])
     return total
 
 
 def patch_ide_hide_code_handle_title() -> int:
     """Ensure code-side collapse handle is clearly labeled (收起)."""
-    path = ASSETS / "index-DvAGmmZH.js"
+    path = resolve_ide_chunk()
+    if path is None:
+        print("missing IDE chunk")
+        return 0
     return _patch_file(path, [
         (
             't("div",{staticClass:"ide-code-drawer-handle",on:{click:function(a){a.stopPropagation(),e.codeDrawerVisible=!1}}},[t("a-icon",{attrs:{type:"double-left"}}),t("span",[e._v(e._s(e.$t("indicatorIde.hideCode")))])],1)',
@@ -150,7 +162,10 @@ def patch_ide_hide_code_handle_title() -> int:
 
 def patch_ide_remove_chart_hide_code_btn() -> int:
     """#7: Hide-code belongs on the code-side drawer handle, not chart toolbar."""
-    path = ASSETS / "index-DvAGmmZH.js"
+    path = resolve_ide_chunk()
+    if path is None:
+        print("missing IDE chunk")
+        return 0
     return _patch_file(path, [
         (
             't("a-tooltip",{attrs:{title:e.codeDrawerVisible?e.$t("indicatorIde.hideCode"):e.$t("indicatorIde.showCode")}},[t("a-button",{staticClass:"chart-panel-icon-btn",attrs:{size:"small",type:e.codeDrawerVisible?"default":"primary"},on:{click:function(a){e.codeDrawerVisible=!e.codeDrawerVisible}}},[t("a-icon",{attrs:{type:"code"}})],1)],1),',
@@ -161,7 +176,10 @@ def patch_ide_remove_chart_hide_code_btn() -> int:
 
 def patch_publish_success_message() -> int:
     """Show pending-review success for community publish."""
-    path = ASSETS / "index-DvAGmmZH.js"
+    path = resolve_ide_chunk()
+    if path is None:
+        print("missing IDE chunk")
+        return 0
     return _patch_file(path, [
         (
             'i&&i.code===1?(this.$message.success(this.$t("dashboard.indicator.publish.success")),this.showPublishModal=!1,this.publishIndicator=null,await this.loadIndicators()):this.$message.error(i&&i.msg||this.$t("dashboard.indicator.publish.failed"))',
@@ -172,7 +190,10 @@ def patch_publish_success_message() -> int:
 
 def patch_ide_cnstock_long_only() -> int:
     """Selecting a CNStock watchlist item forces long-only / 1x leverage in IDE."""
-    path = ASSETS / "index-DvAGmmZH.js"
+    path = resolve_ide_chunk()
+    if path is None:
+        print("missing IDE chunk")
+        return 0
     return _patch_file(path, [
         (
             "e&&(this.market=String(e.market),this.symbol=String(e.symbol),this.qtSymbol=this.symbol)}",
@@ -183,7 +204,10 @@ def patch_ide_cnstock_long_only() -> int:
 
 def patch_ide_symbol_search_button() -> int:
     """#11: Add a visible 搜索 button between watchlist select and timeframe."""
-    path = ASSETS / "index-DvAGmmZH.js"
+    path = resolve_ide_chunk()
+    if path is None:
+        print("missing IDE chunk")
+        return 0
     old = (
         '],2)],1),t("div",{staticClass:"ide-toolbar-group ide-toolbar-group--tf"},'
         '[t("span",{staticClass:"ide-toolbar-label"},[e._v(e._s(e.$t("indicatorIde.toolbar.timeframe")))])'
@@ -201,7 +225,10 @@ def patch_ide_symbol_search_button() -> int:
 
 def patch_ide_editable_indicator_name() -> int:
     """#6: Editable indicator name textbox in the code panel title bar."""
-    path = ASSETS / "index-DvAGmmZH.js"
+    path = resolve_ide_chunk()
+    if path is None:
+        print("missing IDE chunk")
+        return 0
     return _patch_file(path, [
         # data field
         (

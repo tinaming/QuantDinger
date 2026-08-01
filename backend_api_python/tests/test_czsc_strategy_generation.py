@@ -38,7 +38,7 @@ CZSC_TREND_INDICATOR_CODE = '''
 # @param trend_filter int 1 Trend filter: 1=only trend direction, 0=allow all
 
 my_indicator_name = "CZSC Trend Reversal"
-my_indicator_description = "缠论因果反转：笔确认结束处反手（见底做多 / 见顶做空）"
+my_indicator_description = "缠论因果反转v3：见底做多/见顶做空。易盈：高波动深回调中小市值、笔清晰、胜率≥50%、交易不宜过密；易亏：大盘慢趋势/窄震荡、高频假翻转。建议strict_mode对齐回测。"
 
 df = df.copy()
 trend_filter = int(params.get('trend_filter', 1))

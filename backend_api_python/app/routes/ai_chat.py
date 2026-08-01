@@ -1502,16 +1502,162 @@ def _snapshot_for_candidate(candidate: dict | None) -> dict | None:
         return {"market": market, "symbol": symbol, "available": False, "error": str(e)}
 
 
+def _wants_czsc_structure(message: str, intent: str = "") -> bool:
+    """True when the user explicitly asks for Chan/CZSC structure (or short-term Chan strategy)."""
+    raw = message or ""
+    text = raw.lower()
+    if any(
+        k in raw
+        for k in (
+            "缠论", "缠中说禅", "分型", "中枢", "线段", "买卖点", "一买", "二买", "三买",
+            "背驰", "走势类型", "缠中",
+        )
+    ):
+        return True
+    if any(k in text for k in ("czsc", "chanlun", "chan theory", "fenxing", "zhongshu")):
+        return True
+    # Updated diagnose starter chips mention 缠论; also catch common short-term Chan asks.
+    if ("诊断" in raw or "diagnose" in text) and any(k in raw for k in ("结构", "级别", "短线", "缠")):
+        return True
+    return False
+
+
+def _build_czsc_structure_context(context: dict, primary: dict | None, flags: dict) -> dict:
+    """Best-effort CZSC structure summary for research_context (never invents data)."""
+    if not flags.get("needs_czsc"):
+        return {}
+    try:
+        from app.services.czsc_bridge import get_czsc_import_error, is_czsc_enabled
+    except Exception as exc:
+        return {"available": False, "error": f"czsc_bridge import failed: {exc}"}
+
+    if not is_czsc_enabled():
+        return {
+            "available": False,
+            "hint": "czsc library unavailable; use market_snapshot levels and conditional plans. Install with: pip install czsc",
+            "import_error": get_czsc_import_error(),
+            "preferred_tools": ["mcp.czsc_status", "mcp.czsc_analyze", "mcp.czsc_multilevel"],
+        }
+
+    market = str(
+        (primary or {}).get("market")
+        or context.get("market")
+        or ""
+    ).strip()
+    symbol = str(
+        (primary or {}).get("symbol")
+        or context.get("symbol")
+        or context.get("resolved_symbol")
+        or ""
+    ).strip()
+    if not market or not symbol:
+        return {
+            "available": True,
+            "computed": False,
+            "data_gap": "Need market+symbol to run CZSC structure. Ask user to select a symbol or name one.",
+            "preferred_tools": ["mcp.czsc_analyze", "mcp.czsc_multilevel"],
+        }
+
+    message = str(context.get("user_message") or "")
+    timeframe = "30m"
+    lowered = message.lower()
+    for tf in ("1d", "4h", "1h", "30m", "15m", "5m", "1m", "日线", "60分钟", "30分钟", "15分钟", "5分钟"):
+        if tf in message or tf in lowered:
+            mapping = {
+                "日线": "1d", "60分钟": "1h", "30分钟": "30m", "15分钟": "15m", "5分钟": "5m",
+            }
+            timeframe = mapping.get(tf, tf)
+            break
+
+    try:
+        import pandas as pd
+        from app.services.czsc_bridge import compute_czsc_features
+
+        rows = KlineService().get_kline(market=market, symbol=symbol, timeframe=timeframe, limit=300) or []
+        if len(rows) < 10:
+            return {
+                "available": True,
+                "computed": False,
+                "market": market,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "data_gap": f"Insufficient bars for CZSC ({len(rows)}).",
+            }
+        df = pd.DataFrame(rows)
+        df = df.rename(columns={c: str(c).lower() for c in df.columns})
+        if "dt" in df.columns:
+            df["dt"] = pd.to_datetime(df["dt"])
+            df = df.set_index("dt")
+        elif "datetime" in df.columns:
+            df["datetime"] = pd.to_datetime(df["datetime"])
+            df = df.set_index("datetime")
+        result = compute_czsc_features(df, freq=timeframe, symbol=symbol)
+        czsc_cols = [c for c in result.columns if str(c).startswith("czsc_")]
+        if not czsc_cols:
+            return {
+                "available": True,
+                "computed": False,
+                "market": market,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "data_gap": "CZSC produced no czsc_* columns.",
+            }
+        last = result.iloc[-1]
+        latest = {}
+        for col in (
+            "czsc_trend", "czsc_bs_type", "czsc_bi_dir", "czsc_fx_mark",
+            "czsc_zs_level", "czsc_zs_high", "czsc_zs_low",
+        ):
+            if col in result.columns and pd.notna(last.get(col)):
+                val = last.get(col)
+                latest[col] = float(val) if isinstance(val, (int, float)) else str(val)
+        recent_signals = []
+        if "czsc_bs_type" in result.columns:
+            mask = result["czsc_bs_type"].astype(str).str.strip() != ""
+            for _, row in result.loc[mask].tail(8).iterrows():
+                item = {"bs_type": str(row["czsc_bs_type"])}
+                if "close" in result.columns and pd.notna(row.get("close")):
+                    item["close"] = float(row["close"])
+                recent_signals.append(item)
+        return {
+            "available": True,
+            "computed": True,
+            "market": market,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "bar_count": int(len(result)),
+            "latest": latest,
+            "recent_bs_signals": recent_signals,
+            "guidance": (
+                "Treat latest/recent_bs_signals as observed CZSC structure. "
+                "State the operating timeframe, structure position, buy/sell point class if any, "
+                "invalidation, and a complete classification of next paths. Do not invent missing fields."
+            ),
+            "preferred_tools": ["mcp.czsc_analyze", "mcp.czsc_multilevel"],
+        }
+    except Exception as exc:
+        return {
+            "available": True,
+            "computed": False,
+            "market": market,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "error": str(exc)[:300],
+            "preferred_tools": ["mcp.czsc_analyze", "mcp.czsc_multilevel"],
+        }
+
+
 def _research_task_flags(message: str, intent: str, has_image: bool = False) -> dict:
     text = (message or "").lower()
     wants_trade_plan = any(k in text for k in ("交易计划", "trade plan", "trading plan", "entry trigger", "stop loss", "take profit", "position sizing"))
     wants_macro = any(k in text for k in ("nfp", "cpi", "fomc", "fed", "rates", "pce", "gdp", "inflation", "payroll", "非农", "利率", "通胀", "就业", "宏观"))
+    wants_czsc = _wants_czsc_structure(message, intent)
     wants_market_data = any(
         k in text for k in ("price", "quote", "trend", "support", "resistance", "行情", "价格", "走势", "支撑", "阻力", "k线", "kline", "多少钱", "股价", "现价",
                              # Stock/company mentions — user asking about a specific asset
                              "股票", "股份", "stock", "share", "ticker",
                              )
-    )
+    ) or wants_czsc
     return {
         "intent": intent,
         "needs_market_data": wants_trade_plan or wants_market_data or (intent in {"market_analysis", "opportunity_radar"} and not wants_macro),
@@ -1526,6 +1672,7 @@ def _research_task_flags(message: str, intent: str, has_image: bool = False) -> 
         "needs_fundamentals": any(k in text for k in ("valuation", "market cap", "earnings", "revenue", "fundamental", "估值", "市值", "财报", "营收", "基本面")),
         "needs_chart": has_image or any(k in text for k in ("chart", "screenshot", "kline", "k线图", "截图", "看图")),
         "needs_strategy": intent == "strategy_build" or any(k in text for k in ("strategy", "bot", "策略", "机器人", "写代码", "生成代码")),
+        "needs_czsc": wants_czsc,
     }
 
 
@@ -1675,6 +1822,21 @@ def _build_research_context(context: dict, has_image: bool = False) -> dict:
     if flags["needs_strategy"]:
         recommended_actions.append({"type": "workflow", "label": "Clarify missing strategy requirements before generating code or creating a draft."})
 
+    czsc_structure = _build_czsc_structure_context(context, primary if isinstance(primary, dict) else None, flags)
+    if czsc_structure:
+        if czsc_structure.get("computed"):
+            recommended_actions.append({
+                "type": "answer",
+                "label": "Use research_context.czsc_structure for Chan/CZSC levels and buy/sell points; do not invent structure.",
+            })
+        elif czsc_structure.get("available") is False or czsc_structure.get("data_gap") or czsc_structure.get("error"):
+            data_gaps.append(
+                czsc_structure.get("data_gap")
+                or czsc_structure.get("hint")
+                or czsc_structure.get("error")
+                or "CZSC structure was requested but unavailable."
+            )
+
     return {
         "version": "research-context-2026-06-15",
         "generated_at_utc": _now_utc().isoformat(),
@@ -1688,7 +1850,7 @@ def _build_research_context(context: dict, has_image: bool = False) -> dict:
             "decision_order": [
                 "1. Resolve the user's natural-language entity and compare it with selected UI context.",
                 "2. Decide which registered skills are needed.",
-                "3. Collect market snapshot, search/news, macro, and fundamentals context where applicable.",
+                "3. Collect market snapshot, CZSC structure (when requested), search/news, macro, and fundamentals context where applicable.",
                 "4. Answer with conclusions, evidence, caveats, and executable next actions.",
             ],
             "recommended_skills": _research_skill_plan(message, intent, language),
@@ -1703,6 +1865,7 @@ def _build_research_context(context: dict, has_image: bool = False) -> dict:
             "selected_snapshot": selected_snapshot or {},
             "primary_snapshot": primary_snapshot or {},
         },
+        "czsc_structure": czsc_structure or {},
         "news": search_context,
         "macro": macro_context,
         "fundamentals": _company_fundamentals_context(candidates, search_context, flags),
@@ -1713,6 +1876,7 @@ def _build_research_context(context: dict, has_image: bool = False) -> dict:
             "do_not_fake_private_company_ticker": True,
             "cite_search_sources_briefly": True,
             "produce_next_actions": True,
+            "do_not_invent_czsc_structure": True,
         },
     }
 
@@ -2008,6 +2172,46 @@ def _build_session_working_memory(history: list[dict], current_message: str, con
     return memory
 
 
+def _copilot_chan_theory_guidance(language: str) -> str:
+    """Compact Chan/CZSC + strategy-authoring guidance for Copilot system prompts.
+
+    Prefer linking SSOT docs over pasting tutorials. Keep this short so it rides
+    every turn without drowning other instructions.
+    """
+    zh = (language or "").lower().startswith("zh")
+    if zh:
+        return (
+            "\n[ChanQuant 缠论 / 短线策略指导]\n"
+            "说明：界面上的「诊断标的 / 排查日志 / 定时跟踪 / 配置检查」等是系统管理与平台操控技能，不要把它们当成缠论交易技能。"
+            "缠论与短线策略请走独立交易分析路径（技能 czsc_analysis / chan_short_strategy，或用户直接用一句话提问）。\n"
+            "1) 行情诊断默认用缠论思维：先定级别，再看结构（分型/笔/线段/中枢）、买卖点与背驰；"
+            "不预测未来，只分析当下并用完全分类列出应对。\n"
+            "2) 有 research_context.czsc_structure 或 Agent 工具 mcp.czsc_analyze / mcp.czsc_multilevel 时，"
+            "必须基于返回的结构摘要写结论，禁止编造笔/中枢/买卖点。库不可用则说明缺口，改用快照价位与条件化判断。\n"
+            "3) 写短线策略时遵循 docs/SIGNAL_EXECUTION_STANDARD_CN.md："
+            "默认四路 open_long/close_long/open_short/close_short + 边缘触发；声明 signal_form / exit_owner / flip_mode；"
+            "优先读预计算 czsc_* 列，禁止在指标沙箱 import czsc；百分比用 0–1 小数。\n"
+            "4) 趋势极明确时可用简洁趋势跟随（如 5m 布林带突破/回归），并说明为何不用缠论结构；"
+            "仍须符合信号列与 exit_owner 约定。生存与风控优先于叙事完整性。\n"
+        )
+    return (
+        "\n[ChanQuant Chan theory / short-term strategy guidance]\n"
+        "Note: Copilot chips such as Diagnose / Debug logs / Scheduled scan / Setup check are system-managed "
+        "platform-control skills — do not treat them as Chan trading skills. "
+        "For Chan/short-term strategy use dedicated trading skills czsc_analysis / chan_short_strategy, or a direct user one-liner.\n"
+        "1) For market diagnosis, prefer Chan/CZSC thinking: fix the timeframe first, then structure "
+        "(fenxing/bi/duan/zhongshu), buy/sell points, and divergence; analyze the present, do not invent forecasts.\n"
+        "2) When research_context.czsc_structure or tools mcp.czsc_analyze / mcp.czsc_multilevel are available, "
+        "ground conclusions in that structure — never invent strokes/centers/buy-sell points. "
+        "If CZSC is unavailable, state the gap and fall back to snapshot levels with conditional plans.\n"
+        "3) When authoring short-term strategies, follow docs/SIGNAL_EXECUTION_STANDARD_CN.md: "
+        "default four_way columns + edge trigger; declare signal_form / exit_owner / flip_mode; "
+        "prefer precomputed czsc_* columns and never import czsc inside the indicator sandbox.\n"
+        "4) When trend is obvious, simple trend-following (e.g. 5m Bollinger breakout/mean-reversion) is allowed; "
+        "say why Chan structure is secondary, still obey signal columns and exit_owner. Survival first.\n"
+    )
+
+
 def _build_system_prompt(language: str, context: dict, intent: str, has_image: bool, json_response: bool = True) -> str:
     lang_name = "Chinese" if (language or "").lower().startswith("zh") else "English"
     context_bits = []
@@ -2046,6 +2250,7 @@ def _build_system_prompt(language: str, context: dict, intent: str, has_image: b
         "If funding/open interest or other data is unavailable, say unavailable and do not invent it. "
         "If evidence is insufficient, still provide a conditional plan using available data and list what is missing.\n"
     )
+    base += _copilot_chan_theory_guidance(language)
     base += "\n" + build_skill_prompt(language, str(context.get("user_message") or ""), intent) + "\n"
     base += "\n" + build_tool_prompt(language, intent) + "\n"
     if context.get("agent_task"):
