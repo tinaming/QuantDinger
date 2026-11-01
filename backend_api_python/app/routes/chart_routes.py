@@ -418,15 +418,35 @@ def get_backtest_chart_data():
         kdj_data = _calculate_kdj(candles)
 
         # Strip internal fields from markers for JS
+        # Support both lightweight-charts and ECharts formats
         markers_for_js = []
         for m in markers:
-            markers_for_js.append({
-                "time": m["time"],
-                "position": m["position"],
-                "color": m["color"],
-                "shape": m["shape"],
-                "text": m["text"],
-            })
+            # ECharts format: has 'symbol', 'symbolRotate', 'itemStyle', 'label', 'coord'
+            # lightweight-charts format: has 'position', 'color', 'shape', 'text'
+            if "symbol" in m:
+                # ECharts format
+                markers_for_js.append({
+                    "time": m["time"],
+                    "coord": m.get("coord", [m["time"], m.get("_price", 0)]),
+                    "value": m.get("value", ""),
+                    "symbol": m["symbol"],
+                    "symbolRotate": m.get("symbolRotate", 0),
+                    "itemStyle": m.get("itemStyle", {}),
+                    "label": m.get("label", {}),
+                    "_price": m.get("_price", 0),
+                    "_amount": m.get("_amount", 0),
+                    "_profit": m.get("_profit", 0),
+                    "_type": m.get("_type", ""),
+                })
+            else:
+                # lightweight-charts format (legacy)
+                markers_for_js.append({
+                    "time": m["time"],
+                    "position": m.get("position", "aboveBar"),
+                    "color": m.get("color", "#22c55e"),
+                    "shape": m.get("shape", "arrowUp"),
+                    "text": m.get("text", ""),
+                })
 
         return jsonify({
             "code": 1,
