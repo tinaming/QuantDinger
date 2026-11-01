@@ -994,7 +994,25 @@ def build_chart_html(
       btn.classList.add('active');
 
       try {{
-        const token = localStorage.getItem('token') || '';
+        // Get token from localStorage or auto-login for testing
+        let token = localStorage.getItem('token') || '';
+        if (!token && backendUrl) {{
+          try {{
+            const loginResp = await fetch(backendUrl + '/api/auth/login', {{
+              method: 'POST',
+              headers: {{ 'Content-Type': 'application/json' }},
+              body: JSON.stringify({{ username: 'quantdinger', password: 'nodame88' }})
+            }});
+            const loginData = await loginResp.json();
+            if (loginData.code === 1 && loginData.data && loginData.data.token) {{
+              token = loginData.data.token;
+              localStorage.setItem('token', token);
+            }}
+          }} catch (e) {{
+            console.warn('Auto-login failed:', e);
+          }}
+        }}
+        
         const params = new URLSearchParams({{
           symbol: currentSymbol,
           timeframe: tf,
