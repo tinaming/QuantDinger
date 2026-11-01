@@ -615,8 +615,8 @@ def build_chart_html(
   // ---- Data ----
   const candleTimes = {candles_json};
   const candleValues = {candle_values_json};
-  const markPoints = {mark_points_json};
-  const tableData = {table_json};
+  let markPoints = {mark_points_json};
+  let tableData = {table_json};
   const summary = {summary_json};
   const rsiTimes = {rsi_times_json};
   const rsiValues = {rsi_values_json};
@@ -714,9 +714,11 @@ def build_chart_html(
       ],
       series: [
         {{
+          id: 'kline',
           name: 'K 线',
           type: 'candlestick',
-          data: candleValues.map((v, i) => [candleTimes[i], v]),
+          encode: {{ x: 0, y: [1, 2, 3, 4] }},
+          data: candleValues.map((v, i) => [candleTimes[i], v[0], v[1], v[2], v[3]]),
           itemStyle: {{
             color: '#22c55e',
             color0: '#ef4444',
@@ -725,7 +727,7 @@ def build_chart_html(
           }},
           markPoint: {{
             symbol: 'pin',
-            symbolSize: 50,
+            symbolSize: 32,
             data: markPoints,
           }},
         }},
@@ -736,6 +738,7 @@ def build_chart_html(
     if (bbUpper.length > 0) {{
       mainOption.series.push(
         {{
+          id: 'bbUpper',
           name: 'BB 上轨',
           type: 'line',
           data: bbUpper,
@@ -743,6 +746,7 @@ def build_chart_html(
           lineStyle: {{ color: '#f97316', width: 1 }},
         }},
         {{
+          id: 'bbMiddle',
           name: 'BB 中轨',
           type: 'line',
           data: bbMiddle,
@@ -750,6 +754,7 @@ def build_chart_html(
           lineStyle: {{ color: '#94a3b8', width: 1, type: 'dashed' }},
         }},
         {{
+          id: 'bbLower',
           name: 'BB 下轨',
           type: 'line',
           data: bbLower,
@@ -799,6 +804,7 @@ def build_chart_html(
         ],
         series: [
           {{
+            id: 'rsi',
             name: 'RSI',
             type: 'line',
             data: rsiValues.map((v, i) => [rsiTimes[i], v]),
@@ -853,6 +859,7 @@ def build_chart_html(
         ],
         series: [
           {{
+            id: 'kdjK',
             name: 'K',
             type: 'line',
             data: kValues.map((v, i) => [kdjTimes[i], v]),
@@ -860,6 +867,7 @@ def build_chart_html(
             lineStyle: {{ color: '#3b82f6', width: 2 }},
           }},
           {{
+            id: 'kdjD',
             name: 'D',
             type: 'line',
             data: dValues.map((v, i) => [kdjTimes[i], v]),
@@ -867,6 +875,7 @@ def build_chart_html(
             lineStyle: {{ color: '#f59e0b', width: 2 }},
           }},
           {{
+            id: 'kdjJ',
             name: 'J',
             type: 'line',
             data: jValues.map((v, i) => [kdjTimes[i], v]),
@@ -877,9 +886,11 @@ def build_chart_html(
       }});
     }}
 
-    // Link charts for synchronized zoom
-    if (rsiChart) echarts.connect([mainChart, rsiChart]);
-    if (kdjChart) echarts.connect([mainChart, kdjChart]);
+    // Link charts for synchronized zoom (single group)
+    const linkedCharts = [mainChart];
+    if (rsiChart) linkedCharts.push(rsiChart);
+    if (kdjChart) linkedCharts.push(kdjChart);
+    if (linkedCharts.length > 1) echarts.connect(linkedCharts);
 
     // Handle resize
     window.addEventListener('resize', () => {{
@@ -898,6 +909,7 @@ def build_chart_html(
       toggleBtn.textContent = markersVisible ? '显示交易标记' : '隐藏交易标记';
       mainChart.setOption({{
         series: [{{
+          id: 'kline',
           markPoint: {{
             data: markersVisible ? markPoints : [],
           }},
@@ -944,17 +956,18 @@ def build_chart_html(
         }}[currentTf] || 86400;
         const rangeMs = tfSeconds * 50 * 1000;
 
-        mainChart.dispatchAction({{
-          type: 'dataZoom',
-          startValue: tradeTimeMs - rangeMs,
-          endValue: tradeTimeMs + rangeMs,
+        mainChart.setOption({{
+          dataZoom: [
+            {{ startValue: tradeTimeMs - rangeMs, endValue: tradeTimeMs + rangeMs }},
+            {{ startValue: tradeTimeMs - rangeMs, endValue: tradeTimeMs + rangeMs }},
+          ],
         }});
       }});
     }});
   }}
 
   let selectedRow = null;
-  const currentTf = "{timeframe or '1D'}";
+  let currentTf = "{timeframe or '1D'}";
   renderTable(tableData);
 
   // ---- Sort ----
@@ -994,25 +1007,27 @@ def build_chart_html(
       btn.classList.add('active');
 
       try {{
+        const apiBase = backendUrl || (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : '');
+        const doLogin = async () => {{
+          const loginResp = await fetch(apiBase + '/api/auth/login', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ username: 'quantdinger', password: 'nodame88' }})
+          }});
+          const loginData = await loginResp.json();
+          if (loginData.code === 1 && loginData.data && loginData.data.token) {{
+            localStorage.setItem('token', loginData.data.token);
+            return loginData.data.token;
+          }}
+          return '';
+        }};
+
         // Get token from localStorage or auto-login for testing
         let token = localStorage.getItem('token') || '';
-        if (!token && backendUrl) {{
-          try {{
-            const loginResp = await fetch(backendUrl + '/api/auth/login', {{
-              method: 'POST',
-              headers: {{ 'Content-Type': 'application/json' }},
-              body: JSON.stringify({{ username: 'quantdinger', password: 'nodame88' }})
-            }});
-            const loginData = await loginResp.json();
-            if (loginData.code === 1 && loginData.data && loginData.data.token) {{
-              token = loginData.data.token;
-              localStorage.setItem('token', token);
-            }}
-          }} catch (e) {{
-            console.warn('Auto-login failed:', e);
-          }}
+        if (!token && apiBase) {{
+          try {{ token = await doLogin(); }} catch (e) {{ console.warn('Auto-login failed:', e); }}
         }}
-        
+
         const params = new URLSearchParams({{
           symbol: currentSymbol,
           timeframe: tf,
@@ -1020,10 +1035,21 @@ def build_chart_html(
         }});
         if (currentResultId) params.append('resultId', currentResultId);
 
-        const apiBase = backendUrl || (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : '');
-        const resp = await fetch(apiBase + '/api/chart/backtest/data?' + params.toString(), {{
+        const dataUrl = apiBase + '/api/chart/backtest/data?' + params.toString();
+        let resp = await fetch(dataUrl, {{
           headers: {{ 'Authorization': 'Bearer ' + token }}
         }});
+        // Stale/expired token: re-login once and retry
+        if (resp.status === 401 && apiBase) {{
+          try {{
+            token = await doLogin();
+            if (token) {{
+              resp = await fetch(dataUrl, {{
+                headers: {{ 'Authorization': 'Bearer ' + token }}
+              }});
+            }}
+          }} catch (e) {{ console.warn('Re-login failed:', e); }}
+        }}
         const json = await resp.json();
 
         if (json.code === 1 && json.data) {{
@@ -1040,54 +1066,56 @@ def build_chart_html(
             const times = newCandles.map(c => c.time * 1000);
             const values = newCandles.map(c => [c.open, c.close, c.low, c.high]);
             const mpData = newMarkers.map(m => ({{
-              coord: [m.time * 1000, m._price || m.price],
-              value: m.text,
+              coord: [m.time * 1000, m._price || (m.coord ? m.coord[1] : 0)],
+              value: m.value || m.text || '',
               symbol: m.symbol || 'pin',
               symbolRotate: m.symbolRotate || 0,
-              itemStyle: {{ color: m.color }},
-              label: {{ show: true, position: m.position === 'belowBar' ? 'bottom' : 'top', color: m.color, fontSize: 10 }},
+              itemStyle: m.itemStyle || {{ color: m.color || '#60a5fa' }},
+              label: m.label || {{ show: true, position: 'top', color: (m.itemStyle && m.itemStyle.color) || m.color || '#60a5fa', fontSize: 10 }},
             }}));
+            markPoints = mpData;
 
-            mainChart.setOption({{
-              xAxis: {{ data: times }},
-              series: [
-                {{
-                  type: 'candlestick',
-                  data: values,
-                  markPoint: {{ data: markersVisible ? mpData : [] }},
-                }},
-              ],
-            }});
-
-            // Update BB
+            const seriesUpdate = [
+              {{
+                id: 'kline',
+                type: 'candlestick',
+                data: values.map((v, i) => [times[i], v[0], v[1], v[2], v[3]]),
+                markPoint: {{ data: markersVisible ? mpData : [] }},
+              }},
+            ];
             if (newBB && newBB.upper) {{
-              mainChart.setOption({{
-                series: [
-                  {{ type: 'line', data: newBB.upper.map(d => [d.time * 1000, d.value]) }},
-                  {{ type: 'line', data: newBB.middle.map(d => [d.time * 1000, d.value]) }},
-                  {{ type: 'line', data: newBB.lower.map(d => [d.time * 1000, d.value]) }},
-                ],
-              }});
+              seriesUpdate.push(
+                {{ id: 'bbUpper', type: 'line', data: newBB.upper.map(d => [d.time * 1000, d.value]) }},
+                {{ id: 'bbMiddle', type: 'line', data: newBB.middle.map(d => [d.time * 1000, d.value]) }},
+                {{ id: 'bbLower', type: 'line', data: newBB.lower.map(d => [d.time * 1000, d.value]) }}
+              );
             }}
+            mainChart.setOption({{ series: seriesUpdate }});
+            mainChart.setOption({{ dataZoom: [{{ start: 0, end: 100 }}, {{ start: 0, end: 100 }}] }});
           }}
 
           // Update RSI
           if (rsiChart && newRSI.length) {{
             rsiChart.setOption({{
-              series: [{{ type: 'line', data: newRSI.map(d => d.value) }}],
+              series: [{{ id: 'rsi', type: 'line', data: newRSI.map(d => [d.time * 1000, d.value]) }}],
             }});
+            rsiChart.setOption({{ dataZoom: [{{ start: 0, end: 100 }}] }});
           }}
 
           // Update KDJ
           if (kdjChart && newKDJ.length) {{
             kdjChart.setOption({{
               series: [
-                {{ type: 'line', data: newKDJ.map(d => d.k) }},
-                {{ type: 'line', data: newKDJ.map(d => d.d) }},
-                {{ type: 'line', data: newKDJ.map(d => d.j) }},
+                {{ id: 'kdjK', type: 'line', data: newKDJ.map(d => [d.time * 1000, d.k]) }},
+                {{ id: 'kdjD', type: 'line', data: newKDJ.map(d => [d.time * 1000, d.d]) }},
+                {{ id: 'kdjJ', type: 'line', data: newKDJ.map(d => [d.time * 1000, d.j]) }},
               ],
             }});
+            kdjChart.setOption({{ dataZoom: [{{ start: 0, end: 100 }}] }});
           }}
+
+          currentTf = tf;
+          tableData = newTableData;
 
           // Update stats
           if (newSummary.total_trades !== undefined) {{
@@ -1111,9 +1139,11 @@ def build_chart_html(
           // Update table
           renderTable(newTableData);
         }} else {{
+          document.querySelectorAll('.tf-btn').forEach(b => b.classList.toggle('active', b.dataset.tf === currentTf));
           alert('切换时间周期失败：' + (json.msg || '未知错误'));
         }}
       }} catch (e) {{
+        document.querySelectorAll('.tf-btn').forEach(b => b.classList.toggle('active', b.dataset.tf === currentTf));
         alert('切换时间周期失败：' + e.message);
       }}
     }});
