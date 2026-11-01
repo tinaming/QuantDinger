@@ -716,7 +716,7 @@ def build_chart_html(
         {{
           name: 'K 线',
           type: 'candlestick',
-          data: candleValues,
+          data: candleValues.map((v, i) => [candleTimes[i], v]),
           itemStyle: {{
             color: '#22c55e',
             color0: '#ef4444',
@@ -801,7 +801,7 @@ def build_chart_html(
           {{
             name: 'RSI',
             type: 'line',
-            data: rsiValues,
+            data: rsiValues.map((v, i) => [rsiTimes[i], v]),
             showSymbol: false,
             lineStyle: {{ color: '#a855f7', width: 2 }},
             markLine: {{
@@ -855,21 +855,21 @@ def build_chart_html(
           {{
             name: 'K',
             type: 'line',
-            data: kValues,
+            data: kValues.map((v, i) => [kdjTimes[i], v]),
             showSymbol: false,
             lineStyle: {{ color: '#3b82f6', width: 2 }},
           }},
           {{
             name: 'D',
             type: 'line',
-            data: dValues,
+            data: dValues.map((v, i) => [kdjTimes[i], v]),
             showSymbol: false,
             lineStyle: {{ color: '#f59e0b', width: 2 }},
           }},
           {{
             name: 'J',
             type: 'line',
-            data: jValues,
+            data: jValues.map((v, i) => [kdjTimes[i], v]),
             showSymbol: false,
             lineStyle: {{ color: '#ec4899', width: 2 }},
           }},
