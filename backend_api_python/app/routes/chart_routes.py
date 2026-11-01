@@ -108,6 +108,18 @@ def _get_strategy_info(strategy_id: int) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _kline_limit_for_timeframe(timeframe: str) -> int:
+    """Return appropriate candle limit based on timeframe."""
+    tf = (timeframe or "1D").upper()
+    if tf in ("1M", "1M"):
+        return 5000
+    if tf in ("5M",):
+        return 3000
+    if tf in ("15M", "30M"):
+        return 2000
+    return 1000
+
+
 def _fetch_klines(
     market: str,
     symbol: str,
@@ -179,7 +191,7 @@ def get_strategy_trades_chart():
             market=market,
             symbol=symbol,
             timeframe=timeframe,
-            limit=1000,
+            limit=_kline_limit_for_timeframe(timeframe),
             exchange_id=exchange_id,
             market_type=market_type,
         )
@@ -190,6 +202,7 @@ def get_strategy_trades_chart():
             trades=trades,
             symbol=symbol,
             timeframe=timeframe,
+            backend_url=request.host_url.rstrip('/'),
         )
         return _html_response(html)
 
@@ -214,6 +227,7 @@ def get_backtest_chart():
       POST with JSON body containing klines + trades (from backtest result)
     """
     try:
+        result_id = None
         if request.method == "POST":
             data = request.get_json(silent=True) or {}
             klines = data.get("klines") or data.get("candles") or []
@@ -225,7 +239,7 @@ def get_backtest_chart():
             symbol = request.args.get("symbol") or ""
             timeframe = request.args.get("timeframe") or "1D"
             market = request.args.get("market") or "Crypto"
-            klines = _fetch_klines(market=market, symbol=symbol, timeframe=timeframe, limit=1000)
+            klines = _fetch_klines(market=market, symbol=symbol, timeframe=timeframe, limit=_kline_limit_for_timeframe(timeframe))
             trades = []
             # If resultId provided, load trades from saved backtest
             result_id = request.args.get("resultId")
@@ -238,6 +252,8 @@ def get_backtest_chart():
             trades=trades,
             symbol=symbol,
             timeframe=timeframe,
+            result_id=int(result_id) if result_id else None,
+            backend_url=request.host_url.rstrip('/'),
         )
         return _html_response(html)
 
@@ -254,7 +270,7 @@ def _load_backtest_trades(result_id: int) -> List[Dict[str, Any]]:
             cur = db.cursor()
             cur.execute(
                 """
-                SELECT result_json FROM qd_backtest_results
+                SELECT result_json FROM qd_backtest_runs
                 WHERE id = ? LIMIT 1
                 """,
                 (result_id,),
@@ -312,7 +328,7 @@ def get_strategy_trades_chart_data():
             market=market,
             symbol=symbol,
             timeframe=timeframe,
-            limit=1000,
+            limit=_kline_limit_for_timeframe(timeframe),
             exchange_id=exchange_id,
             market_type=market_type,
         )
@@ -349,6 +365,89 @@ def get_strategy_trades_chart_data():
 
 # Legacy alias for OpenAPI compat
 chart_bp = chart_blp
+
+
+# ---------------------------------------------------------------------------
+# Route: backtest chart data API (JSON) — for dynamic timeframe switching
+# ---------------------------------------------------------------------------
+
+@chart_blp.route("/chart/backtest/data", methods=["GET"])
+@login_required
+def get_backtest_chart_data():
+    """
+    Return chart-ready JSON (candles + trades + markers + summary) for SPA/iframe rendering.
+
+    Query params:
+        market (optional): Market type (default "Crypto")
+        symbol (required): Trading pair (e.g., "BTC/USDT")
+        timeframe (required): K-line timeframe (e.g., "1m", "5m", "1D")
+        resultId (optional): Backtest result ID to load trades from
+    """
+    try:
+        symbol = request.args.get("symbol") or ""
+        if not symbol:
+            return jsonify({"code": 0, "msg": "symbol is required", "data": None}), 400
+
+        timeframe = request.args.get("timeframe") or "1D"
+        market = request.args.get("market") or "Crypto"
+        result_id = request.args.get("resultId")
+
+        # Fetch K-line data
+        klines = _fetch_klines(market=market, symbol=symbol, timeframe=timeframe, limit=_kline_limit_for_timeframe(timeframe))
+
+        # Load trades from saved backtest if resultId provided
+        trades = []
+        if result_id:
+            trades = _load_backtest_trades(int(result_id))
+
+        from app.services.trade_chart import (
+            _build_summary,
+            _calculate_bollinger_bands,
+            _calculate_rsi,
+            _calculate_kdj,
+            _prepare_candles,
+            _prepare_markers,
+            _prepare_trade_table,
+        )
+        candles = _prepare_candles(klines)
+        markers = _prepare_markers(trades)
+        table_rows = _prepare_trade_table(trades)
+        summary = _build_summary(trades)
+        bb_data = _calculate_bollinger_bands(candles)
+        rsi_data = _calculate_rsi(candles)
+        kdj_data = _calculate_kdj(candles)
+
+        # Strip internal fields from markers for JS
+        markers_for_js = []
+        for m in markers:
+            markers_for_js.append({
+                "time": m["time"],
+                "position": m["position"],
+                "color": m["color"],
+                "shape": m["shape"],
+                "text": m["text"],
+            })
+
+        return jsonify({
+            "code": 1,
+            "msg": "success",
+            "data": {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "candles": candles,
+                "markers": markers_for_js,
+                "trades": table_rows,
+                "summary": summary,
+                "bb": bb_data,
+                "rsi": rsi_data,
+                "kdj": kdj_data,
+            },
+        })
+
+    except Exception as e:
+        logger.error(f"get_backtest_chart_data failed: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"code": 0, "msg": str(e), "data": None}), 500
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +512,7 @@ def get_review_chart_page():
             market=market,
             symbol=symbol,
             timeframe=timeframe,
-            limit=1000,
+            limit=_kline_limit_for_timeframe(timeframe),
             exchange_id=exchange_id,
             market_type=market_type,
         )
